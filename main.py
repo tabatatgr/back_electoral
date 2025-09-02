@@ -127,10 +127,21 @@ async def procesar_senado(
             sistema=sistema_final,
             mr_seats=mr_seats_final,
             rp_seats=rp_seats_final,
-            umbral=umbral_final,
-            quota_method=quota_method,
-            divisor_method=divisor_method
+            umbral=umbral_final
         )
+        
+        # Transformar resultado al formato esperado por el frontend
+        resultados_lista = []
+        if 'tot' in resultado:
+            for partido, escanos in resultado['tot'].items():
+                resultados_lista.append({
+                    'partido': partido,
+                    'escanos_totales': escanos,
+                    'escanos_mr': resultado.get('mr', {}).get(partido, 0),
+                    'escanos_rp': resultado.get('rp', {}).get(partido, 0),
+                    'votos': resultado.get('votos', {}).get(partido, 0),
+                    'supera_umbral': resultado.get('ok', {}).get(partido, False)
+                })
         
         return {
             "status": "success",
@@ -141,10 +152,8 @@ async def procesar_senado(
             "mr_seats": mr_seats_final,
             "rp_seats": rp_seats_final,
             "umbral": umbral_final,
-            "quota_method": quota_method,
-            "divisor_method": divisor_method,
-            "partidos_procesados": len(resultado.get("resultados", [])),
-            "resultados": resultado.get("resultados", [])
+            "partidos_procesados": len(resultados_lista),
+            "resultados": resultados_lista
         }
         
     except Exception as e:
@@ -247,6 +256,19 @@ async def procesar_diputados(
             divisor_method=divisor_method
         )
         
+        # Transformar resultado al formato esperado por el frontend
+        resultados_lista = []
+        if 'tot' in resultado:
+            for partido, escanos in resultado['tot'].items():
+                resultados_lista.append({
+                    'partido': partido,
+                    'escanos_totales': escanos,
+                    'escanos_mr': resultado.get('mr', {}).get(partido, 0),
+                    'escanos_rp': resultado.get('rp', {}).get(partido, 0),
+                    'votos': resultado.get('votos', {}).get(partido, 0),
+                    'supera_umbral': resultado.get('ok', {}).get(partido, False)
+                })
+        
         return {
             "status": "success",
             "anio": anio,
@@ -259,8 +281,8 @@ async def procesar_diputados(
             "max_seats_per_party": max_seats_per_party_final,
             "quota_method": quota_method,
             "divisor_method": divisor_method,
-            "partidos_procesados": len(resultado.get("resultados", [])),
-            "resultados": resultado.get("resultados", [])
+            "partidos_procesados": len(resultados_lista),
+            "resultados": resultados_lista
         }
         
     except Exception as e:
