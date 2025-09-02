@@ -73,7 +73,9 @@ def extraer_coaliciones_de_siglado(siglado_path: str, anio: int) -> Dict[str, Li
             partidos_limpios = [p for p in partidos_en_coalicion if pd.notna(p) and p.strip() != '']
             
             if len(partidos_limpios) > 1:  # Solo considerar verdaderas coaliciones (más de 1 partido)
-                coaliciones[coalicion_name] = sorted(partidos_limpios)
+                # Normalizar nombre de coalición para que coincida con las columnas del dataset
+                nombre_normalizado = coalicion_name.upper().replace(' ', '_')
+                coaliciones[nombre_normalizado] = sorted(partidos_limpios)
         
         print(f"[DEBUG] Coaliciones detectadas: {coaliciones}")
         return coaliciones
@@ -658,6 +660,12 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                 distrito_procesado = False
                 
                 if coalicion_ganadora:
+                    # DEBUG: Verificar variables en scope
+                    if print_debug and entidad == "AGUASCALIENTES" and num_distrito == 1:
+                        print(f"[DEBUG-SCOPE] coalicion_ganadora: {coalicion_ganadora}")
+                        print(f"[DEBUG-SCOPE] coaliciones_detectadas keys: {list(coaliciones_detectadas.keys()) if coaliciones_detectadas else 'None'}")
+                        print(f"[DEBUG-SCOPE] coalicion_ganadora in coaliciones_detectadas: {coalicion_ganadora in coaliciones_detectadas if coaliciones_detectadas else 'coaliciones_detectadas is None'}")
+                    
                     # Si ganó una coalición, buscar en siglado qué partido específico gana
                     if coalicion_ganadora in coaliciones_detectadas:
                         # Normalizar entidad para matching
@@ -703,6 +711,14 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                                     distrito_procesado = True
                                     if print_debug:
                                         print(f"[FALLBACK] Distrito {entidad}-{num_distrito}: {coalicion_ganadora} -> {partido_fallback} (por votos coalición)")
+                                else:
+                                    # Último recurso: primer partido de la coalición
+                                    partido_fallback = partidos_coalicion[0]
+                                    if partido_fallback in partidos_base:
+                                        mr_raw[partido_fallback] = mr_raw.get(partido_fallback, 0) + 1
+                                        distrito_procesado = True
+                                        if print_debug:
+                                            print(f"[FALLBACK] Distrito {entidad}-{num_distrito}: {coalicion_ganadora} -> {partido_fallback} (primero de coalición)")
                     else:
                         # Partido individual ganó directamente
                         if coalicion_ganadora in partidos_base:
