@@ -42,56 +42,107 @@ async def health_check():
 @app.post("/procesar/senado")
 async def procesar_senado(
     anio: int,
-    plan: str = "A",
-    escanos_totales: Optional[int] = None
+    plan: str = "vigente",
+    escanos_totales: Optional[int] = None,
+    sistema: Optional[str] = None,
+    umbral: Optional[float] = None,
+    mr_seats: Optional[int] = None,
+    rp_seats: Optional[int] = None
 ):
     """
     Procesa los datos del senado para un año específico con soporte de coaliciones
     
     - **anio**: Año electoral (2018, 2024)
-    - **plan**: Plan electoral ("A", "B", "C")
+    - **plan**: Plan electoral ("vigente", "plan_a", "plan_c", "personalizado")
     - **escanos_totales**: Número total de escaños (opcional, se calcula automáticamente)
+    - **sistema**: Sistema electoral para plan personalizado ("rp", "mixto", "mr")
+    - **umbral**: Umbral electoral para plan personalizado (0.0-1.0)
+    - **mr_seats**: Escaños de mayoría relativa para plan personalizado
+    - **rp_seats**: Escaños de representación proporcional para plan personalizado
     """
     try:
         if anio not in [2018, 2024]:
             raise HTTPException(status_code=400, detail="Año no soportado. Use 2018 o 2024")
         
-        if plan not in ["A", "B", "C"]:
-            raise HTTPException(status_code=400, detail="Plan no válido. Use A, B o C")
-        
-        # Configurar sistema y escaños según plan
-        if plan == "A":
-            sistema = "rp"
-            escanos_totales = escanos_totales or 96
-        elif plan == "B":
-            sistema = "mixto"
-            escanos_totales = escanos_totales or 128
-        elif plan == "C":
-            sistema = "mr"
-            escanos_totales = escanos_totales or 64
+        # Configurar parámetros según el flujo de test_flujo.py
+        if plan == "vigente":
+            # Sistema vigente según test_flujo.py
+            sistema_final = "mixto"
+            mr_seats_final = 96
+            rp_seats_final = 32
+            umbral_final = 0.03
+            quota_method = "hare"
+            divisor_method = "dhondt"
+            max_seats = mr_seats_final + rp_seats_final
+        elif plan == "plan_a":
+            # Plan A: solo RP según test_flujo.py
+            sistema_final = "rp"
+            mr_seats_final = 0
+            rp_seats_final = 96
+            umbral_final = 0.03
+            quota_method = "hare"
+            divisor_method = None
+            max_seats = rp_seats_final
+        elif plan == "plan_c":
+            # Plan C: solo MR según test_flujo.py
+            sistema_final = "mr"
+            mr_seats_final = 64
+            rp_seats_final = 0
+            umbral_final = 0.0
+            quota_method = "hare"
+            divisor_method = None
+            max_seats = mr_seats_final
+        elif plan == "personalizado":
+            # Plan personalizado con parámetros del usuario
+            if not sistema:
+                raise HTTPException(status_code=400, detail="Sistema requerido para plan personalizado")
+            sistema_final = sistema
+            mr_seats_final = mr_seats or 96
+            rp_seats_final = rp_seats or 32
+            umbral_final = umbral if umbral is not None else 0.03
+            quota_method = "hare"
+            divisor_method = "dhondt" if sistema_final == "mixto" else None
+            max_seats = mr_seats_final + rp_seats_final
+        else:
+            raise HTTPException(status_code=400, detail="Plan no válido. Use 'vigente', 'plan_a', 'plan_c' o 'personalizado'")
             
-        # Construir paths
+        # Construir paths (corregir para 2018)
         path_parquet = f"data/computos_senado_{anio}.parquet"
-        path_siglado = f"data/siglado-senado-{anio}.csv"
+        if anio == 2018:
+            path_siglado = "data/siglado_senado_2018_corregido.csv"
+        else:
+            path_siglado = f"data/siglado-senado-{anio}.csv"
         
         # Verificar que existen los archivos
         if not os.path.exists(path_parquet):
             raise HTTPException(status_code=404, detail=f"Archivo no encontrado: {path_parquet}")
+        if not os.path.exists(path_siglado):
+            raise HTTPException(status_code=404, detail=f"Archivo siglado no encontrado: {path_siglado}")
             
         resultado = procesar_senadores_v2(
             path_parquet=path_parquet,
             anio=anio,
             path_siglado=path_siglado,
-            max_seats=escanos_totales,
-            sistema=sistema
+            max_seats=max_seats,
+            sistema=sistema_final,
+            mr_seats=mr_seats_final,
+            rp_seats=rp_seats_final,
+            umbral=umbral_final,
+            quota_method=quota_method,
+            divisor_method=divisor_method
         )
         
         return {
             "status": "success",
             "anio": anio,
             "plan": plan,
-            "sistema": sistema,
-            "escanos_totales": escanos_totales,
+            "sistema": sistema_final,
+            "max_seats": max_seats,
+            "mr_seats": mr_seats_final,
+            "rp_seats": rp_seats_final,
+            "umbral": umbral_final,
+            "quota_method": quota_method,
+            "divisor_method": divisor_method,
             "partidos_procesados": len(resultado.get("resultados", [])),
             "resultados": resultado.get("resultados", [])
         }
@@ -102,31 +153,75 @@ async def procesar_senado(
 @app.post("/procesar/diputados")
 async def procesar_diputados(
     anio: int,
-    plan: str = "A"
+    plan: str = "vigente",
+    escanos_totales: Optional[int] = None,
+    sistema: Optional[str] = None,
+    umbral: Optional[float] = None,
+    mr_seats: Optional[int] = None,
+    rp_seats: Optional[int] = None,
+    max_seats_per_party: Optional[int] = None
 ):
     """
     Procesa los datos de diputados para un año específico con soporte de coaliciones
     
     - **anio**: Año electoral (2018, 2021, 2024)
-    - **plan**: Plan electoral ("A", "B", "C")
+    - **plan**: Plan electoral ("vigente", "plan_a", "plan_c", "personalizado")
+    - **escanos_totales**: Número total de escaños (opcional, se calcula automáticamente)
+    - **sistema**: Sistema electoral para plan personalizado
+    - **umbral**: Umbral electoral
+    - **mr_seats**: Escaños de mayoría relativa
+    - **rp_seats**: Escaños de representación proporcional
+    - **max_seats_per_party**: Máximo de escaños por partido
     """
     try:
         if anio not in [2018, 2021, 2024]:
             raise HTTPException(status_code=400, detail="Año no soportado. Use 2018, 2021 o 2024")
-            
-        if plan not in ["A", "B", "C"]:
-            raise HTTPException(status_code=400, detail="Plan no válido. Use A, B o C")
         
-        # Configurar sistema según plan
-        if plan == "A":
-            sistema = "rp"
+        # Configurar parámetros según el flujo de test_flujo.py
+        if plan == "vigente":
+            # Sistema vigente según test_flujo.py
+            sistema_final = "mixto"
+            max_seats = 500
+            mr_seats_final = 300
+            rp_seats_final = 200
+            umbral_final = 0.03
+            max_seats_per_party_final = 300
+            quota_method = "hare"
+            divisor_method = "dhondt"
+        elif plan == "plan_a":
+            # Plan A: solo RP según test_flujo.py
+            sistema_final = "rp"
             max_seats = 300
-        elif plan == "B":
-            sistema = "mixto"
+            mr_seats_final = 0
+            rp_seats_final = 300
+            umbral_final = 0.03
+            max_seats_per_party_final = None
+            quota_method = "hare"
+            divisor_method = None
+        elif plan == "plan_c":
+            # Plan C: solo MR según test_flujo.py
+            sistema_final = "mr"
             max_seats = 300
-        elif plan == "C":
-            sistema = "mr"
-            max_seats = 200
+            mr_seats_final = 300
+            rp_seats_final = 0
+            umbral_final = 0.0
+            max_seats_per_party_final = None
+            quota_method = "hare"
+            divisor_method = None
+        elif plan == "personalizado":
+            # Plan personalizado con parámetros del usuario
+            if not sistema:
+                raise HTTPException(status_code=400, detail="Sistema requerido para plan personalizado")
+            sistema_final = sistema
+            max_seats = escanos_totales or 500
+            mr_seats_final = mr_seats or 300
+            rp_seats_final = rp_seats or 200
+            umbral_final = umbral if umbral is not None else 0.03
+            max_seats_per_party_final = max_seats_per_party
+            quota_method = "hare"
+            divisor_method = "dhondt" if sistema_final == "mixto" else None
+        else:
+            raise HTTPException(status_code=400, detail="Plan no válido. Use 'vigente', 'plan_a', 'plan_c' o 'personalizado'")
             
         # Construir paths
         path_parquet = f"data/computos_diputados_{anio}.parquet"
@@ -135,21 +230,35 @@ async def procesar_diputados(
         # Verificar que existen los archivos
         if not os.path.exists(path_parquet):
             raise HTTPException(status_code=404, detail=f"Archivo no encontrado: {path_parquet}")
+        if not os.path.exists(path_siglado):
+            raise HTTPException(status_code=404, detail=f"Archivo siglado no encontrado: {path_siglado}")
             
         resultado = procesar_diputados_v2(
             path_parquet=path_parquet,
             anio=anio,
             path_siglado=path_siglado,
             max_seats=max_seats,
-            sistema=sistema
+            sistema=sistema_final,
+            mr_seats=mr_seats_final,
+            rp_seats=rp_seats_final,
+            umbral=umbral_final,
+            max_seats_per_party=max_seats_per_party_final,
+            quota_method=quota_method,
+            divisor_method=divisor_method
         )
         
         return {
             "status": "success",
             "anio": anio,
             "plan": plan,
-            "sistema": sistema,
+            "sistema": sistema_final,
             "max_seats": max_seats,
+            "mr_seats": mr_seats_final,
+            "rp_seats": rp_seats_final,
+            "umbral": umbral_final,
+            "max_seats_per_party": max_seats_per_party_final,
+            "quota_method": quota_method,
+            "divisor_method": divisor_method,
             "partidos_procesados": len(resultado.get("resultados", [])),
             "resultados": resultado.get("resultados", [])
         }
@@ -163,7 +272,7 @@ async def años_disponibles():
     return {
         "senado": [2018, 2024],
         "diputados": [2018, 2021, 2024],
-        "planes": ["A", "B", "C"]
+        "planes": ["vigente", "plan_a", "plan_c", "personalizado"]
     }
 
 @app.get("/coaliciones/{anio}")
