@@ -20,30 +20,30 @@ def calcular_kpis_electorales(resultados: Dict[str, Any], anio: int, camara: str
             return {"error": "DataFrame vacío"}
         
         # Calcular KPIs básicos
-        total_votos = df['VOTOS'].sum() if 'VOTOS' in df.columns else 0
-        total_escanos = df['ESCANOS'].sum() if 'ESCANOS' in df.columns else 0
-        partidos_representados = len(df[df['ESCANOS'] > 0]) if 'ESCANOS' in df.columns else 0
+        total_votos = df['votos'].sum() if 'votos' in df.columns else 0
+        total_escanos = df['total'].sum() if 'total' in df.columns else 0
+        partidos_representados = len(df[df['total'] > 0]) if 'total' in df.columns else 0
         
         # Partido más votado
         partido_mas_votado = ""
         votos_max = 0
-        if 'VOTOS' in df.columns and not df.empty:
-            idx_max = df['VOTOS'].idxmax()
-            partido_mas_votado = df.loc[idx_max, 'PARTIDO'] if 'PARTIDO' in df.columns else ""
-            votos_max = df.loc[idx_max, 'VOTOS']
+        if 'votos' in df.columns and not df.empty:
+            idx_max = df['votos'].idxmax()
+            partido_mas_votado = df.loc[idx_max, 'partido'] if 'partido' in df.columns else ""
+            votos_max = df.loc[idx_max, 'votos']
         
         # Partido con más escaños
         partido_mas_escanos = ""
         escanos_max = 0
-        if 'ESCANOS' in df.columns and not df.empty:
-            idx_max_escanos = df['ESCANOS'].idxmax()
-            partido_mas_escanos = df.loc[idx_max_escanos, 'PARTIDO'] if 'PARTIDO' in df.columns else ""
-            escanos_max = df.loc[idx_max_escanos, 'ESCANOS']
+        if 'total' in df.columns and not df.empty:
+            idx_max_escanos = df['total'].idxmax()
+            partido_mas_escanos = df.loc[idx_max_escanos, 'partido'] if 'partido' in df.columns else ""
+            escanos_max = df.loc[idx_max_escanos, 'total']
         
         # Índice de proporcionalidad (diferencia promedio entre % votos y % escaños)
         indice_proporcionalidad = 0
-        if 'PORCENTAJE_VOTOS' in df.columns and 'PORCENTAJE_ESCANOS' in df.columns:
-            diferencias = abs(df['PORCENTAJE_VOTOS'] - df['PORCENTAJE_ESCANOS'])
+        if 'porcentaje_votos' in df.columns and 'porcentaje_escanos' in df.columns:
+            diferencias = abs(df['porcentaje_votos'] - df['porcentaje_escanos'])
             indice_proporcionalidad = round(diferencias.mean(), 2)
         
         return {
@@ -100,15 +100,15 @@ def formato_seat_chart(resultados: Dict[str, Any]) -> Dict[str, Any]:
         }
         
         for partido_data in datos:
-            partido = partido_data.get('PARTIDO', '')
-            escanos = partido_data.get('ESCANOS', 0)
+            partido = partido_data.get('partido', '')  # minúscula
+            escanos = partido_data.get('total', 0)     # usar 'total' en lugar de 'ESCANOS'
             
             if escanos > 0:
                 seats_data.append({
                     "party": partido,
                     "seats": int(escanos),
                     "color": colores_partidos.get(partido, "#808080"),
-                    "percentage": round(partido_data.get('PORCENTAJE_ESCANOS', 0), 1)
+                    "percentage": round(partido_data.get('porcentaje_escanos', 0), 1)  # minúscula
                 })
         
         # Ordenar por número de escaños (descendente)
