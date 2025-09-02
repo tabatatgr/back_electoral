@@ -76,6 +76,22 @@ Retorna años y planes disponibles
 ### GET /coaliciones/{anio}
 Obtiene coaliciones para un año específico
 
+### GET /kpis/{camara}/{anio}?plan={plan}
+Obtiene KPIs electorales calculados
+- **camara**: "senado" o "diputados"
+- **anio**: año electoral
+- **plan**: "A", "B" o "C" (opcional, default: "A")
+
+Ejemplo: `/kpis/senado/2024?plan=A`
+
+### GET /seat-chart/{camara}/{anio}?plan={plan}
+Obtiene datos formateados para visualización de escaños
+- **camara**: "senado" o "diputados"  
+- **anio**: año electoral
+- **plan**: "A", "B" o "C" (opcional, default: "A")
+
+Ejemplo: `/seat-chart/diputados/2024?plan=B`
+
 ## Estructura de Respuesta
 
 ```json

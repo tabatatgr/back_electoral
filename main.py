@@ -10,6 +10,7 @@ sys.path.append('.')
 
 from engine.procesar_senadores_v2 import procesar_senadores_v2  
 from engine.procesar_diputados_v2 import procesar_diputados_v2
+from outputs.kpi_utils import calcular_kpis_electorales, formato_seat_chart
 
 app = FastAPI(
     title="Backend Electoral API",
@@ -202,6 +203,181 @@ async def obtener_coaliciones(anio: int):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error obteniendo coaliciones: {str(e)}")
+
+@app.get("/kpis/{camara}/{anio}")
+async def obtener_kpis(camara: str, anio: int, plan: str = "A"):
+    """
+    Obtiene los KPIs electorales para una cámara y año específicos
+    """
+    try:
+        if camara not in ["senado", "diputados"]:
+            raise HTTPException(status_code=400, detail="Cámara debe ser 'senado' o 'diputados'")
+        
+        # Procesar datos según la cámara
+        if camara == "senado":
+            if anio not in [2018, 2024]:
+                raise HTTPException(status_code=400, detail="Año no soportado para senado. Use 2018 o 2024")
+            
+            # Configurar sistema según plan
+            if plan == "A":
+                sistema = "rp"
+                escanos_totales = 96
+            elif plan == "B":
+                sistema = "mixto"
+                escanos_totales = 128
+            elif plan == "C":
+                sistema = "mr"
+                escanos_totales = 64
+            else:
+                raise HTTPException(status_code=400, detail="Plan no válido. Use A, B o C")
+            
+            path_parquet = f"data/computos_senado_{anio}.parquet"
+            path_siglado = f"data/siglado-senado-{anio}.csv"
+            
+            if not os.path.exists(path_parquet):
+                raise HTTPException(status_code=404, detail=f"Archivo no encontrado: {path_parquet}")
+                
+            resultado = procesar_senadores_v2(
+                path_parquet=path_parquet,
+                anio=anio,
+                path_siglado=path_siglado,
+                max_seats=escanos_totales,
+                sistema=sistema
+            )
+        
+        else:  # diputados
+            if anio not in [2018, 2021, 2024]:
+                raise HTTPException(status_code=400, detail="Año no soportado para diputados. Use 2018, 2021 o 2024")
+            
+            if plan == "A":
+                sistema = "rp"
+                max_seats = 300
+            elif plan == "B":
+                sistema = "mixto"
+                max_seats = 300
+            elif plan == "C":
+                sistema = "mr"
+                max_seats = 200
+            else:
+                raise HTTPException(status_code=400, detail="Plan no válido. Use A, B o C")
+            
+            path_parquet = f"data/computos_diputados_{anio}.parquet"
+            path_siglado = f"data/siglado-diputados-{anio}.csv"
+            
+            if not os.path.exists(path_parquet):
+                raise HTTPException(status_code=404, detail=f"Archivo no encontrado: {path_parquet}")
+                
+            resultado = procesar_diputados_v2(
+                path_parquet=path_parquet,
+                anio=anio,
+                path_siglado=path_siglado,
+                max_seats=max_seats,
+                sistema=sistema
+            )
+        
+        # Estructurar resultado para KPIs
+        resultado_formateado = {
+            "status": "success",
+            "anio": anio,
+            "plan": plan,
+            "sistema": sistema if camara == "senado" else sistema,
+            "resultados": resultado.get("resultados", [])
+        }
+        
+        # Calcular KPIs
+        kpis = calcular_kpis_electorales(resultado_formateado, anio, camara)
+        
+        return kpis
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error obteniendo KPIs: {str(e)}")
+
+@app.get("/seat-chart/{camara}/{anio}")
+async def obtener_seat_chart(camara: str, anio: int, plan: str = "A"):
+    """
+    Obtiene los datos formateados para el seat-chart
+    """
+    try:
+        if camara not in ["senado", "diputados"]:
+            raise HTTPException(status_code=400, detail="Cámara debe ser 'senado' o 'diputados'")
+        
+        # Procesar datos según la cámara (reutilizar lógica del endpoint de KPIs)
+        if camara == "senado":
+            if anio not in [2018, 2024]:
+                raise HTTPException(status_code=400, detail="Año no soportado para senado. Use 2018 o 2024")
+            
+            if plan == "A":
+                sistema = "rp"
+                escanos_totales = 96
+            elif plan == "B":
+                sistema = "mixto"
+                escanos_totales = 128
+            elif plan == "C":
+                sistema = "mr"
+                escanos_totales = 64
+            else:
+                raise HTTPException(status_code=400, detail="Plan no válido. Use A, B o C")
+            
+            path_parquet = f"data/computos_senado_{anio}.parquet"
+            path_siglado = f"data/siglado-senado-{anio}.csv"
+            
+            if not os.path.exists(path_parquet):
+                raise HTTPException(status_code=404, detail=f"Archivo no encontrado: {path_parquet}")
+                
+            resultado = procesar_senadores_v2(
+                path_parquet=path_parquet,
+                anio=anio,
+                path_siglado=path_siglado,
+                max_seats=escanos_totales,
+                sistema=sistema
+            )
+        
+        else:  # diputados
+            if anio not in [2018, 2021, 2024]:
+                raise HTTPException(status_code=400, detail="Año no soportado para diputados. Use 2018, 2021 o 2024")
+            
+            if plan == "A":
+                sistema = "rp"
+                max_seats = 300
+            elif plan == "B":
+                sistema = "mixto"
+                max_seats = 300
+            elif plan == "C":
+                sistema = "mr"
+                max_seats = 200
+            else:
+                raise HTTPException(status_code=400, detail="Plan no válido. Use A, B o C")
+            
+            path_parquet = f"data/computos_diputados_{anio}.parquet"
+            path_siglado = f"data/siglado-diputados-{anio}.csv"
+            
+            if not os.path.exists(path_parquet):
+                raise HTTPException(status_code=404, detail=f"Archivo no encontrado: {path_parquet}")
+                
+            resultado = procesar_diputados_v2(
+                path_parquet=path_parquet,
+                anio=anio,
+                path_siglado=path_siglado,
+                max_seats=max_seats,
+                sistema=sistema
+            )
+        
+        # Estructurar resultado para seat-chart
+        resultado_formateado = {
+            "status": "success",
+            "anio": anio,
+            "plan": plan,
+            "sistema": sistema,
+            "resultados": resultado.get("resultados", [])
+        }
+        
+        # Formatear para seat-chart
+        seat_chart_data = formato_seat_chart(resultado_formateado)
+        
+        return seat_chart_data
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error obteniendo seat-chart: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
