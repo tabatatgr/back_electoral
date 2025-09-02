@@ -86,13 +86,16 @@ def formato_seat_chart(resultados: Dict[str, Any]) -> Dict[str, Any]:
         # Formatear datos para el seat-chart
         seats_data = []
         colores_partidos = {
-            "MORENA": "#8B4513",
-            "PAN": "#0066CC", 
-            "PRI": "#FF0000",
-            "PRD": "#FFFF00",
-            "PVEM": "#00CC00",
-            "PT": "#FF6600",
-            "MC": "#FF9900",
+            "MORENA": "#8B2231",
+            "PAN": "#0055A5",
+            "PRI": "#0D7137",
+            "PT": "#D52B1E",
+            "PVEM": "#1E9F00",
+            "MC": "#F58025",
+            "PRD": "#FFCC00",
+            "PES": "#6A1B9A",
+            "NA": "#00B2E3",
+            "FXM": "#FF69B4",
             "OTROS": "#808080"
         }
         

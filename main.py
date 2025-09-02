@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 import pandas as pd
 import sys
 import os
@@ -11,6 +12,100 @@ sys.path.append('.')
 from engine.procesar_senadores_v2 import procesar_senadores_v2  
 from engine.procesar_diputados_v2 import procesar_diputados_v2
 from outputs.kpi_utils import calcular_kpis_electorales, formato_seat_chart
+
+# Mapea colores por partido
+PARTY_COLORS = {
+    "MORENA": "#8B2231",
+    "PAN": "#0055A5",
+    "PRI": "#0D7137",
+    "PT": "#D52B1E",
+    "PVEM": "#1E9F00",
+    "MC": "#F58025",
+    "PRD": "#FFCC00",
+    "PES": "#6A1B9A",
+    "NA": "#00B2E3",
+    "FXM": "#FF69B4",
+}
+
+# Funciones auxiliares para KPIs
+def safe_mae(v, s):
+    v = [x for x in v if x is not None]
+    s = [x for x in s if x is not None]
+    if not v or not s or len(v) != len(s): return 0
+    return sum(abs(a-b) for a,b in zip(v,s)) / len(v)
+
+def safe_gallagher(v, s):
+    v = [x for x in v if x is not None]
+    s = [x for x in s if x is not None]
+    if not v or not s or len(v) != len(s): return 0
+    return (0.5 * sum((100*(a/(sum(v) or 1)) - 100*(b/(sum(s) or 1)))**2 for a,b in zip(v,s)))**0.5
+
+def transformar_resultado_a_formato_frontend(resultado_dict: Dict, plan: str) -> Dict:
+    """
+    Transforma el resultado de las funciones de procesamiento al formato esperado por el frontend
+    """
+    try:
+        if not resultado_dict or 'tot' not in resultado_dict:
+            return {"plan": plan, "resultados": [], "kpis": {}, "seat_chart": []}
+        
+        # Obtener datos base
+        escanos_dict = resultado_dict.get('tot', {})
+        votos_dict = resultado_dict.get('votos', {})
+        
+        # Crear lista de resultados para el frontend
+        resultados = []
+        seat_chart = []
+        total_votos = sum(votos_dict.values()) if votos_dict else 1
+        total_escanos = sum(escanos_dict.values()) if escanos_dict else 1
+        
+        for partido in escanos_dict.keys():
+            if escanos_dict.get(partido, 0) > 0:  # Solo partidos con escaños
+                votos = votos_dict.get(partido, 0)
+                escanos = escanos_dict.get(partido, 0)
+                
+                resultado_partido = {
+                    "partido": partido,
+                    "votos": votos,
+                    "mr": resultado_dict.get('mr', {}).get(partido, 0),
+                    "rp": resultado_dict.get('rp', {}).get(partido, 0), 
+                    "total": escanos,
+                    "porcentaje_votos": round((votos / total_votos) * 100, 2) if total_votos > 0 else 0,
+                    "porcentaje_escanos": round((escanos / total_escanos) * 100, 2) if total_escanos > 0 else 0
+                }
+                resultados.append(resultado_partido)
+                
+                # Agregar al seat_chart
+                seat_chart_item = {
+                    "party": partido,
+                    "seats": escanos,
+                    "color": PARTY_COLORS.get(partido, "#888888"),
+                    "percent": round((escanos / total_escanos) * 100, 2) if total_escanos > 0 else 0,
+                    "votes": votos
+                }
+                seat_chart.append(seat_chart_item)
+        
+        # Calcular KPIs
+        votos_list = [r["votos"] for r in resultados]
+        escanos_list = [r["total"] for r in resultados]
+        
+        kpis = {
+            "total_votos": total_votos,
+            "total_escanos": total_escanos,
+            "gallagher": safe_gallagher(votos_list, escanos_list),
+            "mae_votos_vs_escanos": safe_mae(votos_list, escanos_list),
+            "partidos_con_escanos": len([r for r in resultados if r["total"] > 0])
+        }
+        
+        return {
+            "plan": plan,
+            "resultados": resultados,
+            "kpis": kpis,
+            "seat_chart": seat_chart
+        }
+        
+    except Exception as e:
+        print(f"[ERROR] Error transformando resultado: {e}")
+        return {"plan": plan, "resultados": [], "kpis": {"error": str(e)}, "seat_chart": []}
 
 app = FastAPI(
     title="Backend Electoral API",
@@ -71,8 +166,6 @@ async def procesar_senado(
             mr_seats_final = 96
             rp_seats_final = 32
             umbral_final = 0.03
-            quota_method = "hare"
-            divisor_method = "dhondt"
             max_seats = mr_seats_final + rp_seats_final
         elif plan == "plan_a":
             # Plan A: solo RP según test_flujo.py
@@ -80,8 +173,6 @@ async def procesar_senado(
             mr_seats_final = 0
             rp_seats_final = 96
             umbral_final = 0.03
-            quota_method = "hare"
-            divisor_method = None
             max_seats = rp_seats_final
         elif plan == "plan_c":
             # Plan C: solo MR según test_flujo.py
@@ -89,8 +180,6 @@ async def procesar_senado(
             mr_seats_final = 64
             rp_seats_final = 0
             umbral_final = 0.0
-            quota_method = "hare"
-            divisor_method = None
             max_seats = mr_seats_final
         elif plan == "personalizado":
             # Plan personalizado con parámetros del usuario
@@ -100,8 +189,6 @@ async def procesar_senado(
             mr_seats_final = mr_seats or 96
             rp_seats_final = rp_seats or 32
             umbral_final = umbral if umbral is not None else 0.03
-            quota_method = "hare"
-            divisor_method = "dhondt" if sistema_final == "mixto" else None
             max_seats = mr_seats_final + rp_seats_final
         else:
             raise HTTPException(status_code=400, detail="Plan no válido. Use 'vigente', 'plan_a', 'plan_c' o 'personalizado'")
@@ -130,31 +217,10 @@ async def procesar_senado(
             umbral=umbral_final
         )
         
-        # Transformar resultado al formato esperado por el frontend
-        resultados_lista = []
-        if 'tot' in resultado:
-            for partido, escanos in resultado['tot'].items():
-                resultados_lista.append({
-                    'partido': partido,
-                    'escanos_totales': escanos,
-                    'escanos_mr': resultado.get('mr', {}).get(partido, 0),
-                    'escanos_rp': resultado.get('rp', {}).get(partido, 0),
-                    'votos': resultado.get('votos', {}).get(partido, 0),
-                    'supera_umbral': resultado.get('ok', {}).get(partido, False)
-                })
+        # Transformar al formato esperado por el frontend con colores
+        resultado_formateado = transformar_resultado_a_formato_frontend(resultado, plan)
         
-        return {
-            "status": "success",
-            "anio": anio,
-            "plan": plan,
-            "sistema": sistema_final,
-            "max_seats": max_seats,
-            "mr_seats": mr_seats_final,
-            "rp_seats": rp_seats_final,
-            "umbral": umbral_final,
-            "partidos_procesados": len(resultados_lista),
-            "resultados": resultados_lista
-        }
+        return resultado_formateado
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error procesando senado: {str(e)}")
@@ -168,7 +234,9 @@ async def procesar_diputados(
     umbral: Optional[float] = None,
     mr_seats: Optional[int] = None,
     rp_seats: Optional[int] = None,
-    max_seats_per_party: Optional[int] = None
+    max_seats_per_party: Optional[int] = None,
+    quota_method: str = "hare",
+    divisor_method: str = "dhondt"
 ):
     """
     Procesa los datos de diputados para un año específico con soporte de coaliciones
@@ -181,6 +249,8 @@ async def procesar_diputados(
     - **mr_seats**: Escaños de mayoría relativa
     - **rp_seats**: Escaños de representación proporcional
     - **max_seats_per_party**: Máximo de escaños por partido
+    - **quota_method**: Método de cuota ("hare", "droop", "imperiali")
+    - **divisor_method**: Método divisor ("dhondt", "sainte_lague", "webster")
     """
     try:
         if anio not in [2018, 2021, 2024]:
@@ -195,8 +265,8 @@ async def procesar_diputados(
             rp_seats_final = 200
             umbral_final = 0.03
             max_seats_per_party_final = 300
-            quota_method = "hare"
-            divisor_method = "dhondt"
+            quota_method_final = quota_method
+            divisor_method_final = divisor_method
         elif plan == "plan_a":
             # Plan A: solo RP según test_flujo.py
             sistema_final = "rp"
@@ -205,8 +275,8 @@ async def procesar_diputados(
             rp_seats_final = 300
             umbral_final = 0.03
             max_seats_per_party_final = None
-            quota_method = "hare"
-            divisor_method = None
+            quota_method_final = quota_method
+            divisor_method_final = None
         elif plan == "plan_c":
             # Plan C: solo MR según test_flujo.py
             sistema_final = "mr"
@@ -215,8 +285,8 @@ async def procesar_diputados(
             rp_seats_final = 0
             umbral_final = 0.0
             max_seats_per_party_final = None
-            quota_method = "hare"
-            divisor_method = None
+            quota_method_final = quota_method
+            divisor_method_final = None
         elif plan == "personalizado":
             # Plan personalizado con parámetros del usuario
             if not sistema:
@@ -227,8 +297,8 @@ async def procesar_diputados(
             rp_seats_final = rp_seats or 200
             umbral_final = umbral if umbral is not None else 0.03
             max_seats_per_party_final = max_seats_per_party
-            quota_method = "hare"
-            divisor_method = "dhondt" if sistema_final == "mixto" else None
+            quota_method_final = quota_method
+            divisor_method_final = divisor_method if sistema_final == "mixto" else None
         else:
             raise HTTPException(status_code=400, detail="Plan no válido. Use 'vigente', 'plan_a', 'plan_c' o 'personalizado'")
             
@@ -252,38 +322,14 @@ async def procesar_diputados(
             rp_seats=rp_seats_final,
             umbral=umbral_final,
             max_seats_per_party=max_seats_per_party_final,
-            quota_method=quota_method,
-            divisor_method=divisor_method
+            quota_method=quota_method_final,
+            divisor_method=divisor_method_final
         )
         
-        # Transformar resultado al formato esperado por el frontend
-        resultados_lista = []
-        if 'tot' in resultado:
-            for partido, escanos in resultado['tot'].items():
-                resultados_lista.append({
-                    'partido': partido,
-                    'escanos_totales': escanos,
-                    'escanos_mr': resultado.get('mr', {}).get(partido, 0),
-                    'escanos_rp': resultado.get('rp', {}).get(partido, 0),
-                    'votos': resultado.get('votos', {}).get(partido, 0),
-                    'supera_umbral': resultado.get('ok', {}).get(partido, False)
-                })
+        # Transformar al formato esperado por el frontend con colores
+        resultado_formateado = transformar_resultado_a_formato_frontend(resultado, plan)
         
-        return {
-            "status": "success",
-            "anio": anio,
-            "plan": plan,
-            "sistema": sistema_final,
-            "max_seats": max_seats,
-            "mr_seats": mr_seats_final,
-            "rp_seats": rp_seats_final,
-            "umbral": umbral_final,
-            "max_seats_per_party": max_seats_per_party_final,
-            "quota_method": quota_method,
-            "divisor_method": divisor_method,
-            "partidos_procesados": len(resultados_lista),
-            "resultados": resultados_lista
-        }
+        return resultado_formateado
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error procesando diputados: {str(e)}")
@@ -336,87 +382,23 @@ async def obtener_coaliciones(anio: int):
         raise HTTPException(status_code=500, detail=f"Error obteniendo coaliciones: {str(e)}")
 
 @app.get("/kpis/{camara}/{anio}")
-async def obtener_kpis(camara: str, anio: int, plan: str = "A"):
+async def obtener_kpis(camara: str, anio: int, plan: str = "vigente"):
     """
     Obtiene los KPIs electorales para una cámara y año específicos
+    Usa los nuevos endpoints de procesamiento para obtener datos actualizados
     """
     try:
         if camara not in ["senado", "diputados"]:
             raise HTTPException(status_code=400, detail="Cámara debe ser 'senado' o 'diputados'")
         
-        # Procesar datos según la cámara
+        # Llamar al endpoint de procesamiento correspondiente
         if camara == "senado":
-            if anio not in [2018, 2024]:
-                raise HTTPException(status_code=400, detail="Año no soportado para senado. Use 2018 o 2024")
-            
-            # Configurar sistema según plan
-            if plan == "A":
-                sistema = "rp"
-                escanos_totales = 96
-            elif plan == "B":
-                sistema = "mixto"
-                escanos_totales = 128
-            elif plan == "C":
-                sistema = "mr"
-                escanos_totales = 64
-            else:
-                raise HTTPException(status_code=400, detail="Plan no válido. Use A, B o C")
-            
-            path_parquet = f"data/computos_senado_{anio}.parquet"
-            path_siglado = f"data/siglado-senado-{anio}.csv"
-            
-            if not os.path.exists(path_parquet):
-                raise HTTPException(status_code=404, detail=f"Archivo no encontrado: {path_parquet}")
-                
-            resultado = procesar_senadores_v2(
-                path_parquet=path_parquet,
-                anio=anio,
-                path_siglado=path_siglado,
-                max_seats=escanos_totales,
-                sistema=sistema
-            )
+            resultado = await procesar_senado(anio=anio, plan=plan)
+        else:
+            resultado = await procesar_diputados(anio=anio, plan=plan)
         
-        else:  # diputados
-            if anio not in [2018, 2021, 2024]:
-                raise HTTPException(status_code=400, detail="Año no soportado para diputados. Use 2018, 2021 o 2024")
-            
-            if plan == "A":
-                sistema = "rp"
-                max_seats = 300
-            elif plan == "B":
-                sistema = "mixto"
-                max_seats = 300
-            elif plan == "C":
-                sistema = "mr"
-                max_seats = 200
-            else:
-                raise HTTPException(status_code=400, detail="Plan no válido. Use A, B o C")
-            
-            path_parquet = f"data/computos_diputados_{anio}.parquet"
-            path_siglado = f"data/siglado-diputados-{anio}.csv"
-            
-            if not os.path.exists(path_parquet):
-                raise HTTPException(status_code=404, detail=f"Archivo no encontrado: {path_parquet}")
-                
-            resultado = procesar_diputados_v2(
-                path_parquet=path_parquet,
-                anio=anio,
-                path_siglado=path_siglado,
-                max_seats=max_seats,
-                sistema=sistema
-            )
-        
-        # Estructurar resultado para KPIs
-        resultado_formateado = {
-            "status": "success",
-            "anio": anio,
-            "plan": plan,
-            "sistema": sistema if camara == "senado" else sistema,
-            "resultados": resultado.get("resultados", [])
-        }
-        
-        # Calcular KPIs
-        kpis = calcular_kpis_electorales(resultado_formateado, anio, camara)
+        # Calcular KPIs usando los resultados actualizados
+        kpis = calcular_kpis_electorales(resultado, anio, camara)
         
         return kpis
         
@@ -424,86 +406,23 @@ async def obtener_kpis(camara: str, anio: int, plan: str = "A"):
         raise HTTPException(status_code=500, detail=f"Error obteniendo KPIs: {str(e)}")
 
 @app.get("/seat-chart/{camara}/{anio}")
-async def obtener_seat_chart(camara: str, anio: int, plan: str = "A"):
+async def obtener_seat_chart(camara: str, anio: int, plan: str = "vigente"):
     """
     Obtiene los datos formateados para el seat-chart
+    Usa los nuevos endpoints de procesamiento para obtener datos actualizados
     """
     try:
         if camara not in ["senado", "diputados"]:
             raise HTTPException(status_code=400, detail="Cámara debe ser 'senado' o 'diputados'")
         
-        # Procesar datos según la cámara (reutilizar lógica del endpoint de KPIs)
+        # Llamar al endpoint de procesamiento correspondiente
         if camara == "senado":
-            if anio not in [2018, 2024]:
-                raise HTTPException(status_code=400, detail="Año no soportado para senado. Use 2018 o 2024")
-            
-            if plan == "A":
-                sistema = "rp"
-                escanos_totales = 96
-            elif plan == "B":
-                sistema = "mixto"
-                escanos_totales = 128
-            elif plan == "C":
-                sistema = "mr"
-                escanos_totales = 64
-            else:
-                raise HTTPException(status_code=400, detail="Plan no válido. Use A, B o C")
-            
-            path_parquet = f"data/computos_senado_{anio}.parquet"
-            path_siglado = f"data/siglado-senado-{anio}.csv"
-            
-            if not os.path.exists(path_parquet):
-                raise HTTPException(status_code=404, detail=f"Archivo no encontrado: {path_parquet}")
-                
-            resultado = procesar_senadores_v2(
-                path_parquet=path_parquet,
-                anio=anio,
-                path_siglado=path_siglado,
-                max_seats=escanos_totales,
-                sistema=sistema
-            )
+            resultado = await procesar_senado(anio=anio, plan=plan)
+        else:
+            resultado = await procesar_diputados(anio=anio, plan=plan)
         
-        else:  # diputados
-            if anio not in [2018, 2021, 2024]:
-                raise HTTPException(status_code=400, detail="Año no soportado para diputados. Use 2018, 2021 o 2024")
-            
-            if plan == "A":
-                sistema = "rp"
-                max_seats = 300
-            elif plan == "B":
-                sistema = "mixto"
-                max_seats = 300
-            elif plan == "C":
-                sistema = "mr"
-                max_seats = 200
-            else:
-                raise HTTPException(status_code=400, detail="Plan no válido. Use A, B o C")
-            
-            path_parquet = f"data/computos_diputados_{anio}.parquet"
-            path_siglado = f"data/siglado-diputados-{anio}.csv"
-            
-            if not os.path.exists(path_parquet):
-                raise HTTPException(status_code=404, detail=f"Archivo no encontrado: {path_parquet}")
-                
-            resultado = procesar_diputados_v2(
-                path_parquet=path_parquet,
-                anio=anio,
-                path_siglado=path_siglado,
-                max_seats=max_seats,
-                sistema=sistema
-            )
-        
-        # Estructurar resultado para seat-chart
-        resultado_formateado = {
-            "status": "success",
-            "anio": anio,
-            "plan": plan,
-            "sistema": sistema,
-            "resultados": resultado.get("resultados", [])
-        }
-        
-        # Formatear para seat-chart
-        seat_chart_data = formato_seat_chart(resultado_formateado)
+        # Formatear para seat-chart usando los resultados actualizados
+        seat_chart_data = formato_seat_chart(resultado)
         
         return seat_chart_data
         
