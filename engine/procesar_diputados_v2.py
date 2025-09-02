@@ -641,6 +641,8 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
             
             # Calcular ganador por distrito
             mr_raw = {}
+            distritos_procesados = 0
+            
             for _, distrito in recomposed.iterrows():
                 entidad = distrito['ENTIDAD']
                 num_distrito = distrito['DISTRITO']
@@ -653,9 +655,11 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                         max_votos = distrito[col]
                         coalicion_ganadora = col
                 
+                distrito_procesado = False
+                
                 if coalicion_ganadora:
                     # Si ganó una coalición, buscar en siglado qué partido específico gana
-                    if coalicion_ganadora in ['POR_MEXICO_AL_FRENTE', 'JUNTOS_HAREMOS_HISTORIA']:
+                    if coalicion_ganadora in coaliciones_detectadas:
                         # Normalizar entidad para matching
                         entidad_normalizada = normalize_entidad_ascii(entidad)
                         
@@ -670,31 +674,63 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                             partido_ganador = distrito_siglado['grupo_parlamentario'].iloc[0]
                             if partido_ganador in partidos_base:
                                 mr_raw[partido_ganador] = mr_raw.get(partido_ganador, 0) + 1
-                                if print_debug and len(mr_raw) <= 5:  # Solo los primeros 5 para debug
-                                    print(f"[DEBUG] Distrito {entidad}-{num_distrito}: {coalicion_ganadora} -> {partido_ganador}")
+                                distrito_procesado = True
+                                if print_debug and len(mr_raw) <= 5:
+                                    print(f"[DEBUG] Distrito {entidad}-{num_distrito}: {coalicion_ganadora} -> {partido_ganador} (siglado)")
                         else:
+                            # FALLBACK: No está en siglado, usar votos directos de coalición
                             if print_debug:
-                                print(f"[WARN] No encontrado en siglado: {entidad_normalizada}-{num_distrito} (original: {entidad})")
+                                print(f"[FALLBACK] Distrito {entidad}-{num_distrito} no en siglado, usando votos directos")
                             
-                            # FALLBACK: Si no hay siglado, asignar por coalición completa
-                            # Esto no es ideal pero evita perder todos los distritos
                             partidos_coalicion = partidos_de_col(coalicion_ganadora)
                             if len(partidos_coalicion) == 1:
                                 # Si es partido individual, asignar directamente
                                 if partidos_coalicion[0] in partidos_base:
                                     mr_raw[partidos_coalicion[0]] = mr_raw.get(partidos_coalicion[0], 0) + 1
+                                    distrito_procesado = True
+                                    if print_debug:
+                                        print(f"[FALLBACK] Distrito {entidad}-{num_distrito}: {coalicion_ganadora} -> {partidos_coalicion[0]} (directo)")
                             else:
-                                # Si es coalición, asignar al primer partido como fallback
-                                # (esto es subóptimo pero mejor que perder el distrito)
-                                partido_fallback = partidos_coalicion[0]
-                                if partido_fallback in partidos_base:
+                                # Si es coalición, usar partido con más votos en el distrito
+                                votos_coalicion = {}
+                                for p in partidos_coalicion:
+                                    if p in distrito and p in partidos_base:
+                                        votos_coalicion[p] = distrito.get(p, 0)
+                                
+                                if votos_coalicion:
+                                    partido_fallback = max(votos_coalicion, key=votos_coalicion.get)
                                     mr_raw[partido_fallback] = mr_raw.get(partido_fallback, 0) + 1
-                                    if print_debug and len(mr_raw) <= 3:
-                                        print(f"[FALLBACK] Distrito {entidad}-{num_distrito}: {coalicion_ganadora} -> {partido_fallback} (sin siglado)")
+                                    distrito_procesado = True
+                                    if print_debug:
+                                        print(f"[FALLBACK] Distrito {entidad}-{num_distrito}: {coalicion_ganadora} -> {partido_fallback} (por votos coalición)")
                     else:
-                        # Partido individual ganó
+                        # Partido individual ganó directamente
                         if coalicion_ganadora in partidos_base:
                             mr_raw[coalicion_ganadora] = mr_raw.get(coalicion_ganadora, 0) + 1
+                            distrito_procesado = True
+                            if print_debug and len(mr_raw) <= 5:
+                                print(f"[DEBUG] Distrito {entidad}-{num_distrito}: {coalicion_ganadora} (individual)")
+                
+                # GARANTÍA: Si el distrito aún no se procesó, usar VOTOS DIRECTOS del parquet
+                if not distrito_procesado:
+                    # Calcular ganador entre partidos individuales del parquet
+                    votos_individuales = {}
+                    for p in partidos_base:
+                        if p in distrito:
+                            votos_individuales[p] = distrito.get(p, 0)
+                    
+                    if votos_individuales:
+                        ganador_individual = max(votos_individuales, key=votos_individuales.get)
+                        mr_raw[ganador_individual] = mr_raw.get(ganador_individual, 0) + 1
+                        distrito_procesado = True
+                        if print_debug:
+                            print(f"[GARANTÍA] Distrito {entidad}-{num_distrito}: {ganador_individual} (ganador directo por votos parquet)")
+                
+                if distrito_procesado:
+                    distritos_procesados += 1
+            
+            if print_debug:
+                print(f"[DEBUG] Total distritos procesados para MR: {distritos_procesados}/300")
             
             mr_aligned = {p: int(mr_raw.get(p, 0)) for p in partidos_base}
             indep_mr = 0
@@ -744,9 +780,9 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                 print(f"[DEBUG] Plan A detectado: forzando MR=0 para todos los partidos")
         else:  # sistema_tipo == 'mixto'
             if mr_seats is not None and rp_seats is not None:
-                # Plan C: parámetros explícitos
+                # Plan C o similar: parámetros explícitos para MR y RP
                 if print_debug:
-                    print(f"[DEBUG] Plan C detectado: MR={mr_seats}, RP={rp_seats}")
+                    print(f"[DEBUG] Plan con parámetros explícitos: MR={mr_seats}, RP={rp_seats}")
                 # Ajustar MR calculado para que sume exactamente mr_seats
                 total_mr_actual = sum(mr_aligned.values())
                 if total_mr_actual != mr_seats:
@@ -785,10 +821,17 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                 m = max_seats
                 S = max_seats
                 mr_aligned = {p: 0 for p in partidos_base}
-            else:
-                # Sistema vigente (usar MR calculado)
+            elif rp_seats is not None:
+                # Plan vigente: MR libre + RP fijo (caso especial)
                 if print_debug:
-                    print(f"[DEBUG] Sistema vigente detectado")
+                    print(f"[DEBUG] Plan vigente detectado: MR libre + RP fijo = {rp_seats}")
+                total_mr = sum(mr_aligned.values())
+                m = rp_seats  # Usar RP fijo, no calculado
+                S = max_seats
+            else:
+                # Sistema vigente tradicional (usar MR calculado)
+                if print_debug:
+                    print(f"[DEBUG] Sistema vigente tradicional")
                 total_mr = sum(mr_aligned.values())
                 m = max_seats - total_mr
                 S = max_seats

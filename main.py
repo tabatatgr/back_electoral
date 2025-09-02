@@ -277,10 +277,10 @@ async def procesar_diputados(
         
         # Configurar parámetros específicos según el plan (solo los básicos)
         if plan_normalizado == "vigente":
-            # VIGENTE: 500 total (300 MR + 200 RP), umbral 3%, tope 300
+            # VIGENTE: 500 total, 200 RP fijos, umbral 3%, tope 300
             max_seats = 500
-            mr_seats_final = 300
-            rp_seats_final = 200
+            mr_seats_final = None  # NO forzar MR, usar cálculo real del siglado
+            rp_seats_final = 200   # SÍ forzar 200 RP como en la realidad
             umbral_final = 0.03
             max_seats_per_party_final = 300
             quota_method_final = "hare"
