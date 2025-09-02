@@ -166,35 +166,36 @@ async def procesar_senado(
         if anio not in [2018, 2024]:
             raise HTTPException(status_code=400, detail="Año no soportado. Use 2018 o 2024")
         
-        # Configurar parámetros según el flujo de test_flujo.py
+        # Configurar parámetros según el flujo correcto para Senado
         if plan_normalizado == "vigente":
-            # Sistema vigente según test_flujo.py
+            # Sistema vigente: 64 MR + 32 PM + 32 RP = 128 total
+            # mr_seats incluye MR+PM = 96, rp_seats = 32
             sistema_final = "mixto"
-            mr_seats_final = 96
-            rp_seats_final = 32
+            mr_seats_final = 96  # 64 MR + 32 PM (primera minoría)
+            rp_seats_final = 32  # 32 RP
             umbral_final = 0.03
-            max_seats = mr_seats_final + rp_seats_final
+            max_seats = 128
         elif plan_normalizado == "plan_a":
-            # Plan A: solo RP según test_flujo.py
+            # Plan A: solo RP = 128 total
             sistema_final = "rp"
             mr_seats_final = 0
-            rp_seats_final = 96
+            rp_seats_final = 128
             umbral_final = 0.03
-            max_seats = rp_seats_final
+            max_seats = 128
         elif plan_normalizado == "plan_c":
-            # Plan C: solo MR según test_flujo.py
+            # Plan C: solo MR+PM = 128 total (64 MR + 64 PM, sin RP)
             sistema_final = "mr"
-            mr_seats_final = 64
+            mr_seats_final = 128  # Todos los 128 escaños como MR+PM
             rp_seats_final = 0
             umbral_final = 0.0
-            max_seats = mr_seats_final
+            max_seats = 128
         elif plan_normalizado == "personalizado":
             # Plan personalizado con parámetros del usuario
             if not sistema:
                 raise HTTPException(status_code=400, detail="Sistema requerido para plan personalizado")
             sistema_final = sistema
-            mr_seats_final = mr_seats or 96
-            rp_seats_final = rp_seats or 32
+            mr_seats_final = mr_seats if mr_seats is not None else 96
+            rp_seats_final = rp_seats if rp_seats is not None else 32
             umbral_final = umbral if umbral is not None else 0.03
             max_seats = mr_seats_final + rp_seats_final
         else:
@@ -314,9 +315,34 @@ async def procesar_diputados(
             if not sistema:
                 raise HTTPException(status_code=400, detail="Sistema requerido para plan personalizado")
             sistema_final = sistema
-            max_seats = escanos_totales or 500
-            mr_seats_final = mr_seats or 300
-            rp_seats_final = rp_seats or 200
+            
+            # Lógica inteligente para parámetros personalizados
+            if escanos_totales is not None:
+                # Si el usuario especifica total, usar ese valor
+                max_seats = escanos_totales
+                # Si no especifica MR/RP, distribuir proporcionalmente a los defaults
+                if mr_seats is None and rp_seats is None:
+                    if sistema_final == "mr":
+                        mr_seats_final = max_seats
+                        rp_seats_final = 0
+                    elif sistema_final == "rp":
+                        mr_seats_final = 0
+                        rp_seats_final = max_seats
+                    else:  # mixto
+                        # Mantener proporción 300:200 del default
+                        proportion_mr = 300 / 500
+                        mr_seats_final = int(max_seats * proportion_mr)
+                        rp_seats_final = max_seats - mr_seats_final
+                else:
+                    # Usuario especificó MR/RP, usar esos valores
+                    mr_seats_final = mr_seats if mr_seats is not None else 0
+                    rp_seats_final = rp_seats if rp_seats is not None else 0
+            else:
+                # Usuario no especificó total, usar MR+RP o defaults
+                mr_seats_final = mr_seats if mr_seats is not None else 300
+                rp_seats_final = rp_seats if rp_seats is not None else 200
+                max_seats = mr_seats_final + rp_seats_final
+            
             umbral_final = umbral if umbral is not None else 0.03
             max_seats_per_party_final = max_seats_per_party
             quota_method_final = quota_method
