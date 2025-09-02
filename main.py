@@ -5,6 +5,7 @@ import pandas as pd
 import sys
 import os
 from typing import Dict, Any, Optional
+from datetime import datetime
 
 # Agregar el directorio actual al path para importaciones
 sys.path.append('.')
@@ -100,7 +101,9 @@ def transformar_resultado_a_formato_frontend(resultado_dict: Dict, plan: str) ->
             "plan": plan,
             "resultados": resultados,
             "kpis": kpis,
-            "seat_chart": seat_chart
+            "seat_chart": seat_chart,
+            "timestamp": datetime.now().isoformat(),
+            "cache_buster": datetime.now().timestamp()
         }
         
     except Exception as e:
@@ -224,7 +227,15 @@ async def procesar_senado(
         # Transformar al formato esperado por el frontend con colores
         resultado_formateado = transformar_resultado_a_formato_frontend(resultado, plan)
         
-        return resultado_formateado
+        # Retornar con headers anti-caché para evitar problemas de actualización
+        return JSONResponse(
+            content=resultado_formateado,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error procesando senado: {str(e)}")
@@ -337,7 +348,15 @@ async def procesar_diputados(
         # Transformar al formato esperado por el frontend con colores
         resultado_formateado = transformar_resultado_a_formato_frontend(resultado, plan)
         
-        return resultado_formateado
+        # Retornar con headers anti-caché para evitar problemas de actualización
+        return JSONResponse(
+            content=resultado_formateado,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error procesando diputados: {str(e)}")
@@ -408,7 +427,15 @@ async def obtener_kpis(camara: str, anio: int, plan: str = "vigente"):
         # Calcular KPIs usando los resultados actualizados
         kpis = calcular_kpis_electorales(resultado, anio, camara)
         
-        return kpis
+        # Retornar con headers anti-caché
+        return JSONResponse(
+            content=kpis,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error obteniendo KPIs: {str(e)}")
@@ -432,7 +459,15 @@ async def obtener_seat_chart(camara: str, anio: int, plan: str = "vigente"):
         # Formatear para seat-chart usando los resultados actualizados
         seat_chart_data = formato_seat_chart(resultado)
         
-        return seat_chart_data
+        # Retornar con headers anti-caché
+        return JSONResponse(
+            content=seat_chart_data,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error obteniendo seat-chart: {str(e)}")
