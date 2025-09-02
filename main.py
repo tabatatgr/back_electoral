@@ -156,32 +156,35 @@ async def procesar_senado(
     - **rp_seats**: Escaños de representación proporcional para plan personalizado
     """
     try:
+        # Normalizar el nombre del plan para compatibilidad con frontend
+        plan_normalizado = normalizar_plan(plan)
+        
         if anio not in [2018, 2024]:
             raise HTTPException(status_code=400, detail="Año no soportado. Use 2018 o 2024")
         
         # Configurar parámetros según el flujo de test_flujo.py
-        if plan == "vigente":
+        if plan_normalizado == "vigente":
             # Sistema vigente según test_flujo.py
             sistema_final = "mixto"
             mr_seats_final = 96
             rp_seats_final = 32
             umbral_final = 0.03
             max_seats = mr_seats_final + rp_seats_final
-        elif plan == "plan_a":
+        elif plan_normalizado == "plan_a":
             # Plan A: solo RP según test_flujo.py
             sistema_final = "rp"
             mr_seats_final = 0
             rp_seats_final = 96
             umbral_final = 0.03
             max_seats = rp_seats_final
-        elif plan == "plan_c":
+        elif plan_normalizado == "plan_c":
             # Plan C: solo MR según test_flujo.py
             sistema_final = "mr"
             mr_seats_final = 64
             rp_seats_final = 0
             umbral_final = 0.0
             max_seats = mr_seats_final
-        elif plan == "personalizado":
+        elif plan_normalizado == "personalizado":
             # Plan personalizado con parámetros del usuario
             if not sistema:
                 raise HTTPException(status_code=400, detail="Sistema requerido para plan personalizado")
@@ -253,11 +256,14 @@ async def procesar_diputados(
     - **divisor_method**: Método divisor ("dhondt", "sainte_lague", "webster")
     """
     try:
+        # Normalizar el nombre del plan para compatibilidad con frontend
+        plan_normalizado = normalizar_plan(plan)
+        
         if anio not in [2018, 2021, 2024]:
             raise HTTPException(status_code=400, detail="Año no soportado. Use 2018, 2021 o 2024")
         
         # Configurar parámetros según el flujo de test_flujo.py
-        if plan == "vigente":
+        if plan_normalizado == "vigente":
             # Sistema vigente según test_flujo.py
             sistema_final = "mixto"
             max_seats = 500
@@ -267,7 +273,7 @@ async def procesar_diputados(
             max_seats_per_party_final = 300
             quota_method_final = quota_method
             divisor_method_final = divisor_method
-        elif plan == "plan_a":
+        elif plan_normalizado == "plan_a":
             # Plan A: solo RP según test_flujo.py
             sistema_final = "rp"
             max_seats = 300
@@ -277,7 +283,7 @@ async def procesar_diputados(
             max_seats_per_party_final = None
             quota_method_final = quota_method
             divisor_method_final = None
-        elif plan == "plan_c":
+        elif plan_normalizado == "plan_c":
             # Plan C: solo MR según test_flujo.py
             sistema_final = "mr"
             max_seats = 300
@@ -287,7 +293,7 @@ async def procesar_diputados(
             max_seats_per_party_final = None
             quota_method_final = quota_method
             divisor_method_final = None
-        elif plan == "personalizado":
+        elif plan_normalizado == "personalizado":
             # Plan personalizado con parámetros del usuario
             if not sistema:
                 raise HTTPException(status_code=400, detail="Sistema requerido para plan personalizado")
@@ -428,6 +434,28 @@ async def obtener_seat_chart(camara: str, anio: int, plan: str = "vigente"):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error obteniendo seat-chart: {str(e)}")
+
+def normalizar_plan(plan: str) -> str:
+    """
+    Normaliza los nombres de planes para compatibilidad con frontend
+    Frontend puede enviar: A, B, C, vigente, plan_a, plan_c, personalizado
+    """
+    plan_lower = plan.lower().strip()
+    
+    # Mapeo de frontend a backend
+    mapeo_planes = {
+        'a': 'plan_a',
+        'b': 'vigente',  # Plan B es el vigente
+        'c': 'plan_c',
+        'vigente': 'vigente',
+        'plan_a': 'plan_a',
+        'plan_c': 'plan_c', 
+        'personalizado': 'personalizado'
+    }
+    
+    resultado = mapeo_planes.get(plan_lower, plan_lower)
+    print(f"[DEBUG] Normalizando plan: '{plan}' -> '{resultado}'")
+    return resultado
 
 if __name__ == "__main__":
     import uvicorn
