@@ -158,6 +158,7 @@ async def procesar_senado(
     try:
         # Normalizar el nombre del plan para compatibilidad con frontend
         plan_normalizado = normalizar_plan(plan)
+        print(f"[DEBUG] Senado - Plan original: '{plan}' -> Plan normalizado: '{plan_normalizado}'")
         
         if anio not in [2018, 2024]:
             raise HTTPException(status_code=400, detail="Año no soportado. Use 2018 o 2024")
@@ -258,6 +259,7 @@ async def procesar_diputados(
     try:
         # Normalizar el nombre del plan para compatibilidad con frontend
         plan_normalizado = normalizar_plan(plan)
+        print(f"[DEBUG] Diputados - Plan original: '{plan}' -> Plan normalizado: '{plan_normalizado}'")
         
         if anio not in [2018, 2021, 2024]:
             raise HTTPException(status_code=400, detail="Año no soportado. Use 2018, 2021 o 2024")
