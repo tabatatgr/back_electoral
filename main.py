@@ -275,10 +275,9 @@ async def procesar_diputados(
         if anio not in [2018, 2021, 2024]:
             raise HTTPException(status_code=400, detail="Año no soportado. Use 2018, 2021 o 2024")
         
-        # Configurar parámetros según especificación correcta
+        # Configurar parámetros específicos según el plan (solo los básicos)
         if plan_normalizado == "vigente":
-            # VIGENTE: Sistema mixto con sobrerrepresentación
-            sistema_final = "mixto"
+            # VIGENTE: 500 total (300 MR + 200 RP), umbral 3%, tope 300
             max_seats = 500
             mr_seats_final = 300
             rp_seats_final = 200
@@ -286,15 +285,10 @@ async def procesar_diputados(
             max_seats_per_party_final = 300
             quota_method_final = "hare"
             divisor_method_final = None
-            # Parámetros específicos del VIGENTE
-            territorial_scope = "circunscripcion"
-            magnitudes = [40, 40, 40, 40, 40]
-            apply_overrep_cap = True
-            usar_siglado_mr = True
-            coalicion_rp = "pre"
+            sistema_final = "mixto"
+            
         elif plan_normalizado == "plan_a":
-            # PLAN A: Solo RP, territorial nacional
-            sistema_final = "rp"
+            # PLAN A: 300 total (0 MR + 300 RP), umbral 3%, sin tope
             max_seats = 300
             mr_seats_final = 0
             rp_seats_final = 300
@@ -302,15 +296,10 @@ async def procesar_diputados(
             max_seats_per_party_final = None
             quota_method_final = "hare"
             divisor_method_final = None
-            # Parámetros específicos del PLAN A
-            territorial_scope = "nacional"
-            magnitudes = [300]
-            apply_overrep_cap = False
-            usar_siglado_mr = False
-            coalicion_rp = None
+            sistema_final = "rp"  # Solo RP
+            
         elif plan_normalizado == "plan_c":
-            # PLAN C: Solo MR, territorial distrito
-            sistema_final = "mr"
+            # PLAN C: 300 total (300 MR + 0 RP), sin umbral, sin tope
             max_seats = 300
             mr_seats_final = 300
             rp_seats_final = 0
@@ -318,12 +307,8 @@ async def procesar_diputados(
             max_seats_per_party_final = None
             quota_method_final = None
             divisor_method_final = None
-            # Parámetros específicos del PLAN C
-            territorial_scope = "distrito"
-            magnitudes = None
-            apply_overrep_cap = False
-            usar_siglado_mr = True
-            repartir_intrabloque = False
+            sistema_final = "mr"  # Solo MR
+            
         elif plan_normalizado == "personalizado":
             # Plan personalizado con parámetros del usuario
             if not sistema:
@@ -335,15 +320,11 @@ async def procesar_diputados(
             umbral_final = umbral if umbral is not None else 0.03
             max_seats_per_party_final = max_seats_per_party
             quota_method_final = quota_method
-            divisor_method_final = divisor_method if sistema_final == "mixto" else None
-            # Parámetros por defecto para personalizado
-            territorial_scope = "circunscripcion"  # Por defecto
-            magnitudes = [40, 40, 40, 40, 40]     # Por defecto
-            apply_overrep_cap = True
-            usar_siglado_mr = True
-            coalicion_rp = "pre"
+            divisor_method_final = divisor_method
         else:
             raise HTTPException(status_code=400, detail="Plan no válido. Use 'vigente', 'plan_a', 'plan_c' o 'personalizado'")
+        
+        print(f"[DEBUG] Plan {plan_normalizado}: max_seats={max_seats}, mr={mr_seats_final}, rp={rp_seats_final}, umbral={umbral_final}")
             
         # Construir paths
         path_parquet = f"data/computos_diputados_{anio}.parquet"
@@ -366,7 +347,8 @@ async def procesar_diputados(
             umbral=umbral_final,
             max_seats_per_party=max_seats_per_party_final,
             quota_method=quota_method_final,
-            divisor_method=divisor_method_final
+            divisor_method=divisor_method_final,
+            print_debug=True
         )
         
         # Transformar al formato esperado por el frontend con colores
@@ -538,4 +520,4 @@ def normalizar_plan(plan: str) -> str:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
