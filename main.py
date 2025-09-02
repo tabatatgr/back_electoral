@@ -275,37 +275,55 @@ async def procesar_diputados(
         if anio not in [2018, 2021, 2024]:
             raise HTTPException(status_code=400, detail="Año no soportado. Use 2018, 2021 o 2024")
         
-        # Configurar parámetros según el flujo de test_flujo.py
+        # Configurar parámetros según especificación correcta
         if plan_normalizado == "vigente":
-            # Sistema vigente según test_flujo.py
+            # VIGENTE: Sistema mixto con sobrerrepresentación
             sistema_final = "mixto"
             max_seats = 500
             mr_seats_final = 300
             rp_seats_final = 200
             umbral_final = 0.03
             max_seats_per_party_final = 300
-            quota_method_final = quota_method
-            divisor_method_final = divisor_method
+            quota_method_final = "hare"
+            divisor_method_final = None
+            # Parámetros específicos del VIGENTE
+            territorial_scope = "circunscripcion"
+            magnitudes = [40, 40, 40, 40, 40]
+            apply_overrep_cap = True
+            usar_siglado_mr = True
+            coalicion_rp = "pre"
         elif plan_normalizado == "plan_a":
-            # Plan A: solo RP según test_flujo.py
+            # PLAN A: Solo RP, territorial nacional
             sistema_final = "rp"
             max_seats = 300
             mr_seats_final = 0
             rp_seats_final = 300
             umbral_final = 0.03
             max_seats_per_party_final = None
-            quota_method_final = quota_method
+            quota_method_final = "hare"
             divisor_method_final = None
+            # Parámetros específicos del PLAN A
+            territorial_scope = "nacional"
+            magnitudes = [300]
+            apply_overrep_cap = False
+            usar_siglado_mr = False
+            coalicion_rp = None
         elif plan_normalizado == "plan_c":
-            # Plan C: solo MR según test_flujo.py
+            # PLAN C: Solo MR, territorial distrito
             sistema_final = "mr"
             max_seats = 300
             mr_seats_final = 300
             rp_seats_final = 0
             umbral_final = 0.0
             max_seats_per_party_final = None
-            quota_method_final = quota_method
+            quota_method_final = None
             divisor_method_final = None
+            # Parámetros específicos del PLAN C
+            territorial_scope = "distrito"
+            magnitudes = None
+            apply_overrep_cap = False
+            usar_siglado_mr = True
+            repartir_intrabloque = False
         elif plan_normalizado == "personalizado":
             # Plan personalizado con parámetros del usuario
             if not sistema:
@@ -318,6 +336,12 @@ async def procesar_diputados(
             max_seats_per_party_final = max_seats_per_party
             quota_method_final = quota_method
             divisor_method_final = divisor_method if sistema_final == "mixto" else None
+            # Parámetros por defecto para personalizado
+            territorial_scope = "circunscripcion"  # Por defecto
+            magnitudes = [40, 40, 40, 40, 40]     # Por defecto
+            apply_overrep_cap = True
+            usar_siglado_mr = True
+            coalicion_rp = "pre"
         else:
             raise HTTPException(status_code=400, detail="Plan no válido. Use 'vigente', 'plan_a', 'plan_c' o 'personalizado'")
             
