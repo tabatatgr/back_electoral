@@ -420,9 +420,18 @@ async def obtener_kpis(camara: str, anio: int, plan: str = "vigente"):
         
         # Llamar al endpoint de procesamiento correspondiente
         if camara == "senado":
-            resultado = await procesar_senado(anio=anio, plan=plan)
+            response = await procesar_senado(anio=anio, plan=plan)
         else:
-            resultado = await procesar_diputados(anio=anio, plan=plan)
+            response = await procesar_diputados(anio=anio, plan=plan)
+        
+        # Extraer el contenido del JSONResponse
+        if hasattr(response, 'body'):
+            # Es un JSONResponse, extraer el contenido
+            import json
+            resultado = json.loads(response.body.decode())
+        else:
+            # Es un diccionario directo
+            resultado = response
         
         # Calcular KPIs usando los resultados actualizados
         kpis = calcular_kpis_electorales(resultado, anio, camara)
@@ -452,9 +461,18 @@ async def obtener_seat_chart(camara: str, anio: int, plan: str = "vigente"):
         
         # Llamar al endpoint de procesamiento correspondiente
         if camara == "senado":
-            resultado = await procesar_senado(anio=anio, plan=plan)
+            response = await procesar_senado(anio=anio, plan=plan)
         else:
-            resultado = await procesar_diputados(anio=anio, plan=plan)
+            response = await procesar_diputados(anio=anio, plan=plan)
+        
+        # Extraer el contenido del JSONResponse
+        if hasattr(response, 'body'):
+            # Es un JSONResponse, extraer el contenido
+            import json
+            resultado = json.loads(response.body.decode())
+        else:
+            # Es un diccionario directo
+            resultado = response
         
         # Formatear para seat-chart usando los resultados actualizados
         seat_chart_data = formato_seat_chart(resultado)
