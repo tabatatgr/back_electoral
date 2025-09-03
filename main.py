@@ -282,6 +282,7 @@ async def procesar_senado(
             rp_seats_final = 32  # 32 RP
             umbral_final = 0.03
             max_seats = 128
+            pm_escanos = 32  # PM para sistema vigente
         elif plan_normalizado == "plan_a":
             # Plan A: solo RP = 96 total
             sistema_final = "rp"
@@ -289,6 +290,7 @@ async def procesar_senado(
             rp_seats_final = 96
             umbral_final = 0.03
             max_seats = 96
+            pm_escanos = 0  # Sin PM en plan A
         elif plan_normalizado == "plan_c":
             # Plan C: solo MR+PM = 64 total (32 MR + 32 PM, sin RP)
             sistema_final = "mr"
@@ -296,6 +298,7 @@ async def procesar_senado(
             rp_seats_final = 0
             umbral_final = 0.0
             max_seats = 64
+            pm_escanos = 32  # PM para plan C
         elif plan_normalizado == "personalizado":
             # Plan personalizado con parámetros del usuario
             if not sistema:
