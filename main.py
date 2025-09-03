@@ -41,6 +41,52 @@ def safe_gallagher(v, s):
     if not v or not s or len(v) != len(s): return 0
     return (0.5 * sum((100*(a/(sum(v) or 1)) - 100*(b/(sum(s) or 1)))**2 for a,b in zip(v,s)))**0.5
 
+def calcular_ratios_proporcionalidad(resultados_list, total_votos, total_escanos):
+    """
+    Calcula métricas de proporcionalidad basadas en ratios escaños/votos
+    
+    Devuelve métricas más interpretables que el MAE tradicional:
+    - ratio_promedio: Promedio ponderado de ratios escaños/votos
+    - desviacion_estandar: Dispersión de los ratios
+    - coeficiente_variacion: Medida normalizada de desigualdad
+    """
+    import numpy as np
+    
+    if not resultados_list or total_votos == 0 or total_escanos == 0:
+        return {"ratio_promedio": 1.0, "desviacion_estandar": 0, "coeficiente_variacion": 0}
+    
+    ratios = []
+    pesos_votos = []
+    
+    for r in resultados_list:
+        if r["porcentaje_votos"] > 0:
+            # Ratio = % escaños / % votos (perfecto = 1.0)
+            ratio = r["porcentaje_escanos"] / r["porcentaje_votos"]
+            ratios.append(ratio)
+            pesos_votos.append(r["porcentaje_votos"])
+    
+    if not ratios:
+        return {"ratio_promedio": 1.0, "desviacion_estandar": 0, "coeficiente_variacion": 0}
+    
+    # Promedio ponderado por votos
+    ratios = np.array(ratios)
+    pesos = np.array(pesos_votos)
+    
+    ratio_promedio = np.average(ratios, weights=pesos)
+    
+    # Desviación estándar ponderada
+    varianza_ponderada = np.average((ratios - ratio_promedio)**2, weights=pesos)
+    desviacion_estandar = np.sqrt(varianza_ponderada)
+    
+    # Coeficiente de variación (dispersión relativa)
+    coeficiente_variacion = desviacion_estandar / ratio_promedio if ratio_promedio != 0 else 0
+    
+    return {
+        "ratio_promedio": round(ratio_promedio, 4),
+        "desviacion_estandar": round(desviacion_estandar, 4), 
+        "coeficiente_variacion": round(coeficiente_variacion, 4)
+    }
+
 def transformar_resultado_a_formato_frontend(resultado_dict: Dict, plan: str) -> Dict:
     """
     Transforma el resultado de las funciones de procesamiento al formato esperado por el frontend
@@ -97,13 +143,26 @@ def transformar_resultado_a_formato_frontend(resultado_dict: Dict, plan: str) ->
         votos_list = [r["votos"] for r in resultados]
         escanos_list = [r["total"] for r in resultados]
         
+        print(f"[DEBUG] Calculando KPIs con:")
+        print(f"[DEBUG] Total votos: {total_votos}")
+        print(f"[DEBUG] Total escaños: {total_escanos}")
+        print(f"[DEBUG] Votos por partido: {votos_list}")
+        print(f"[DEBUG] Escaños por partido: {escanos_list}")
+        
+        # Calcular métricas de proporcionalidad mejoradas
+        metricas_proporcionalidad = calcular_ratios_proporcionalidad(resultados, total_votos, total_escanos)
+        
         kpis = {
             "total_votos": total_votos,
             "total_escanos": total_escanos,
             "gallagher": safe_gallagher(votos_list, escanos_list),
-            "mae_votos_vs_escanos": safe_mae(votos_list, escanos_list),
+            "mae_votos_vs_escanos": metricas_proporcionalidad["coeficiente_variacion"],  # Usar coef. variación como "MAE mejorado"
+            "ratio_promedio": metricas_proporcionalidad["ratio_promedio"],
+            "desviacion_proporcionalidad": metricas_proporcionalidad["desviacion_estandar"],
             "partidos_con_escanos": len([r for r in resultados if r["total"] > 0])
         }
+        
+        print(f"[DEBUG] KPIs calculados: {kpis}")
         
         return {
             "plan": plan,
@@ -184,19 +243,19 @@ async def procesar_senado(
             umbral_final = 0.03
             max_seats = 128
         elif plan_normalizado == "plan_a":
-            # Plan A: solo RP = 128 total
+            # Plan A: solo RP = 96 total
             sistema_final = "rp"
             mr_seats_final = 0
-            rp_seats_final = 128
+            rp_seats_final = 96
             umbral_final = 0.03
-            max_seats = 128
+            max_seats = 96
         elif plan_normalizado == "plan_c":
-            # Plan C: solo MR+PM = 128 total (64 MR + 64 PM, sin RP)
+            # Plan C: solo MR+PM = 64 total (32 MR + 32 PM, sin RP)
             sistema_final = "mr"
-            mr_seats_final = 128  # Todos los 128 escaños como MR+PM
+            mr_seats_final = 64  # 64 escaños como MR+PM
             rp_seats_final = 0
             umbral_final = 0.0
-            max_seats = 128
+            max_seats = 64
         elif plan_normalizado == "personalizado":
             # Plan personalizado con parámetros del usuario
             if not sistema:
