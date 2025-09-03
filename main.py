@@ -251,7 +251,8 @@ async def procesar_senado(
     umbral: Optional[float] = None,
     mr_seats: Optional[int] = None,
     pm_seats: Optional[int] = None,
-    rp_seats: Optional[int] = None
+    rp_seats: Optional[int] = None,
+    usar_coaliciones: bool = True
 ):
     """
     Procesa los datos del senado para un año específico con soporte de coaliciones
@@ -354,7 +355,8 @@ async def procesar_senado(
             mr_seats=mr_seats_final,
             rp_seats=rp_seats_final,
             umbral=umbral_final,
-            pm_seats=pm_escanos  # ⬅️ AGREGAR PARÁMETRO PM
+            pm_seats=pm_escanos,  # ⬅️ AGREGAR PARÁMETRO PM
+            usar_coaliciones=usar_coaliciones  # ⬅️ NUEVO: toggle coaliciones
         )
         
         # Transformar al formato esperado por el frontend con colores

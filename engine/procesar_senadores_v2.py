@@ -451,7 +451,7 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
                           partidos_base: Optional[List[str]] = None, 
                           max_seats: int = 128, umbral: float = 0.03,
                           sistema: str = "mixto", mr_seats: int = None, rp_seats: int = None,
-                          pm_seats: int = 0) -> Dict:
+                          pm_seats: int = 0, usar_coaliciones: bool = True) -> Dict:
     """
     Procesador principal de senadores V2 - traducción directa del R
     
@@ -529,7 +529,7 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
         
         # 1.5) NUEVO: Agregar coaliciones automáticamente basadas en el siglado
         coaliciones_agregadas = False
-        if path_siglado:
+        if path_siglado and usar_coaliciones:
             print(f"[DEBUG] Extrayendo coaliciones del siglado: {path_siglado}")
             coaliciones = extraer_coaliciones_de_siglado(path_siglado)
             if coaliciones:
@@ -539,6 +539,9 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
                 print(f"[DEBUG] Dataset con coaliciones shape: {df_boletas.shape}")
             else:
                 print(f"[DEBUG] No se detectaron coaliciones en el siglado")
+        elif path_siglado and not usar_coaliciones:
+            print(f"[DEBUG] Coaliciones detectadas en siglado pero DESACTIVADAS por parámetro")
+            print(f"[DEBUG] Calculando por partido individual (sin coaliciones)")
         
         # 2) Recomposición usando el sistema existente (solo si no agregamos coaliciones)
         if coaliciones_agregadas:
