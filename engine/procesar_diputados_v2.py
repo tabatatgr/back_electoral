@@ -534,6 +534,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                           umbral: Optional[float] = None,
                           max_seats_per_party: Optional[int] = None,
                           sobrerrepresentacion: Optional[float] = None,
+                          usar_coaliciones: bool = True,
                           seed: Optional[int] = None,
                           print_debug: bool = False) -> Dict:
     """
@@ -632,7 +633,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
             print(f"[DEBUG] Independientes: {indep}")
         
         # Calcular MR por distrito considerando coaliciones
-        if coaliciones_detectadas:
+        if coaliciones_detectadas and usar_coaliciones:
             if print_debug:
                 print("[DEBUG] Calculando MR con coaliciones y siglado")
             
@@ -753,7 +754,12 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
             mr_aligned = {p: int(mr_raw.get(p, 0)) for p in partidos_base}
             indep_mr = 0
         else:
-            # Usar método tradicional sin coaliciones
+            # Usar método tradicional sin coaliciones (partido individual con más votos gana)
+            if print_debug:
+                if coaliciones_detectadas and not usar_coaliciones:
+                    print("[DEBUG] Coaliciones detectadas pero DESACTIVADAS por parámetro")
+                print("[DEBUG] Calculando MR por partido individual (sin coaliciones)")
+            
             from .core import mr_by_siglado
             try:
                 mr, indep_mr = mr_by_siglado(

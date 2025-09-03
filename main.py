@@ -402,7 +402,8 @@ async def procesar_diputados(
     max_seats_per_party: Optional[int] = None,
     sobrerrepresentacion: Optional[float] = None,
     quota_method: str = "hare",
-    divisor_method: str = "dhondt"
+    divisor_method: str = "dhondt",
+    usar_coaliciones: bool = True
 ):
     """
     Procesa los datos de diputados para un año específico con soporte de coaliciones
@@ -556,6 +557,7 @@ async def procesar_diputados(
             sobrerrepresentacion=sobrerrepresentacion,
             quota_method=quota_method_final,
             divisor_method=divisor_method_final,
+            usar_coaliciones=usar_coaliciones,
             print_debug=True
         )
         
