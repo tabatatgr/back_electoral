@@ -46,7 +46,11 @@ def transformar_resultado_a_formato_frontend(resultado_dict: Dict, plan: str) ->
     Transforma el resultado de las funciones de procesamiento al formato esperado por el frontend
     """
     try:
+        print(f"[DEBUG] Transformando resultado para plan: {plan}")
+        print(f"[DEBUG] Keys en resultado_dict: {list(resultado_dict.keys()) if resultado_dict else 'None'}")
+        
         if not resultado_dict or 'tot' not in resultado_dict:
+            print(f"[DEBUG] Resultado vacío o sin 'tot', devolviendo vacío")
             return {"plan": plan, "resultados": [], "kpis": {}, "seat_chart": []}
         
         # Obtener datos base
@@ -60,30 +64,34 @@ def transformar_resultado_a_formato_frontend(resultado_dict: Dict, plan: str) ->
         total_escanos = sum(escanos_dict.values()) if escanos_dict else 1
         
         for partido in escanos_dict.keys():
-            if escanos_dict.get(partido, 0) > 0:  # Solo partidos con escaños
-                votos = votos_dict.get(partido, 0)
-                escanos = escanos_dict.get(partido, 0)
-                
-                resultado_partido = {
-                    "partido": partido,
-                    "votos": votos,
-                    "mr": resultado_dict.get('mr', {}).get(partido, 0),
-                    "rp": resultado_dict.get('rp', {}).get(partido, 0), 
-                    "total": escanos,
-                    "porcentaje_votos": round((votos / total_votos) * 100, 2) if total_votos > 0 else 0,
-                    "porcentaje_escanos": round((escanos / total_escanos) * 100, 2) if total_escanos > 0 else 0
-                }
-                resultados.append(resultado_partido)
-                
-                # Agregar al seat_chart
-                seat_chart_item = {
-                    "party": partido,
-                    "seats": escanos,
-                    "color": PARTY_COLORS.get(partido, "#888888"),
-                    "percent": round((escanos / total_escanos) * 100, 2) if total_escanos > 0 else 0,
-                    "votes": votos
-                }
-                seat_chart.append(seat_chart_item)
+            # Incluir todos los partidos, incluso con 0 escaños
+            votos = votos_dict.get(partido, 0)
+            escanos = escanos_dict.get(partido, 0)
+            
+            resultado_partido = {
+                "partido": partido,
+                "votos": votos,
+                "mr": resultado_dict.get('mr', {}).get(partido, 0),
+                "rp": resultado_dict.get('rp', {}).get(partido, 0), 
+                "total": escanos,
+                "porcentaje_votos": round((votos / total_votos) * 100, 2) if total_votos > 0 else 0,
+                "porcentaje_escanos": round((escanos / total_escanos) * 100, 2) if total_escanos > 0 else 0
+            }
+            resultados.append(resultado_partido)
+            
+            # Agregar al seat_chart
+            seat_chart_item = {
+                "party": partido,
+                "seats": escanos,
+                "color": PARTY_COLORS.get(partido, "#888888"),
+                "percent": round((escanos / total_escanos) * 100, 2) if total_escanos > 0 else 0,
+                "votes": votos
+            }
+            seat_chart.append(seat_chart_item)
+        
+        print(f"[DEBUG] Seat chart construido: {len(seat_chart)} partidos")
+        for item in seat_chart:
+            print(f"[DEBUG] {item['party']}: {item['seats']} escaños")
         
         # Calcular KPIs
         votos_list = [r["votos"] for r in resultados]
@@ -376,6 +384,12 @@ async def procesar_diputados(
             divisor_method=divisor_method_final,
             print_debug=True
         )
+        
+        # Debug: Verificar qué devuelve procesar_diputados_v2
+        print(f"[DEBUG] Resultado de procesar_diputados_v2: {resultado}")
+        if 'tot' in resultado:
+            print(f"[DEBUG] Escaños totales por partido: {resultado['tot']}")
+            print(f"[DEBUG] Suma total escaños: {sum(resultado['tot'].values())}")
         
         # Transformar al formato esperado por el frontend con colores
         resultado_formateado = transformar_resultado_a_formato_frontend(resultado, plan)
