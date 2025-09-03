@@ -476,37 +476,46 @@ async def procesar_diputados(
             sistema_final = sistema
             
             # Lógica inteligente para parámetros personalizados
+            # SIEMPRE usar escanos_totales como base si está definido
             if escanos_totales is not None:
-                # Si el usuario especifica total, usar ese valor
                 max_seats = escanos_totales
-                # Si no especifica MR/RP, distribuir proporcionalmente a los defaults
-                if mr_seats is None and rp_seats is None:
-                    if sistema_final == "mr":
-                        mr_seats_final = max_seats
-                        rp_seats_final = 0
-                    elif sistema_final == "rp":
-                        mr_seats_final = 0
-                        rp_seats_final = max_seats
-                    else:  # mixto
-                        # Mantener proporción 300:200 del default
-                        proportion_mr = 300 / 500
-                        mr_seats_final = int(max_seats * proportion_mr)
-                        rp_seats_final = max_seats - mr_seats_final
-                else:
-                    # Usuario especificó MR/RP, usar esos valores
-                    mr_seats_final = mr_seats if mr_seats is not None else 0
-                    rp_seats_final = rp_seats if rp_seats is not None else 0
-            else:
-                # Usuario no especificó total, usar MR+RP o defaults
+                print(f"[DEBUG] Usando magnitud base: {max_seats} escaños")
+                
+                # Distribuir según el sistema elegido
                 if sistema_final == "mr":
-                    # Para MR puro, si no hay mr_seats usar escanos_totales o default
-                    mr_seats_final = mr_seats if mr_seats is not None else (escanos_totales if escanos_totales is not None else 300)
+                    # MR PURO: TODOS los escaños van a MR
+                    mr_seats_final = max_seats
+                    rp_seats_final = 0
+                    print(f"[DEBUG] Sistema MR puro: {mr_seats_final} MR + {rp_seats_final} RP = {max_seats}")
+                elif sistema_final == "rp":
+                    # RP PURO: TODOS los escaños van a RP
+                    mr_seats_final = 0
+                    rp_seats_final = max_seats
+                    print(f"[DEBUG] Sistema RP puro: {mr_seats_final} MR + {rp_seats_final} RP = {max_seats}")
+                else:  # mixto
+                    # MIXTO: Usuario debe especificar MR/RP o usar proporción default
+                    if mr_seats is not None and rp_seats is not None:
+                        # Usuario especificó ambos
+                        mr_seats_final = mr_seats
+                        rp_seats_final = rp_seats
+                        print(f"[DEBUG] Sistema mixto especificado: {mr_seats_final} MR + {rp_seats_final} RP")
+                    else:
+                        # Usar proporción default 60% MR, 40% RP
+                        mr_seats_final = int(max_seats * 0.6)
+                        rp_seats_final = max_seats - mr_seats_final
+                        print(f"[DEBUG] Sistema mixto automático (60/40): {mr_seats_final} MR + {rp_seats_final} RP = {max_seats}")
+            else:
+                # FALLBACK: Usuario no especificó magnitud total
+                print(f"[DEBUG] No se especificó magnitud, usando parámetros individuales o defaults")
+                if sistema_final == "mr":
+                    # Para MR puro, usar mr_seats como magnitud total
+                    mr_seats_final = mr_seats if mr_seats is not None else 300
                     rp_seats_final = 0
                     max_seats = mr_seats_final
                 elif sistema_final == "rp":
-                    # Para RP puro, si no hay rp_seats usar escanos_totales o default
+                    # Para RP puro, usar rp_seats como magnitud total
                     mr_seats_final = 0
-                    rp_seats_final = rp_seats if rp_seats is not None else (escanos_totales if escanos_totales is not None else 300)
+                    rp_seats_final = rp_seats if rp_seats is not None else 300
                     max_seats = rp_seats_final
                 else:  # mixto
                     mr_seats_final = mr_seats if mr_seats is not None else 300
