@@ -356,7 +356,7 @@ def conteo_senado_MR_PM_sigladoF(df_boleta_est: pd.DataFrame, df_acred_est: pd.D
 
 def asigna_senado_RP(votos: Dict[str, int], threshold: float = 0.03, escanos_rp: int = 32) -> Dict[str, int]:
     """
-    Asignación RP nacional para senado - traducción directa del R
+    Asignación RP nacional para senado - traducción directa del R con validaciones
     """
     print(f"[DEBUG] asigna_senado_RP con threshold={threshold}, escanos_rp={escanos_rp}")
     print(f"[DEBUG] Votos entrada: {votos}")
@@ -384,18 +384,43 @@ def asigna_senado_RP(votos: Dict[str, int], threshold: float = 0.03, escanos_rp:
     print(f"[DEBUG] Porcentajes antes umbral: {dict(zip(partidos, v_valida))}")
     print(f"[DEBUG] Porcentajes después umbral: {dict(zip(partidos, v_nacional))}")
     
+    # VALIDACIÓN: Si no hay partidos que superen el umbral
+    partidos_validos = np.sum(v_nacional > 0)
+    if partidos_validos == 0:
+        print(f"[WARNING] Ningún partido supera umbral {threshold}. Retornando escaños vacíos.")
+        return {p: 0 for p in partidos}
+    
     # Fórmula de resto mayor
     t = np.floor(v_nacional * escanos_rp + 1e-12).astype(int)
     u = escanos_rp - t.sum()
     
+    print(f"[DEBUG] Escaños base: {dict(zip(partidos, t))}")
+    print(f"[DEBUG] Escaños restantes a asignar: {u}")
+    print(f"[DEBUG] Partidos válidos: {partidos_validos}")
+    
     if u > 0:
-        # Calcular residuos
+        # Calcular residuos solo para partidos con votos > 0
         rema = v_nacional * escanos_rp - t
+        validos_mask = v_nacional > 0
+        
+        # VALIDACIÓN: Limitar u al número de partidos válidos
+        u_safe = min(u, partidos_validos)
+        print(f"[DEBUG] u limitado de {u} a {u_safe}")
+        
         # Ordenar por residuo descendente, con índice como desempate
         orden = np.lexsort((np.arange(len(rema)), -rema))
-        # Asignar escaños adicionales
-        for i in range(u):
-            t[orden[i]] += 1
+        
+        # Asignar escaños adicionales de forma segura
+        asignados = 0
+        for i in range(len(orden)):
+            if asignados >= u_safe:
+                break
+            idx = orden[i]
+            if v_nacional[idx] > 0:  # Solo a partidos válidos
+                t[idx] += 1
+                asignados += 1
+        
+        print(f"[DEBUG] Escaños adicionales asignados: {asignados}")
     
     resultado = {partidos[i]: int(t[i]) for i in range(len(partidos))}
     print(f"[DEBUG] Resultado RP: {resultado}")

@@ -212,6 +212,7 @@ async def procesar_senado(
     sistema: Optional[str] = None,
     umbral: Optional[float] = None,
     mr_seats: Optional[int] = None,
+    pm_seats: Optional[int] = None,
     rp_seats: Optional[int] = None
 ):
     """
@@ -222,7 +223,8 @@ async def procesar_senado(
     - **escanos_totales**: Número total de escaños (opcional, se calcula automáticamente)
     - **sistema**: Sistema electoral para plan personalizado ("rp", "mixto", "mr")
     - **umbral**: Umbral electoral para plan personalizado (0.0-1.0)
-    - **mr_seats**: Escaños de mayoría relativa para plan personalizado
+    - **mr_seats**: Escaños de mayoría relativa pura para plan personalizado
+    - **pm_seats**: Escaños de primera minoría para plan personalizado (opcional)
     - **rp_seats**: Escaños de representación proporcional para plan personalizado
     """
     try:
@@ -261,10 +263,21 @@ async def procesar_senado(
             if not sistema:
                 raise HTTPException(status_code=400, detail="Sistema requerido para plan personalizado")
             sistema_final = sistema
-            mr_seats_final = mr_seats if mr_seats is not None else 96
-            rp_seats_final = rp_seats if rp_seats is not None else 32
+            
+            # Configurar escaños por separado
+            mr_puro = mr_seats if mr_seats is not None else 64
+            pm_escanos = pm_seats if pm_seats is not None else 0  # Primera minoría opcional
+            rp_escanos = rp_seats if rp_seats is not None else 32
+            
+            # Para el backend: mr_seats incluye MR + PM
+            mr_seats_final = mr_puro + pm_escanos
+            rp_seats_final = rp_escanos
             umbral_final = umbral if umbral is not None else 0.03
             max_seats = mr_seats_final + rp_seats_final
+            
+            print(f"[DEBUG] Plan personalizado - MR puro: {mr_puro}, PM: {pm_escanos}, RP: {rp_escanos}")
+            print(f"[DEBUG] Total para backend - mr_seats: {mr_seats_final}, rp_seats: {rp_seats_final}")
+            print(f"[DEBUG] Max seats calculado: {max_seats}")
         else:
             raise HTTPException(status_code=400, detail="Plan no válido. Use 'vigente', 'plan_a', 'plan_c' o 'personalizado'")
             
