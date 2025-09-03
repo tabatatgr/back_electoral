@@ -183,13 +183,25 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# Configurar CORS
+# Configurar CORS con opciones más específicas
+origins = [
+    "http://localhost:3000",  # React dev server
+    "http://localhost:3001",  # React dev server alt
+    "http://localhost:8000",  # FastAPI docs
+    "http://localhost:8080",  # Frontend local
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:8080",
+    "https://back-electoral.onrender.com",  # Render deployment
+    "*"  # Permitir cualquier origen (solo para desarrollo)
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # En producción, especifica dominios específicos
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 @app.get("/")
@@ -202,7 +214,33 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "timestamp": pd.Timestamp.now().isoformat()}
+    """Endpoint de salud del servidor"""
+    try:
+        return {
+            "status": "healthy", 
+            "timestamp": pd.Timestamp.now().isoformat(),
+            "version": "2.0.0",
+            "cors_enabled": True,
+            "endpoints": ["procesar/senado", "procesar/diputados"]
+        }
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"status": "unhealthy", "error": str(e)}
+        )
+
+@app.options("/procesar/senado")
+async def options_procesar_senado():
+    """Manejo de CORS preflight para senado"""
+    return JSONResponse(
+        status_code=200,
+        content={"message": "CORS preflight OK"},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
 
 @app.post("/procesar/senado")
 async def procesar_senado(
@@ -330,7 +368,24 @@ async def procesar_senado(
         )
         
     except Exception as e:
+        print(f"[ERROR] Error en /procesar/senado: {str(e)}")
+        print(f"[ERROR] Tipo de error: {type(e).__name__}")
+        import traceback
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error procesando senado: {str(e)}")
+
+@app.options("/procesar/diputados")
+async def options_procesar_diputados():
+    """Manejo de CORS preflight para diputados"""
+    return JSONResponse(
+        status_code=200,
+        content={"message": "CORS preflight OK"},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
 
 @app.post("/procesar/diputados")
 async def procesar_diputados(
@@ -362,6 +417,14 @@ async def procesar_diputados(
     - **divisor_method**: Método divisor ("dhondt", "sainte_lague", "webster")
     """
     try:
+        print(f"[DEBUG] Iniciando /procesar/diputados con:")
+        print(f"[DEBUG] - anio: {anio}")
+        print(f"[DEBUG] - plan: {plan}")
+        print(f"[DEBUG] - escanos_totales: {escanos_totales}")
+        print(f"[DEBUG] - sistema: {sistema}")
+        print(f"[DEBUG] - mr_seats: {mr_seats}")
+        print(f"[DEBUG] - rp_seats: {rp_seats}")
+        
         # Normalizar el nombre del plan para compatibilidad con frontend
         plan_normalizado = normalizar_plan(plan)
         print(f"[DEBUG] Diputados - Plan original: '{plan}' -> Plan normalizado: '{plan_normalizado}'")
@@ -504,6 +567,10 @@ async def procesar_diputados(
         )
         
     except Exception as e:
+        print(f"[ERROR] Error en /procesar/diputados: {str(e)}")
+        print(f"[ERROR] Tipo de error: {type(e).__name__}")
+        import traceback
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error procesando diputados: {str(e)}")
 
 @app.get("/años-disponibles")
