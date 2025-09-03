@@ -603,20 +603,54 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
             votos_ok[p] = votos if supera_umbral else 0
             ok_dict[p] = supera_umbral
         
-        # 8) Estructura de retorno compatible
+        # 8) Construir seat_chart
+        seat_chart = []
+        total_votos = sum(votos_nacionales.values()) if votos_nacionales else 1
+        total_escanos = sum(totales.values()) if totales else 1
+        
+        # Mapea colores por partido (copiado de main.py)
+        PARTY_COLORS = {
+            "MORENA": "#8B2231",
+            "PAN": "#0055A5", 
+            "PRI": "#0D7137",
+            "PT": "#D52B1E",
+            "PVEM": "#1E9F00",
+            "MC": "#F58025",
+            "PRD": "#FFCC00",
+            "PES": "#6A1B9A",
+            "NA": "#00B2E3",
+            "FXM": "#FF69B4",
+        }
+        
+        for partido in partidos_base:
+            escanos = totales.get(partido, 0)
+            votos = votos_nacionales.get(partido, 0)
+            
+            seat_chart_item = {
+                "party": partido,
+                "seats": escanos,
+                "color": PARTY_COLORS.get(partido, "#888888"),
+                "percent": round((escanos / total_escanos) * 100, 2) if total_escanos > 0 else 0,
+                "votes": votos
+            }
+            seat_chart.append(seat_chart_item)
+        
+        # 9) Estructura de retorno compatible con seat_chart incluido
         resultado = {
             'mr': ssd,  # En senado, MR incluye PM (64 MR + 32 PM = 96 total)
             'rp': rp_result,
             'tot': totales,
             'ok': ok_dict,
             'votos': votos_nacionales,
-            'votos_ok': votos_ok
+            'votos_ok': votos_ok,
+            'seat_chart': seat_chart
         }
         
         print(f"[DEBUG] Resultado final:")
         print(f"[DEBUG] - MR+PM: {resultado['mr']}")
         print(f"[DEBUG] - RP: {resultado['rp']}")
         print(f"[DEBUG] - Totales: {resultado['tot']}")
+        print(f"[DEBUG] - Seat chart: {len(seat_chart)} partidos")
         
         # Validación final
         total_escanos = sum(resultado['tot'].values())
@@ -633,12 +667,13 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
         import traceback
         traceback.print_exc()
         
-        # Retorno de emergencia
+        # Retorno de emergencia con seat_chart vacío
         return {
             'mr': {p: 0 for p in partidos_base},
             'rp': {p: 0 for p in partidos_base},
             'tot': {p: 0 for p in partidos_base},
             'ok': {p: False for p in partidos_base},
             'votos': {p: 0 for p in partidos_base},
-            'votos_ok': {p: 0 for p in partidos_base}
+            'votos_ok': {p: 0 for p in partidos_base},
+            'seat_chart': []
         }
