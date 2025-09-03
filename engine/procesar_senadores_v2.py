@@ -246,13 +246,15 @@ def gp_lookup(entidad: str, coalicion: str, formula: int, acred_row: pd.Series,
     return None
 
 def conteo_senado_MR_PM_sigladoF(df_boleta_est: pd.DataFrame, df_acred_est: pd.DataFrame, 
-                                 partidos_base: List[str], gp_long: pd.DataFrame, anio: int) -> Dict:
+                                 partidos_base: List[str], gp_long: pd.DataFrame, anio: int,
+                                 escanos_mr_efectivos: int = 64, escanos_pm: int = 32) -> Dict:
     """
     Conteo MR+PM con siglado por fórmula - traducción directa del R
-    MR: 2 senadores por entidad (F1 y F2 del ganador)
-    PM: 1 senador por entidad (F1 del segundo lugar)
+    MR: senadores por entidad distribuidos proporcionalmente según escanos_mr_efectivos
+    PM: senadores de primera minoría distribuidos según escanos_pm
     """
     print(f"[DEBUG] conteo_senado_MR_PM_sigladoF iniciando para año {anio}")
+    print(f"[DEBUG] Parámetros: MR efectivos={escanos_mr_efectivos}, PM={escanos_pm}")
     
     # Validaciones
     assert 'ENTIDAD' in df_boleta_est.columns, "df_boleta_est debe tener ENTIDAD"
@@ -323,8 +325,23 @@ def conteo_senado_MR_PM_sigladoF(df_boleta_est: pd.DataFrame, df_acred_est: pd.D
         
         print(f"[DEBUG] {entidad} - Ganador: {top1}, Segundo: {top2}")
         
-        # MR: F1 y F2 del ganador
-        for formula in [1, 2]:
+        # MR efectivos: distribuir proporcionalmente entre 32 entidades
+        escanos_mr_por_entidad = escanos_mr_efectivos // 32
+        escanos_mr_extra = escanos_mr_efectivos % 32
+        
+        # PM: distribuir proporcionalmente entre 32 entidades
+        escanos_pm_por_entidad = escanos_pm // 32
+        escanos_pm_extra = escanos_pm % 32
+        
+        # Para esta entidad, calcular cuántos MR efectivos y PM le tocan
+        # Simplificación: distribuir uniformemente (después se puede sofisticar)
+        mr_esta_entidad = escanos_mr_por_entidad + (1 if i < escanos_mr_extra else 0)
+        pm_esta_entidad = escanos_pm_por_entidad + (1 if i < escanos_pm_extra else 0)
+        
+        print(f"[DEBUG] {entidad} - Asignación: {mr_esta_entidad} MR efectivos, {pm_esta_entidad} PM")
+        
+        # MR efectivos: asignar al ganador
+        for formula in range(1, mr_esta_entidad + 1):
             gp = gp_lookup(entidad, top1, formula, df_acred_est.iloc[i], gp_long, partidos_base, anio)
             print(f"[DEBUG] {entidad} - MR F{formula}: {top1} -> {gp}")
             if gp is not None:
@@ -333,24 +350,26 @@ def conteo_senado_MR_PM_sigladoF(df_boleta_est: pd.DataFrame, df_acred_est: pd.D
                 elif gp in partidos_base:
                     ssd[gp] += 1
         
-        # PM: F1 del segundo lugar
-        if top2 is not None:
-            gp2 = gp_lookup(entidad, top2, 1, df_acred_est.iloc[i], gp_long, partidos_base, anio)
-            print(f"[DEBUG] {entidad} - PM F1: {top2} -> {gp2}")
-            if gp2 is not None:
-                if gp2 == "CI":
-                    indep += 1
-                elif gp2 in partidos_base:
-                    ssd[gp2] += 1
+        # PM: asignar al segundo lugar si hay PM para esta entidad
+        if pm_esta_entidad > 0 and top2 is not None:
+            for formula in range(1, pm_esta_entidad + 1):
+                gp2 = gp_lookup(entidad, top2, formula, df_acred_est.iloc[i], gp_long, partidos_base, anio)
+                print(f"[DEBUG] {entidad} - PM F{formula}: {top2} -> {gp2}")
+                if gp2 is not None:
+                    if gp2 == "CI":
+                        indep += 1
+                    elif gp2 in partidos_base:
+                        ssd[gp2] += 1
     
     total_asignados = sum(ssd.values()) + indep
-    print(f"[DEBUG] Total MR+PM asignados: {total_asignados} (esperado: 96)")
+    total_esperado = escanos_mr_efectivos + escanos_pm
+    print(f"[DEBUG] Total MR+PM asignados: {total_asignados} (esperado: {total_esperado})")
     print(f"[DEBUG] Detalle por partido: {ssd}")
     print(f"[DEBUG] Independientes: {indep}")
     
-    # Validar que se asignaron exactamente 96 escaños (64 MR + 32 PM)
-    if total_asignados != 96:
-        print(f"[WARNING] Se asignaron {total_asignados} escaños MR+PM, esperado: 96")
+    # Validar que se asignaron exactamente los escaños esperados
+    if total_asignados != total_esperado:
+        print(f"[WARNING] Se asignaron {total_asignados} escaños MR+PM, esperado: {total_esperado}")
     
     return {'ssd_partidos': ssd, 'indep_mr_pm': indep}
 
@@ -431,35 +450,54 @@ def asigna_senado_RP(votos: Dict[str, int], threshold: float = 0.03, escanos_rp:
 def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str, 
                           partidos_base: Optional[List[str]] = None, 
                           max_seats: int = 128, umbral: float = 0.03,
-                          sistema: str = "mixto", mr_seats: int = None, rp_seats: int = None) -> Dict:
+                          sistema: str = "mixto", mr_seats: int = None, rp_seats: int = None,
+                          pm_seats: int = 0) -> Dict:
     """
     Procesador principal de senadores V2 - traducción directa del R
     
     Args:
         sistema: "mixto" (vigente), "rp" (Plan A), "mr" (Plan C)
-        mr_seats: número de escaños MR+PM (96 para vigente, 64 para Plan C, 0 para Plan A)
-        rp_seats: número de escaños RP (32 para vigente, 0 para Plan C, 96 para Plan A)
+        mr_seats: número de escaños MR totales disponibles
+        rp_seats: número de escaños RP
+        pm_seats: número de escaños de primera minoría (sale de mr_seats)
     """
     print(f"[DEBUG] procesar_senadores_v2 iniciando para año {anio}")
-    print(f"[DEBUG] Sistema: {sistema}, max_seats: {max_seats}, mr_seats: {mr_seats}, rp_seats: {rp_seats}")
+    print(f"[DEBUG] Sistema: {sistema}, max_seats: {max_seats}, mr_seats: {mr_seats}, rp_seats: {rp_seats}, pm_seats: {pm_seats}")
     
     # Configurar número de escaños según sistema
     if sistema == "mixto":
-        # Sistema vigente: 96 MR+PM + 32 RP = 128 total
-        escanos_mr_pm = mr_seats if mr_seats is not None else 96
+        # Sistema vigente: MR + PM + RP = total fijo
+        # Los escaños PM "salen" de los escaños MR
+        escanos_mr_total = mr_seats if mr_seats is not None else 96
+        escanos_pm = pm_seats if pm_seats is not None else 0
+        escanos_mr_efectivos = escanos_mr_total - escanos_pm  # MR puro
         escanos_rp = rp_seats if rp_seats is not None else 32
+        
+        print(f"[DEBUG] Configuración mixta - MR total: {escanos_mr_total}, PM: {escanos_pm}, MR efectivo: {escanos_mr_efectivos}, RP: {escanos_rp}")
+        
+        # Validar que PM no sea mayor que MR disponible
+        if escanos_pm > escanos_mr_total:
+            raise ValueError(f"PM ({escanos_pm}) no puede ser mayor que MR total ({escanos_mr_total})")
     elif sistema == "rp":
         # Plan A: Solo RP, típicamente 96 escaños
-        escanos_mr_pm = 0
+        escanos_mr_total = 0
+        escanos_pm = 0
+        escanos_mr_efectivos = 0
         escanos_rp = max_seats
     elif sistema == "mr":
-        # Plan C: Solo MR, típicamente 64 escaños
-        escanos_mr_pm = max_seats
+        # Plan C: Solo MR, con posibilidad de PM
+        escanos_mr_total = max_seats
+        escanos_pm = pm_seats if pm_seats is not None else 0
+        escanos_mr_efectivos = max_seats - escanos_pm  # MR efectivo = total - PM
         escanos_rp = 0
+        
+        # Validar que PM no sea mayor que el total
+        if escanos_pm > escanos_mr_total:
+            raise ValueError(f"PM ({escanos_pm}) no puede ser mayor que MR total ({escanos_mr_total})")
     else:
         raise ValueError(f"Sistema no reconocido: {sistema}")
     
-    print(f"[DEBUG] Configuración final: {escanos_mr_pm} MR+PM + {escanos_rp} RP = {escanos_mr_pm + escanos_rp} total")
+    print(f"[DEBUG] Configuración final: {escanos_mr_total} MR total ({escanos_mr_efectivos} efectivo + {escanos_pm} PM) + {escanos_rp} RP = {escanos_mr_total + escanos_rp} total")
     
     if partidos_base is None:
         if anio == 2018:
@@ -528,13 +566,15 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
         print(f"[DEBUG] Siglado shape: {gp_long.shape}")
         
         # 5) Calcular MR+PM usando siglado por fórmula (solo si aplica)
-        if escanos_mr_pm > 0:
+        if escanos_mr_total > 0:
             mrpm_result = conteo_senado_MR_PM_sigladoF(
                 df_boleta_est=recomposed,
                 df_acred_est=df_acred_est,
                 partidos_base=partidos_base,
                 gp_long=gp_long,
-                anio=anio
+                anio=anio,
+                escanos_mr_efectivos=escanos_mr_efectivos,
+                escanos_pm=escanos_pm
             )
             
             ssd = mrpm_result['ssd_partidos']
@@ -545,18 +585,18 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
             
             # Ajustar proporcionalmente si el total no coincide con el esperado
             total_mr_pm_original = sum(ssd.values()) + indep_mr_pm
-            print(f"[DEBUG] Total MR+PM original: {total_mr_pm_original}, esperado: {escanos_mr_pm}")
+            print(f"[DEBUG] Total MR+PM original: {total_mr_pm_original}, esperado: {escanos_mr_total}")
             
-            if total_mr_pm_original != escanos_mr_pm and total_mr_pm_original > 0:
+            if total_mr_pm_original != escanos_mr_total and total_mr_pm_original > 0:
                 # Ajustar proporcionalmente
-                factor = escanos_mr_pm / total_mr_pm_original
+                factor = escanos_mr_total / total_mr_pm_original
                 ssd_ajustado = {}
                 for p in partidos_base:
                     ssd_ajustado[p] = int(round(ssd.get(p, 0) * factor))
                 
                 # Ajustar diferencia por redondeo
                 total_ajustado = sum(ssd_ajustado.values())
-                diferencia = escanos_mr_pm - total_ajustado
+                diferencia = escanos_mr_total - total_ajustado
                 
                 if diferencia != 0:
                     # Distribuir diferencia en partidos con más votos
@@ -654,7 +694,7 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
         
         # Validación final
         total_escanos = sum(resultado['tot'].values())
-        escanos_esperados = escanos_mr_pm + escanos_rp
+        escanos_esperados = escanos_mr_total + escanos_rp
         if total_escanos != escanos_esperados:
             print(f"[WARNING] Total escaños = {total_escanos}, esperado {escanos_esperados}")
         else:

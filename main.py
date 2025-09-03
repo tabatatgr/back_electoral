@@ -269,15 +269,25 @@ async def procesar_senado(
             pm_escanos = pm_seats if pm_seats is not None else 0  # Primera minoría opcional
             rp_escanos = rp_seats if rp_seats is not None else 32
             
-            # Para el backend: mr_seats incluye MR + PM
-            mr_seats_final = mr_puro + pm_escanos
+            # CORRECCIÓN: PM sale de MR, no se suma al total
+            # Si hay PM, se reduce MR proporcionalmente
+            if pm_escanos > 0:
+                if pm_escanos > mr_puro:
+                    raise HTTPException(status_code=400, detail=f"PM ({pm_escanos}) no puede ser mayor que MR ({mr_puro})")
+                # Los escaños PM "salen" de los escaños MR
+                mr_final_efectivo = mr_puro - pm_escanos
+            else:
+                mr_final_efectivo = mr_puro
+            
+            # Para el backend: mr_seats es solo MR efectivo + PM se maneja aparte
+            mr_seats_final = mr_puro  # Total MR disponible (incluye PM dentro)
             rp_seats_final = rp_escanos
             umbral_final = umbral if umbral is not None else 0.03
-            max_seats = mr_seats_final + rp_seats_final
+            max_seats = mr_puro + rp_escanos  # Total fijo, PM no suma
             
-            print(f"[DEBUG] Plan personalizado - MR puro: {mr_puro}, PM: {pm_escanos}, RP: {rp_escanos}")
+            print(f"[DEBUG] Plan personalizado - MR original: {mr_puro}, PM: {pm_escanos}, RP: {rp_escanos}")
+            print(f"[DEBUG] MR efectivo: {mr_final_efectivo}, PM: {pm_escanos}, Total: {max_seats}")
             print(f"[DEBUG] Total para backend - mr_seats: {mr_seats_final}, rp_seats: {rp_seats_final}")
-            print(f"[DEBUG] Max seats calculado: {max_seats}")
         else:
             raise HTTPException(status_code=400, detail="Plan no válido. Use 'vigente', 'plan_a', 'plan_c' o 'personalizado'")
             
@@ -302,7 +312,8 @@ async def procesar_senado(
             sistema=sistema_final,
             mr_seats=mr_seats_final,
             rp_seats=rp_seats_final,
-            umbral=umbral_final
+            umbral=umbral_final,
+            pm_seats=pm_escanos  # ⬅️ AGREGAR PARÁMETRO PM
         )
         
         # Transformar al formato esperado por el frontend con colores
