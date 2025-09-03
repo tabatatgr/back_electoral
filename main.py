@@ -347,12 +347,25 @@ async def procesar_diputados(
                     rp_seats_final = rp_seats if rp_seats is not None else 0
             else:
                 # Usuario no especificó total, usar MR+RP o defaults
-                mr_seats_final = mr_seats if mr_seats is not None else 300
-                rp_seats_final = rp_seats if rp_seats is not None else 200
-                max_seats = mr_seats_final + rp_seats_final
+                if sistema_final == "mr":
+                    # Para MR puro, si no hay mr_seats usar escanos_totales o default
+                    mr_seats_final = mr_seats if mr_seats is not None else (escanos_totales if escanos_totales is not None else 300)
+                    rp_seats_final = 0
+                    max_seats = mr_seats_final
+                elif sistema_final == "rp":
+                    # Para RP puro, si no hay rp_seats usar escanos_totales o default
+                    mr_seats_final = 0
+                    rp_seats_final = rp_seats if rp_seats is not None else (escanos_totales if escanos_totales is not None else 300)
+                    max_seats = rp_seats_final
+                else:  # mixto
+                    mr_seats_final = mr_seats if mr_seats is not None else 300
+                    rp_seats_final = rp_seats if rp_seats is not None else 200
+                    max_seats = mr_seats_final + rp_seats_final
             
             umbral_final = umbral if umbral is not None else 0.03
             max_seats_per_party_final = max_seats_per_party
+            print(f"[DEBUG] max_seats_per_party recibido: {max_seats_per_party}")
+            print(f"[DEBUG] max_seats_per_party_final: {max_seats_per_party_final}")
             quota_method_final = quota_method
             divisor_method_final = divisor_method
         else:
