@@ -331,6 +331,7 @@ async def procesar_diputados(
     mr_seats: Optional[int] = None,
     rp_seats: Optional[int] = None,
     max_seats_per_party: Optional[int] = None,
+    sobrerrepresentacion: Optional[float] = None,
     quota_method: str = "hare",
     divisor_method: str = "dhondt"
 ):
@@ -345,6 +346,7 @@ async def procesar_diputados(
     - **mr_seats**: Escaños de mayoría relativa
     - **rp_seats**: Escaños de representación proporcional
     - **max_seats_per_party**: Máximo de escaños por partido
+    - **sobrerrepresentacion**: Límite de sobrerrepresentación como porcentaje (ej: 10.8)
     - **quota_method**: Método de cuota ("hare", "droop", "imperiali")
     - **divisor_method**: Método divisor ("dhondt", "sainte_lague", "webster")
     """
@@ -465,6 +467,7 @@ async def procesar_diputados(
             rp_seats=rp_seats_final,
             umbral=umbral_final,
             max_seats_per_party=max_seats_per_party_final,
+            sobrerrepresentacion=sobrerrepresentacion,
             quota_method=quota_method_final,
             divisor_method=divisor_method_final,
             print_debug=True

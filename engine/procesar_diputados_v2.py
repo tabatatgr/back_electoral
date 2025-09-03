@@ -18,6 +18,7 @@ import re
 import unicodedata
 from typing import Dict, List, Optional, Tuple
 from .recomposicion import recompose_coalitions, parties_for
+from .core import apply_overrep_cap
 from .core import DipParams
 
 # ====================== UTILIDADES ======================
@@ -532,6 +533,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                           divisor_method: str = 'dhondt',
                           umbral: Optional[float] = None,
                           max_seats_per_party: Optional[int] = None,
+                          sobrerrepresentacion: Optional[float] = None,
                           seed: Optional[int] = None,
                           print_debug: bool = False) -> Dict:
     """
@@ -886,6 +888,55 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     exceso = tot_dict[p] - max_seats_per_party
                     tot_dict[p] = max_seats_per_party
                     rp_dict[p] = max(0, max_seats_per_party - mr_dict[p])
+        
+        # Aplicar límite de sobrerrepresentación si se especifica
+        if sobrerrepresentacion and sobrerrepresentacion > 0:
+            if print_debug:
+                print(f"[DEBUG] Aplicando límite de sobrerrepresentación: {sobrerrepresentacion}%")
+                print(f"[DEBUG] Escaños antes de sobrerrepresentación: {tot_dict}")
+            
+            # Calcular votos válidos (los que cumplen el umbral)
+            total_votos_validos = sum(votos_ok.values())
+            if total_votos_validos > 0:
+                # Convertir a arrays para apply_overrep_cap
+                # Crear arrays en el mismo orden que partidos_base
+                seats_array = np.array([tot_dict[p] for p in partidos_base])
+                votes_array = np.array([votos_ok[p] for p in partidos_base])
+                
+                # Calcular vote_share_valid 
+                vote_share_valid = votes_array / total_votos_validos
+                
+                # Aplicar límite (convertir de porcentaje a fracción)
+                over_cap = sobrerrepresentacion / 100.0
+                
+                if print_debug:
+                    print(f"[DEBUG] over_cap = {over_cap} ({sobrerrepresentacion}%)")
+                    print(f"[DEBUG] total_escanos = {max_seats}")
+                    print(f"[DEBUG] vote_share_valid = {vote_share_valid}")
+                
+                # Aplicar límite de sobrerrepresentación
+                seats_ajustados = apply_overrep_cap(
+                    seats=seats_array,
+                    vote_share_valid=vote_share_valid,
+                    S=max_seats,
+                    over_cap=over_cap
+                )
+                
+                # Convertir de vuelta a diccionario
+                tot_dict_ajustado = {partidos_base[i]: int(seats_ajustados[i]) for i in range(len(partidos_base))}
+                
+                # Verificar si hubo cambios y aplicarlos
+                if tot_dict_ajustado != tot_dict:
+                    for p in partidos_base:
+                        if tot_dict_ajustado[p] != tot_dict[p]:
+                            if print_debug:
+                                print(f"[DEBUG] {p}: {tot_dict[p]} -> {tot_dict_ajustado[p]} escaños (límite sobrerrepresentación)")
+                            tot_dict[p] = tot_dict_ajustado[p]
+                            # Recalcular RP = total - MR
+                            rp_dict[p] = max(0, tot_dict[p] - mr_dict[p])
+                
+                if print_debug:
+                    print(f"[DEBUG] Escaños después de sobrerrepresentación: {tot_dict}")
         
         return {
             'mr': mr_dict,
