@@ -338,6 +338,70 @@ async def get_data_options():
             detail=f"Error obteniendo opciones de datos: {str(e)}"
         )
 
+@app.get("/partidos/por-anio")
+async def obtener_partidos_por_anio(
+    anio: int,
+    camara: str = "diputados"
+):
+    """
+    Devuelve partidos disponibles para un año específico con sus porcentajes vigentes
+    """
+    try:
+        print(f"[DEBUG] Obteniendo partidos para año {anio}, cámara {camara}")
+        
+        # Cargar datos según cámara
+        if camara == "diputados":
+            path_datos = f"data/computos_diputados_{anio}.parquet"
+        elif camara == "senado":  
+            path_datos = f"data/computos_senado_{anio}.parquet"
+        else:
+            raise ValueError(f"Cámara no válida: {camara}")
+        
+        # Verificar que el archivo existe
+        if not os.path.exists(path_datos):
+            raise FileNotFoundError(f"No hay datos disponibles para {camara} {anio}")
+        
+        # Cargar datos
+        df = pd.read_parquet(path_datos)
+        print(f"[DEBUG] Datos cargados: {len(df)} filas")
+        
+        # Calcular votos por partido
+        votos_por_partido = df.groupby('PARTIDO')['VOTOS'].sum().to_dict()
+        total_votos = sum(votos_por_partido.values())
+        
+        print(f"[DEBUG] Total votos: {total_votos}")
+        print(f"[DEBUG] Partidos encontrados: {list(votos_por_partido.keys())}")
+        
+        # Crear lista de partidos con porcentajes
+        partidos_data = []
+        for partido, votos in votos_por_partido.items():
+            porcentaje = (votos / total_votos) * 100
+            partidos_data.append({
+                "partido": partido,
+                "votos": int(votos),
+                "porcentaje_vigente": round(porcentaje, 2)
+            })
+        
+        # Ordenar por porcentaje descendente
+        partidos_data.sort(key=lambda x: x['porcentaje_vigente'], reverse=True)
+        
+        print(f"[DEBUG] Partidos procesados correctamente: {len(partidos_data)}")
+        
+        return {
+            "anio": anio,
+            "camara": camara,
+            "partidos": partidos_data,
+            "total_votos": int(total_votos),
+            "success": True
+        }
+        
+    except Exception as e:
+        print(f"[ERROR] Error obteniendo partidos: {e}")
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Error obteniendo partidos para {camara} {anio}: {str(e)}"
+        )
+
 @app.options("/procesar/senado")
 async def options_procesar_senado():
     """Manejo de CORS preflight para senado"""
@@ -546,7 +610,8 @@ async def procesar_diputados(
     usar_coaliciones: bool = True,
     votos_custom: Optional[str] = None,  # JSON string con redistribución
     partidos_fijos: Optional[str] = None,  # JSON string con partidos fijos
-    overrides_pool: Optional[str] = None   # JSON string con overrides del pool
+    overrides_pool: Optional[str] = None,   # JSON string con overrides del pool
+    porcentajes_partidos: Optional[str] = None  # JSON string con porcentajes por partido
 ):
     """
     Procesa los datos de diputados para un año específico con soporte de coaliciones
@@ -567,6 +632,7 @@ async def procesar_diputados(
     - **votos_custom**: JSON con % de votos por partido {"MORENA":45, "PAN":30, ...}
     - **partidos_fijos**: JSON con partidos fijos {"MORENA":2, "PAN":40}
     - **overrides_pool**: JSON con overrides del pool {"PAN":20, "MC":10}
+    - **porcentajes_partidos**: JSON con % de votos por partido {"MORENA":42.5, "PAN":20.7, ...}
     """
     try:
         print(f"[DEBUG] Iniciando /procesar/diputados con:")
@@ -579,23 +645,29 @@ async def procesar_diputados(
         
         # NUEVO: Procesar parámetros de redistribución de votos
         votos_redistribuidos = None
-        if votos_custom or partidos_fijos or overrides_pool:
+        if votos_custom or partidos_fijos or overrides_pool or porcentajes_partidos:
             print(f"[DEBUG] Redistribución de votos solicitada:")
             print(f"[DEBUG] - votos_custom: {votos_custom}")
             print(f"[DEBUG] - partidos_fijos: {partidos_fijos}")
             print(f"[DEBUG] - overrides_pool: {overrides_pool}")
+            print(f"[DEBUG] - porcentajes_partidos: {porcentajes_partidos}")
             
             try:
                 # Parsear JSON strings
                 votos_custom_dict = json.loads(votos_custom) if votos_custom else {}
                 partidos_fijos_dict = json.loads(partidos_fijos) if partidos_fijos else {}
                 overrides_pool_dict = json.loads(overrides_pool) if overrides_pool else {}
+                porcentajes_dict = json.loads(porcentajes_partidos) if porcentajes_partidos else {}
                 
                 # Determinar archivo de datos
                 path_datos = f"data/computos_diputados_{anio}.parquet"
                 
-                if votos_custom_dict:
-                    # Usar porcentajes directos proporcionados
+                if porcentajes_dict:
+                    # Usar porcentajes directos (nueva funcionalidad)
+                    print(f"[DEBUG] Usando porcentajes por partido: {porcentajes_dict}")
+                    votos_redistribuidos = porcentajes_dict
+                elif votos_custom_dict:
+                    # Usar porcentajes directos proporcionados (funcionalidad anterior)
                     print(f"[DEBUG] Usando porcentajes directos: {votos_custom_dict}")
                     votos_redistribuidos = votos_custom_dict
                 else:
