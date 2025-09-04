@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 import pandas as pd
 import sys
 import os
+import json
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -12,6 +13,7 @@ sys.path.append('.')
 
 from engine.procesar_senadores_v2 import procesar_senadores_v2  
 from engine.procesar_diputados_v2 import procesar_diputados_v2
+from engine.redistribucion_votos import simular_escenario_electoral, redistribuir_votos_mixto
 from outputs.kpi_utils import calcular_kpis_electorales, formato_seat_chart
 
 # Mapea colores por partido
@@ -434,7 +436,10 @@ async def procesar_diputados(
     sobrerrepresentacion: Optional[float] = None,
     reparto_mode: str = "divisor",
     reparto_method: str = "dhondt",
-    usar_coaliciones: bool = True
+    usar_coaliciones: bool = True,
+    votos_custom: Optional[str] = None,  # JSON string con redistribución
+    partidos_fijos: Optional[str] = None,  # JSON string con partidos fijos
+    overrides_pool: Optional[str] = None   # JSON string con overrides del pool
 ):
     """
     Procesa los datos de diputados para un año específico con soporte de coaliciones
@@ -452,6 +457,9 @@ async def procesar_diputados(
     - **reparto_method**: Método específico:
       - Si reparto_mode="cuota": "hare", "droop", "imperiali"
       - Si reparto_mode="divisor": "dhondt", "sainte_lague", "webster"
+    - **votos_custom**: JSON con % de votos por partido {"MORENA":45, "PAN":30, ...}
+    - **partidos_fijos**: JSON con partidos fijos {"MORENA":2, "PAN":40}
+    - **overrides_pool**: JSON con overrides del pool {"PAN":20, "MC":10}
     """
     try:
         print(f"[DEBUG] Iniciando /procesar/diputados con:")
@@ -461,6 +469,44 @@ async def procesar_diputados(
         print(f"[DEBUG] - sistema: {sistema}")
         print(f"[DEBUG] - mr_seats: {mr_seats}")
         print(f"[DEBUG] - rp_seats: {rp_seats}")
+        
+        # NUEVO: Procesar parámetros de redistribución de votos
+        votos_redistribuidos = None
+        if votos_custom or partidos_fijos or overrides_pool:
+            print(f"[DEBUG] Redistribución de votos solicitada:")
+            print(f"[DEBUG] - votos_custom: {votos_custom}")
+            print(f"[DEBUG] - partidos_fijos: {partidos_fijos}")
+            print(f"[DEBUG] - overrides_pool: {overrides_pool}")
+            
+            try:
+                # Parsear JSON strings
+                votos_custom_dict = json.loads(votos_custom) if votos_custom else {}
+                partidos_fijos_dict = json.loads(partidos_fijos) if partidos_fijos else {}
+                overrides_pool_dict = json.loads(overrides_pool) if overrides_pool else {}
+                
+                # Determinar archivo de datos
+                path_datos = f"data/computos_diputados_{anio}.parquet"
+                
+                if votos_custom_dict:
+                    # Usar porcentajes directos proporcionados
+                    print(f"[DEBUG] Usando porcentajes directos: {votos_custom_dict}")
+                    votos_redistribuidos = votos_custom_dict
+                else:
+                    # Usar redistribución mixta basada en datos reales
+                    print(f"[DEBUG] Aplicando redistribución mixta")
+                    df_datos, porcentajes_finales = simular_escenario_electoral(
+                        path_datos,
+                        porcentajes_objetivo={},
+                        partidos_fijos=partidos_fijos_dict,
+                        overrides_pool=overrides_pool_dict,
+                        mantener_geografia=True
+                    )
+                    votos_redistribuidos = porcentajes_finales
+                    print(f"[DEBUG] Votos redistribuidos: {votos_redistribuidos}")
+                
+            except Exception as e:
+                print(f"[ERROR] Error en redistribución de votos: {e}")
+                raise HTTPException(status_code=400, detail=f"Error en redistribución de votos: {str(e)}")
         
         # Normalizar el nombre del plan para compatibilidad con frontend
         plan_normalizado = normalizar_plan(plan)
