@@ -199,8 +199,12 @@ def asignar_rp_con_metodo(votos: np.ndarray, escanos: int, quota_method: Optiona
     # Determinar qué método usar (exclusivo)
     if quota_method is not None and divisor_method is None:
         # MODO CUOTA: usar largest_remainder de core.py
-        if quota_method.lower() in ["hare", "droop", "hb"]:
-            return largest_remainder(votos, escanos, quota_method.lower())
+        # Normalizar variantes de métodos de cuota
+        method_normalized = quota_method.lower().replace("_", "").replace("-", "")
+        
+        if method_normalized in ["hare", "droop", "hb", "imperiali"]:
+            print(f"[DEBUG] Usando método cuota: {method_normalized}")
+            return largest_remainder(votos, escanos, method_normalized)
         else:
             # Fallback a LR_ties original si método no reconocido
             print(f"[DEBUG] Método cuota '{quota_method}' no reconocido, usando LR_ties")
@@ -209,14 +213,17 @@ def asignar_rp_con_metodo(votos: np.ndarray, escanos: int, quota_method: Optiona
             
     elif divisor_method is not None and quota_method is None:
         # MODO DIVISOR: usar divisor_apportionment de core.py
-        # Normalizar variantes de Sainte-Laguë
-        method_normalized = divisor_method.lower().replace("_", "").replace("-", "")
+        # Normalizar variantes de métodos divisores
+        method_normalized = divisor_method.lower().replace("_", "").replace("-", "").replace("'", "")
+        
+        # Webster es equivalente a Sainte-Laguë
+        if method_normalized == "webster":
+            method_normalized = "saintelague"
         
         if method_normalized in ["dhondt", "saintelague"]:
             # Usar el nombre normalizado que acepta core.py
-            core_method = "saintelague" if method_normalized == "saintelague" else "dhondt"
-            print(f"[DEBUG] Usando método divisor: {core_method}")
-            return divisor_apportionment(votos, escanos, core_method)
+            print(f"[DEBUG] Usando método divisor: {method_normalized}")
+            return divisor_apportionment(votos, escanos, method_normalized)
         else:
             # Fallback a LR_ties si método no reconocido
             print(f"[DEBUG] Método divisor '{divisor_method}' no reconocido, usando LR_ties")

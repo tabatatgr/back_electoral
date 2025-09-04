@@ -8,8 +8,8 @@ import pandas as pd
 # 0) Helpers de métodos
 # =========================
 
-QuotaMethod = Literal["hare", "droop", "hb"]          # hare = Hare, droop = Droop, hb = Hare-Niemeyer
-DivisorMethod = Literal["dhondt", "saintelague"]
+QuotaMethod = Literal["hare", "droop", "hb", "imperiali"]    # hare = Hare, droop = Droop, hb = Hare-Niemeyer, imperiali = Imperiali
+DivisorMethod = Literal["dhondt", "saintelague", "webster"]  # webster = saintelague (mismo método)
 
 def largest_remainder(votes: np.ndarray, seats: int, method: QuotaMethod) -> np.ndarray:
     votes = np.maximum(0, np.nan_to_num(votes.astype(float)))
@@ -22,6 +22,9 @@ def largest_remainder(votes: np.ndarray, seats: int, method: QuotaMethod) -> np.
         q = (votes.sum() / (seats + 1)) + 1e-12
     elif method == "hb":  # Hare-Niemeyer = Hare
         q = votes.sum() / seats
+    elif method == "imperiali":
+        # Cuota Imperiali: V/(S+2)
+        q = votes.sum() / (seats + 2)
     else:
         raise ValueError("QuotaMethod no soportado")
 
@@ -42,7 +45,8 @@ def divisor_apportionment(votes: np.ndarray, seats: int, method: DivisorMethod) 
 
     if method == "dhondt":
         divisors = np.arange(1, seats + 1, dtype=float)  # 1,2,3,...
-    elif method == "saintelague":
+    elif method == "saintelague" or method == "webster":
+        # Webster es equivalente a Sainte-Laguë
         divisors = 2 * np.arange(seats, dtype=float) + 1  # 1,3,5,…
     else:
         raise ValueError("DivisorMethod no soportado")
