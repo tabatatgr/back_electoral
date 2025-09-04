@@ -209,8 +209,14 @@ def asignar_rp_con_metodo(votos: np.ndarray, escanos: int, quota_method: Optiona
             
     elif divisor_method is not None and quota_method is None:
         # MODO DIVISOR: usar divisor_apportionment de core.py
-        if divisor_method.lower() in ["dhondt", "saintelague"]:
-            return divisor_apportionment(votos, escanos, divisor_method.lower())
+        # Normalizar variantes de Sainte-Laguë
+        method_normalized = divisor_method.lower().replace("_", "").replace("-", "")
+        
+        if method_normalized in ["dhondt", "saintelague"]:
+            # Usar el nombre normalizado que acepta core.py
+            core_method = "saintelague" if method_normalized == "saintelague" else "dhondt"
+            print(f"[DEBUG] Usando método divisor: {core_method}")
+            return divisor_apportionment(votos, escanos, core_method)
         else:
             # Fallback a LR_ties si método no reconocido
             print(f"[DEBUG] Método divisor '{divisor_method}' no reconocido, usando LR_ties")
