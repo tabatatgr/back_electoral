@@ -214,6 +214,66 @@ async def root():
         "features": ["coalition_processing", "senate", "deputies"]
     }
 
+@app.get("/data/initial")
+async def get_initial_data():
+    """
+    Carga los datos iniciales por defecto: Diputados 2024 vigente
+    Este endpoint se usa para cargar los datos al inicializar el frontend
+    """
+    try:
+        print("[INFO] Cargando datos iniciales: Diputados 2024 vigente")
+        
+        # Procesar datos vigentes de diputados 2024
+        resultado = await procesar_diputados(
+            anio=2024,
+            plan="vigente"
+        )
+        
+        # Agregar metadatos de configuración inicial
+        if hasattr(resultado, 'body'):
+            import json
+            data = json.loads(resultado.body.decode())
+        else:
+            data = resultado
+            
+        # Agregar información de configuración inicial
+        data["config_inicial"] = {
+            "anio": 2024,
+            "camara": "diputados", 
+            "plan": "vigente",
+            "descripcion": "Datos vigentes de la Cámara de Diputados 2024-2027",
+            "total_escanos": 500,
+            "fecha_carga": pd.Timestamp.now().isoformat()
+        }
+        
+        # Agregar lista de partidos principales para el frontend
+        if "resultados" in data and data["resultados"]:
+            partidos_principales = []
+            for partido_data in data["resultados"]:
+                if partido_data.get("porcentaje_votos", 0) > 1:  # Solo partidos con más del 1%
+                    partidos_principales.append({
+                        "partido": partido_data["partido"],
+                        "porcentaje_votos": partido_data["porcentaje_votos"],
+                        "escanos": partido_data.get("total", partido_data.get("escanos", 0)),  # Compatibilidad con diferentes formatos
+                        "color": PARTY_COLORS.get(partido_data["partido"], "#666666")
+                    })
+            
+            data["partidos_principales"] = sorted(
+                partidos_principales, 
+                key=lambda x: x["porcentaje_votos"], 
+                reverse=True
+            )
+        
+        print(f"[INFO] Datos iniciales cargados exitosamente")
+        return data
+        
+    except Exception as e:
+        print(f"[ERROR] Error cargando datos iniciales: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error cargando datos iniciales: {str(e)}"
+        )
+
 @app.get("/health")
 async def health_check():
     """Endpoint de salud del servidor"""
@@ -229,6 +289,53 @@ async def health_check():
         return JSONResponse(
             status_code=500,
             content={"status": "unhealthy", "error": str(e)}
+        )
+
+@app.get("/data/options")
+async def get_data_options():
+    """
+    Obtiene las opciones disponibles de años, cámaras y planes
+    Útil para poblar dropdowns en el frontend
+    """
+    try:
+        # Verificar qué archivos de datos están disponibles
+        data_dir = "data"
+        available_files = os.listdir(data_dir) if os.path.exists(data_dir) else []
+        
+        # Extraer años disponibles
+        anos_diputados = []
+        anos_senado = []
+        
+        for file in available_files:
+            if file.startswith("computos_diputados_") and file.endswith(".parquet"):
+                ano = file.replace("computos_diputados_", "").replace(".parquet", "")
+                if ano.isdigit():
+                    anos_diputados.append(int(ano))
+            elif file.startswith("computos_senado_") and file.endswith(".parquet"):
+                ano = file.replace("computos_senado_", "").replace(".parquet", "")
+                if ano.isdigit():
+                    anos_senado.append(int(ano))
+        
+        return {
+            "camaras": ["diputados", "senado"],
+            "anos_disponibles": {
+                "diputados": sorted(anos_diputados, reverse=True),
+                "senado": sorted(anos_senado, reverse=True)
+            },
+            "planes": ["vigente", "actual", "personalizado"],
+            "default_config": {
+                "camara": "diputados",
+                "ano": 2024,
+                "plan": "vigente"
+            },
+            "partidos_conocidos": list(PARTY_COLORS.keys()),
+            "colores_partidos": PARTY_COLORS
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error obteniendo opciones de datos: {str(e)}"
         )
 
 @app.options("/procesar/senado")
