@@ -365,8 +365,18 @@ async def obtener_partidos_por_anio(
         df = pd.read_parquet(path_datos)
         print(f"[DEBUG] Datos cargados: {len(df)} filas")
         
-        # Calcular votos por partido
-        votos_por_partido = df.groupby('PARTIDO')['VOTOS'].sum().to_dict()
+        # Los datos están en formato ancho (cada partido es una columna)
+        # Excluir columnas no partidarias
+        columnas_excluir = ['ENTIDAD', 'DISTRITO', 'TOTAL_BOLETAS', 'CI']
+        columnas_partidos = [col for col in df.columns if col not in columnas_excluir]
+        
+        # Calcular votos por partido (suma de cada columna)
+        votos_por_partido = {}
+        for partido in columnas_partidos:
+            votos_por_partido[partido] = df[partido].sum()
+        
+        # Filtrar partidos con votos > 0
+        votos_por_partido = {k: v for k, v in votos_por_partido.items() if v > 0}
         total_votos = sum(votos_por_partido.values())
         
         print(f"[DEBUG] Total votos: {total_votos}")
