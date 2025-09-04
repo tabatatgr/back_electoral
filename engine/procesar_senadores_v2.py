@@ -451,7 +451,8 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
                           partidos_base: Optional[List[str]] = None, 
                           max_seats: int = 128, umbral: float = 0.03,
                           sistema: str = "mixto", mr_seats: int = None, rp_seats: int = None,
-                          pm_seats: int = 0, usar_coaliciones: bool = True) -> Dict:
+                          pm_seats: int = 0, quota_method: str = "hare", 
+                          divisor_method: str = "dhondt", usar_coaliciones: bool = True) -> Dict:
     """
     Procesador principal de senadores V2 - traducción directa del R
     

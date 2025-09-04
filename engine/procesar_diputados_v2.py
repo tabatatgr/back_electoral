@@ -20,6 +20,7 @@ from typing import Dict, List, Optional, Tuple
 from .recomposicion import recompose_coalitions, parties_for
 from .core import apply_overrep_cap
 from .core import DipParams
+from .core import largest_remainder, divisor_apportionment
 
 # ====================== UTILIDADES ======================
 
@@ -176,6 +177,52 @@ def partidos_de_col(col: str) -> List[str]:
         return col.split("_")
 
 # ====================== ALGORITMO LR CON DESEMPATES MEJORADO ======================
+
+def asignar_rp_con_metodo(votos: np.ndarray, escanos: int, quota_method: Optional[str] = None, 
+                         divisor_method: Optional[str] = None, seed: Optional[int] = None) -> np.ndarray:
+    """
+    Asigna escaños RP usando el método especificado (cuota O divisor)
+    
+    Args:
+        votos: Array de votos por partido
+        escanos: Número de escaños a asignar
+        quota_method: Método de cuota ("hare", "droop", None)
+        divisor_method: Método divisor ("dhondt", "saintelague", None)
+        seed: Semilla para randomización en empates
+    
+    Returns:
+        Array de escaños asignados por partido
+    """
+    if escanos <= 0 or np.sum(votos) <= 0:
+        return np.zeros_like(votos, dtype=int)
+    
+    # Determinar qué método usar (exclusivo)
+    if quota_method is not None and divisor_method is None:
+        # MODO CUOTA: usar largest_remainder de core.py
+        if quota_method.lower() in ["hare", "droop", "hb"]:
+            return largest_remainder(votos, escanos, quota_method.lower())
+        else:
+            # Fallback a LR_ties original si método no reconocido
+            print(f"[DEBUG] Método cuota '{quota_method}' no reconocido, usando LR_ties")
+            q = np.sum(votos) / escanos if escanos > 0 else 0
+            return LR_ties(votos, n=escanos, q=q, seed=seed)
+            
+    elif divisor_method is not None and quota_method is None:
+        # MODO DIVISOR: usar divisor_apportionment de core.py
+        if divisor_method.lower() in ["dhondt", "saintelague"]:
+            return divisor_apportionment(votos, escanos, divisor_method.lower())
+        else:
+            # Fallback a LR_ties si método no reconocido
+            print(f"[DEBUG] Método divisor '{divisor_method}' no reconocido, usando LR_ties")
+            q = np.sum(votos) / escanos if escanos > 0 else 0
+            return LR_ties(votos, n=escanos, q=q, seed=seed)
+            
+    else:
+        # FALLBACK: usar LR_ties original (comportamiento anterior)
+        print(f"[DEBUG] Sin método específico o ambos definidos, usando LR_ties por defecto")
+        q = np.sum(votos) / escanos if escanos > 0 else 0
+        return LR_ties(votos, n=escanos, q=q, seed=seed)
+
 
 def LR_ties(v_abs: np.ndarray, n: int, q: Optional[float] = None, seed: Optional[int] = None) -> np.ndarray:
     """
@@ -387,6 +434,8 @@ def asignadip_v2(x: np.ndarray, ssd: np.ndarray,
                  threshold: float = 0.03,
                  max_seats: int = 300, max_pp: float = 0.08,
                  apply_caps: bool = True,
+                 quota_method: Optional[str] = None,
+                 divisor_method: Optional[str] = None,
                  seed: Optional[int] = None,
                  print_debug: bool = False) -> Dict:
     """
@@ -440,8 +489,13 @@ def asignadip_v2(x: np.ndarray, ssd: np.ndarray,
         np.random.seed(seed)
     
     if m > 0 and np.sum(x_ok) > 0:
-        q = np.sum(x_ok) / m
-        s_rp_init = LR_ties(x_ok, n=m, q=q, seed=seed)
+        s_rp_init = asignar_rp_con_metodo(
+            votos=x_ok, 
+            escanos=m, 
+            quota_method=quota_method,
+            divisor_method=divisor_method,
+            seed=seed
+        )
     else:
         s_rp_init = np.zeros_like(ssd)
     
@@ -872,7 +926,8 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
         resultado = asignadip_v2(
             x=x, ssd=ssd, indep=indep, nulos=0, no_reg=0,
             m=m, S=S, threshold=umbral, max_seats=max_seats, max_pp=0.08,
-            apply_caps=True, seed=seed, print_debug=print_debug
+            apply_caps=True, quota_method=quota_method, divisor_method=divisor_method,
+            seed=seed, print_debug=print_debug
         )
         
         # Convertir resultado a formato esperado

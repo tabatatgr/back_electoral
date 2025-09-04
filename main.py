@@ -252,6 +252,8 @@ async def procesar_senado(
     mr_seats: Optional[int] = None,
     pm_seats: Optional[int] = None,
     rp_seats: Optional[int] = None,
+    reparto_mode: str = "divisor",
+    reparto_method: str = "dhondt",
     usar_coaliciones: bool = True
 ):
     """
@@ -265,6 +267,10 @@ async def procesar_senado(
     - **mr_seats**: Escaños de mayoría relativa pura para plan personalizado
     - **pm_seats**: Escaños de primera minoría para plan personalizado (opcional)
     - **rp_seats**: Escaños de representación proporcional para plan personalizado
+    - **reparto_mode**: Modo de reparto ("cuota" o "divisor")
+    - **reparto_method**: Método específico:
+      - Si reparto_mode="cuota": "hare", "droop", "imperiali"
+      - Si reparto_mode="divisor": "dhondt", "sainte_lague", "webster"
     """
     try:
         # Normalizar el nombre del plan para compatibilidad con frontend
@@ -284,6 +290,9 @@ async def procesar_senado(
             umbral_final = 0.03
             max_seats = 128
             pm_escanos = 32  # PM para sistema vigente
+            # Métodos por defecto para vigente
+            quota_method_final = "hare"
+            divisor_method_final = None
         elif plan_normalizado == "plan_a":
             # Plan A: solo RP = 96 total
             sistema_final = "rp"
@@ -292,6 +301,9 @@ async def procesar_senado(
             umbral_final = 0.03
             max_seats = 96
             pm_escanos = 0  # Sin PM en plan A
+            # Métodos por defecto para Plan A
+            quota_method_final = "hare"
+            divisor_method_final = None
         elif plan_normalizado == "plan_c":
             # Plan C: solo MR+PM = 64 total (32 MR + 32 PM, sin RP)
             sistema_final = "mr"
@@ -300,6 +312,9 @@ async def procesar_senado(
             umbral_final = 0.0
             max_seats = 64
             pm_escanos = 32  # PM para plan C
+            # Métodos por defecto para Plan C (no aplica para MR puro)
+            quota_method_final = None
+            divisor_method_final = None
         elif plan_normalizado == "personalizado":
             # Plan personalizado con parámetros del usuario
             if not sistema:
@@ -333,6 +348,18 @@ async def procesar_senado(
         else:
             raise HTTPException(status_code=400, detail="Plan no válido. Use 'vigente', 'plan_a', 'plan_c' o 'personalizado'")
             
+        # Configurar métodos de reparto según el modo seleccionado
+        if reparto_mode == "cuota":
+            quota_method_final = reparto_method
+            divisor_method_final = None
+            print(f"[DEBUG] Senado - Modo cuota seleccionado: {quota_method_final}")
+        elif reparto_mode == "divisor":
+            quota_method_final = None
+            divisor_method_final = reparto_method
+            print(f"[DEBUG] Senado - Modo divisor seleccionado: {divisor_method_final}")
+        else:
+            raise HTTPException(status_code=400, detail="reparto_mode debe ser 'cuota' o 'divisor'")
+            
         # Construir paths (corregir para 2018)
         path_parquet = f"data/computos_senado_{anio}.parquet"
         if anio == 2018:
@@ -356,6 +383,8 @@ async def procesar_senado(
             rp_seats=rp_seats_final,
             umbral=umbral_final,
             pm_seats=pm_escanos,  # ⬅️ AGREGAR PARÁMETRO PM
+            quota_method=quota_method_final,
+            divisor_method=divisor_method_final,
             usar_coaliciones=usar_coaliciones  # ⬅️ NUEVO: toggle coaliciones
         )
         
@@ -403,8 +432,8 @@ async def procesar_diputados(
     rp_seats: Optional[int] = None,
     max_seats_per_party: Optional[int] = None,
     sobrerrepresentacion: Optional[float] = None,
-    quota_method: str = "hare",
-    divisor_method: str = "dhondt",
+    reparto_mode: str = "divisor",
+    reparto_method: str = "dhondt",
     usar_coaliciones: bool = True
 ):
     """
@@ -419,8 +448,10 @@ async def procesar_diputados(
     - **rp_seats**: Escaños de representación proporcional
     - **max_seats_per_party**: Máximo de escaños por partido
     - **sobrerrepresentacion**: Límite de sobrerrepresentación como porcentaje (ej: 10.8)
-    - **quota_method**: Método de cuota ("hare", "droop", "imperiali")
-    - **divisor_method**: Método divisor ("dhondt", "sainte_lague", "webster")
+    - **reparto_mode**: Modo de reparto ("cuota" o "divisor")
+    - **reparto_method**: Método específico:
+      - Si reparto_mode="cuota": "hare", "droop", "imperiali"
+      - Si reparto_mode="divisor": "dhondt", "sainte_lague", "webster"
     """
     try:
         print(f"[DEBUG] Iniciando /procesar/diputados con:")
@@ -529,8 +560,18 @@ async def procesar_diputados(
             max_seats_per_party_final = max_seats_per_party
             print(f"[DEBUG] max_seats_per_party recibido: {max_seats_per_party}")
             print(f"[DEBUG] max_seats_per_party_final: {max_seats_per_party_final}")
-            quota_method_final = quota_method
-            divisor_method_final = divisor_method
+            
+            # Configurar métodos de reparto según el modo seleccionado
+            if reparto_mode == "cuota":
+                quota_method_final = reparto_method
+                divisor_method_final = None
+                print(f"[DEBUG] Modo cuota seleccionado: {quota_method_final}")
+            elif reparto_mode == "divisor":
+                quota_method_final = None
+                divisor_method_final = reparto_method
+                print(f"[DEBUG] Modo divisor seleccionado: {divisor_method_final}")
+            else:
+                raise HTTPException(status_code=400, detail="reparto_mode debe ser 'cuota' o 'divisor'")
         else:
             raise HTTPException(status_code=400, detail="Plan no válido. Use 'vigente', 'plan_a', 'plan_c' o 'personalizado'")
         
