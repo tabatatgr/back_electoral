@@ -375,8 +375,11 @@ async def obtener_partidos_por_anio(
         for partido in columnas_partidos:
             votos_por_partido[partido] = df[partido].sum()
         
-        # Filtrar partidos con votos > 0
-        votos_por_partido = {k: v for k, v in votos_por_partido.items() if v > 0}
+        # NO filtrar partidos con votos = 0, incluir TODOS los partidos del archivo
+        # Esto asegura consistencia entre el endpoint y el procesamiento
+        print(f"[DEBUG] Partidos en archivo: {columnas_partidos}")
+        print(f"[DEBUG] Incluyendo partidos con 0 votos para consistencia")
+        
         total_votos = sum(votos_por_partido.values())
         
         print(f"[DEBUG] Total votos: {total_votos}")
