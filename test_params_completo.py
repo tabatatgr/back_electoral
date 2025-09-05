@@ -87,7 +87,7 @@ def test_todos_los_parametros():
         # Verificar coherencia
         suma = mr_seats_final + rp_seats_final
         if suma != max_seats:
-            print(f"   ⚠️  ADVERTENCIA: MR+RP ({suma}) ≠ total ({max_seats})")
+            print(f"    ADVERTENCIA: MR+RP ({suma}) ≠ total ({max_seats})")
         else:
             print(f"   ✅ Configuración coherente")
 

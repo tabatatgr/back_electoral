@@ -602,6 +602,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                           max_seats_per_party: Optional[int] = None,
                           sobrerrepresentacion: Optional[float] = None,
                           usar_coaliciones: bool = True,
+                          votos_redistribuidos: Optional[Dict] = None,
                           seed: Optional[int] = None,
                           print_debug: bool = False) -> Dict:
     """
@@ -696,8 +697,37 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
         indep = int(recomposed['CI'].sum()) if 'CI' in recomposed.columns else 0
         
         if print_debug:
-            print(f"[DEBUG] Votos por partido: {votos_partido}")
+            print(f"[DEBUG] Votos por partido (originales): {votos_partido}")
             print(f"[DEBUG] Independientes: {indep}")
+        
+        # NUEVO: Aplicar redistribución de votos si se proporciona
+        if votos_redistribuidos:
+            if print_debug:
+                print(f"[DEBUG] Aplicando redistribución de votos: {votos_redistribuidos}")
+            
+            # Calcular total de votos válidos (excluyendo independientes)
+            total_votos_validos = sum(votos_partido.values())
+            
+            if total_votos_validos > 0:
+                # Aplicar porcentajes redistribuidos
+                votos_partido_redistribuidos = {}
+                for partido in partidos_base:
+                    if partido in votos_redistribuidos:
+                        # Usar porcentaje redistribuido
+                        nuevo_porcentaje = votos_redistribuidos[partido] / 100.0
+                        nuevos_votos = int(total_votos_validos * nuevo_porcentaje)
+                        votos_partido_redistribuidos[partido] = nuevos_votos
+                    else:
+                        # Mantener votos originales para partidos no especificados
+                        votos_partido_redistribuidos[partido] = votos_partido[partido]
+                
+                # Actualizar votos nacionales
+                votos_partido = votos_partido_redistribuidos
+                
+                if print_debug:
+                    print(f"[DEBUG] Votos por partido (redistribuidos): {votos_partido}")
+                    total_redistribuido = sum(votos_partido.values())
+                    print(f"[DEBUG] Total votos después de redistribución: {total_redistribuido}")
         
         # Calcular MR por distrito considerando coaliciones
         if coaliciones_detectadas and usar_coaliciones:

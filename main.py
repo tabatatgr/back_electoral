@@ -877,6 +877,7 @@ async def procesar_diputados(
             quota_method=quota_method_final,
             divisor_method=divisor_method_final,
             usar_coaliciones=usar_coaliciones,
+            votos_redistribuidos=votos_redistribuidos,
             print_debug=True
         )
         
