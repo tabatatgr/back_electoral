@@ -1083,8 +1083,10 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8001)
 
 # --- Google OIDC Login (integrado al app principal) ---
+
 import httpx
 from fastapi.responses import RedirectResponse
+from urllib.parse import urlencode
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
@@ -1104,8 +1106,8 @@ def login():
         "access_type": "offline",
         "prompt": "consent"
     }
-    url = httpx.URL(GOOGLE_AUTH_URL).copy_add_params(params)
-    return RedirectResponse(str(url))
+    url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
+    return RedirectResponse(url)
 
 @app.get("/auth/callback")
 async def auth_callback(request: Request):
