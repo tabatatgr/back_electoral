@@ -375,10 +375,9 @@ async def obtener_partidos_por_anio(
         for partido in columnas_partidos:
             votos_por_partido[partido] = df[partido].sum()
         
-        # NO filtrar partidos con votos = 0, incluir TODOS los partidos del archivo
-        # Esto asegura consistencia entre el endpoint y el procesamiento
-        print(f"[DEBUG] Partidos en archivo: {columnas_partidos}")
-        print(f"[DEBUG] Incluyendo partidos con 0 votos para consistencia")
+        # Filtrar partidos con votos > 0 (solo partidos que participaron)
+        votos_por_partido = {k: v for k, v in votos_por_partido.items() if v > 0}
+        print(f"[DEBUG] Partidos que participaron en {anio}: {list(votos_por_partido.keys())}")
         
         total_votos = sum(votos_por_partido.values())
         
@@ -691,9 +690,33 @@ async def procesar_diputados(
                 path_datos = f"data/computos_diputados_{anio}.parquet"
                 
                 if porcentajes_dict:
-                    # Usar porcentajes directos (nueva funcionalidad)
-                    print(f"[DEBUG] Usando porcentajes por partido: {porcentajes_dict}")
-                    votos_redistribuidos = porcentajes_dict
+                    # Filtrar partidos que SÍ existen en el archivo del año
+                    df_temp = pd.read_parquet(path_datos)
+                    columnas_excluir = ['ENTIDAD', 'DISTRITO', 'TOTAL_BOLETAS', 'CI']
+                    partidos_validos = [col for col in df_temp.columns if col not in columnas_excluir and df_temp[col].sum() > 0]
+                    
+                    # Filtrar porcentajes para solo incluir partidos válidos del año
+                    porcentajes_filtrados = {
+                        partido: porcentaje 
+                        for partido, porcentaje in porcentajes_dict.items() 
+                        if partido in partidos_validos
+                    }
+                    
+                    print(f"[DEBUG] Partidos válidos para {anio}: {partidos_validos}")
+                    print(f"[DEBUG] Porcentajes filtrados: {porcentajes_filtrados}")
+                    
+                    # Re-normalizar después del filtrado
+                    if porcentajes_filtrados:
+                        total_filtrado = sum(porcentajes_filtrados.values())
+                        if total_filtrado > 0:
+                            factor = 100.0 / total_filtrado
+                            porcentajes_filtrados = {
+                                partido: porcentaje * factor 
+                                for partido, porcentaje in porcentajes_filtrados.items()
+                            }
+                            print(f"[DEBUG] Porcentajes re-normalizados: {porcentajes_filtrados}")
+                    
+                    votos_redistribuidos = porcentajes_filtrados
                 elif votos_custom_dict:
                     # Usar porcentajes directos proporcionados (funcionalidad anterior)
                     print(f"[DEBUG] Usando porcentajes directos: {votos_custom_dict}")
