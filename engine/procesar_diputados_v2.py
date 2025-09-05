@@ -709,17 +709,56 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
             total_votos_validos = sum(votos_partido.values())
             
             if total_votos_validos > 0:
-                # Aplicar porcentajes redistribuidos
+                # CORRECCIÓN: Normalizar TODOS los partidos, no solo los especificados
                 votos_partido_redistribuidos = {}
-                for partido in partidos_base:
-                    if partido in votos_redistribuidos:
-                        # Usar porcentaje redistribuido
-                        nuevo_porcentaje = votos_redistribuidos[partido] / 100.0
-                        nuevos_votos = int(total_votos_validos * nuevo_porcentaje)
-                        votos_partido_redistribuidos[partido] = nuevos_votos
-                    else:
-                        # Mantener votos originales para partidos no especificados
-                        votos_partido_redistribuidos[partido] = votos_partido[partido]
+                
+                # Verificar si la suma de porcentajes redistribuidos es 100%
+                total_porcentajes_especificados = sum(votos_redistribuidos.values())
+                
+                if abs(total_porcentajes_especificados - 100.0) < 0.01:
+                    # Caso 1: Porcentajes suman 100% - usar directamente
+                    if print_debug:
+                        print(f"[DEBUG] Porcentajes suman 100%, aplicando directamente")
+                    
+                    for partido in partidos_base:
+                        if partido in votos_redistribuidos:
+                            nuevo_porcentaje = votos_redistribuidos[partido] / 100.0
+                            nuevos_votos = int(total_votos_validos * nuevo_porcentaje)
+                            votos_partido_redistribuidos[partido] = nuevos_votos
+                        else:
+                            # Partido no especificado = 0 votos
+                            votos_partido_redistribuidos[partido] = 0
+                else:
+                    # Caso 2: Porcentajes parciales - mantener proporcionalidad del resto
+                    if print_debug:
+                        print(f"[DEBUG] Porcentajes parciales ({total_porcentajes_especificados}%), normalizando resto")
+                    
+                    # Calcular votos para partidos especificados
+                    votos_especificados_total = 0
+                    for partido in partidos_base:
+                        if partido in votos_redistribuidos:
+                            nuevo_porcentaje = votos_redistribuidos[partido] / 100.0
+                            nuevos_votos = int(total_votos_validos * nuevo_porcentaje)
+                            votos_partido_redistribuidos[partido] = nuevos_votos
+                            votos_especificados_total += nuevos_votos
+                    
+                    # Distribuir votos restantes proporcionalmente entre partidos no especificados
+                    votos_restantes = total_votos_validos - votos_especificados_total
+                    partidos_no_especificados = [p for p in partidos_base if p not in votos_redistribuidos]
+                    
+                    if partidos_no_especificados and votos_restantes > 0:
+                        votos_originales_no_especificados = sum(votos_partido[p] for p in partidos_no_especificados)
+                        
+                        if votos_originales_no_especificados > 0:
+                            for partido in partidos_no_especificados:
+                                proporcion = votos_partido[partido] / votos_originales_no_especificados
+                                nuevos_votos = int(votos_restantes * proporcion)
+                                votos_partido_redistribuidos[partido] = nuevos_votos
+                        else:
+                            # Distribuir equitativamente si no hay votos originales
+                            votos_por_partido = votos_restantes // len(partidos_no_especificados)
+                            for partido in partidos_no_especificados:
+                                votos_partido_redistribuidos[partido] = votos_por_partido
                 
                 # Actualizar votos nacionales
                 votos_partido = votos_partido_redistribuidos
