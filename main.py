@@ -1081,3 +1081,52 @@ def normalizar_plan(plan: str) -> str:
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)
+
+# --- Google OIDC Login (integrado al app principal) ---
+import httpx
+from fastapi.responses import RedirectResponse
+
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
+
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
+
+@app.get("/login")
+def login():
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "access_type": "offline",
+        "prompt": "consent"
+    }
+    url = httpx.URL(GOOGLE_AUTH_URL).copy_add_params(params)
+    return RedirectResponse(str(url))
+
+@app.get("/auth/callback")
+async def auth_callback(request: Request):
+    code = request.query_params.get("code")
+    if not code:
+        raise HTTPException(status_code=400, detail="No code in callback")
+    async with httpx.AsyncClient() as client:
+        data = {
+            "code": code,
+            "client_id": GOOGLE_CLIENT_ID,
+            "client_secret": GOOGLE_CLIENT_SECRET,
+            "redirect_uri": GOOGLE_REDIRECT_URI,
+            "grant_type": "authorization_code"
+        }
+        token_resp = await client.post(GOOGLE_TOKEN_URL, data=data)
+        token_json = token_resp.json()
+        access_token = token_json.get("access_token")
+        if not access_token:
+            raise HTTPException(status_code=400, detail="No access token")
+        headers = {"Authorization": f"Bearer {access_token}"}
+        userinfo_resp = await client.get(GOOGLE_USERINFO_URL, headers=headers)
+        userinfo = userinfo_resp.json()
+        # Aquí puedes redirigir al frontend, devolver un JWT, o mostrar la info
+        return userinfo
