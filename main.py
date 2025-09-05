@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import pandas as pd
@@ -608,6 +608,7 @@ async def options_procesar_diputados():
 
 @app.post("/procesar/diputados")
 async def procesar_diputados(
+    request: Request,  # ← Agregar Request para leer form data
     anio: int,
     plan: str = "vigente",
     escanos_totales: Optional[int] = None,
@@ -622,8 +623,8 @@ async def procesar_diputados(
     usar_coaliciones: bool = True,
     votos_custom: Optional[str] = None,  # JSON string con redistribución
     partidos_fijos: Optional[str] = None,  # JSON string con partidos fijos
-    overrides_pool: Optional[str] = None,   # JSON string con overrides del pool
-    porcentajes_partidos: Optional[str] = None  # JSON string con porcentajes por partido
+    overrides_pool: Optional[str] = None   # JSON string con overrides del pool
+    # porcentajes_partidos se leerá del form data
 ):
     """
     Procesa los datos de diputados para un año específico con soporte de coaliciones
@@ -654,6 +655,13 @@ async def procesar_diputados(
         print(f"[DEBUG] - sistema: {sistema}")
         print(f"[DEBUG] - mr_seats: {mr_seats}")
         print(f"[DEBUG] - rp_seats: {rp_seats}")
+        
+        # LEER FORM DATA del body de la petición
+        form_data = await request.form()
+        porcentajes_partidos = form_data.get('porcentajes_partidos')
+        
+        print(f"[DEBUG] Form data recibido: {dict(form_data)}")
+        print(f"[DEBUG] porcentajes_partidos del form: {porcentajes_partidos}")
         
         # NUEVO: Procesar parámetros de redistribución de votos
         votos_redistribuidos = None
