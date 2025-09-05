@@ -782,8 +782,11 @@ async def procesar_diputados(
         elif plan_normalizado == "personalizado":
             # Plan personalizado con parámetros del usuario
             if not sistema:
-                raise HTTPException(status_code=400, detail="Sistema requerido para plan personalizado")
-            sistema_final = sistema
+                sistema_final = "mixto"  # Default: sistema mixto
+                print(f"[DEBUG] Sistema no especificado, usando default: mixto")
+            else:
+                sistema_final = sistema
+                print(f"[DEBUG] Sistema especificado: {sistema_final}")
             
             # Lógica inteligente para parámetros personalizados
             # SIEMPRE usar escanos_totales como base si está definido
@@ -901,11 +904,20 @@ async def procesar_diputados(
         )
         
     except Exception as e:
-        print(f"[ERROR] Error en /procesar/diputados: {str(e)}")
-        print(f"[ERROR] Tipo de error: {type(e).__name__}")
+        error_msg = str(e)
+        error_type = type(e).__name__
+        print(f"[ERROR] Error en /procesar/diputados: {error_msg}")
+        print(f"[ERROR] Tipo de error: {error_type}")
         import traceback
-        print(f"[ERROR] Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"Error procesando diputados: {str(e)}")
+        traceback_str = traceback.format_exc()
+        print(f"[ERROR] Traceback completo: {traceback_str}")
+        
+        # Crear mensaje de error más informativo
+        detail_msg = f"Error procesando diputados: {error_type} - {error_msg}"
+        if not error_msg.strip():
+            detail_msg = f"Error procesando diputados: {error_type} - Error silencioso en el procesamiento"
+        
+        raise HTTPException(status_code=500, detail=detail_msg)
 
 @app.get("/años-disponibles")
 async def años_disponibles():
