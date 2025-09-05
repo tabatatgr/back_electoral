@@ -1129,6 +1129,6 @@ async def auth_callback(request: Request):
             raise HTTPException(status_code=400, detail="No access token")
         headers = {"Authorization": f"Bearer {access_token}"}
         userinfo_resp = await client.get(GOOGLE_USERINFO_URL, headers=headers)
-        userinfo = userinfo_resp.json()
-        # Aquí puedes redirigir al frontend, devolver un JWT, o mostrar la info
-        return userinfo
+    userinfo = userinfo_resp.json()
+    # Redirigir al frontend de GitHub Pages después del login
+    return RedirectResponse('https://tabatatgr.github.io/tablero_electoral/')
