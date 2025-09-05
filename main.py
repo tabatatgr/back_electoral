@@ -669,6 +669,21 @@ async def procesar_diputados(
                 overrides_pool_dict = json.loads(overrides_pool) if overrides_pool else {}
                 porcentajes_dict = json.loads(porcentajes_partidos) if porcentajes_partidos else {}
                 
+                # Normalizar porcentajes a 100% si están presentes
+                if porcentajes_dict:
+                    total_porcentajes = sum(porcentajes_dict.values())
+                    print(f"[DEBUG] Suma de porcentajes recibidos: {total_porcentajes}")
+                    
+                    if total_porcentajes > 0 and abs(total_porcentajes - 100) > 0.01:
+                        print(f"[DEBUG] Normalizando porcentajes de {total_porcentajes} a 100%")
+                        factor_normalizacion = 100.0 / total_porcentajes
+                        porcentajes_dict = {
+                            partido: porcentaje * factor_normalizacion 
+                            for partido, porcentaje in porcentajes_dict.items()
+                        }
+                        nueva_suma = sum(porcentajes_dict.values())
+                        print(f"[DEBUG] Porcentajes normalizados. Nueva suma: {nueva_suma}")
+                
                 # Determinar archivo de datos
                 path_datos = f"data/computos_diputados_{anio}.parquet"
                 
