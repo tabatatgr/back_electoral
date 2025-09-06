@@ -1088,9 +1088,15 @@ import httpx
 from fastapi.responses import RedirectResponse
 from urllib.parse import urlencode
 
+
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
+
+# Prints de depuración para verificar valores de entorno
+print("[DEPURAR] GOOGLE_CLIENT_ID:", GOOGLE_CLIENT_ID)
+print("[DEPURAR] GOOGLE_CLIENT_SECRET:", GOOGLE_CLIENT_SECRET)
+print("[DEPURAR] GOOGLE_REDIRECT_URI:", GOOGLE_REDIRECT_URI)
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
