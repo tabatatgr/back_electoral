@@ -96,40 +96,66 @@ def cargar_vigente_desde_csv(camara: str, anio: int):
     Carga el resumen de escaños publicado en CSV para el plan 'vigente'.
     Devuelve un diccionario mínimo compatible con `transformar_resultado_a_formato_frontend`.
     """
-    path = "data/escaños_resumen_camaras_2018_2021_2024_oficial.csv"
-    # Soportar variantes en el nombre (ej. con sufijo _gallagher...) usando glob
-    if not os.path.exists(path):
-        pattern = "data/escaños_resumen_camaras_2018_2021_2024_oficial*.csv"
-        matches = glob.glob(pattern)
+    # Buscar archivo con glob fallback
+    default_paths = [
+        "data/escaños_resumen_camaras_2018_2021_2024_oficial.csv",
+        "data/escaños_resumen_camaras_2018_2021_2024_oficial_gallagher_ratio_promedio(2).csv"
+    ]
+    path_found = None
+    for p in default_paths:
+        if os.path.exists(p):
+            path_found = p
+            break
+    if path_found is None:
+        matches = glob.glob("data/escaños_resumen_camaras_2018_2021_2024_oficial*.csv")
         if matches:
-            path = matches[0]
-        else:
-            raise FileNotFoundError(f"Archivo de resumen no encontrado: {path}")
+            path_found = matches[0]
+    if path_found is None:
+        raise FileNotFoundError("Archivo de resumen no encontrado (buscando escaños 'vigente')")
 
-    df = pd.read_csv(path)
+    df = pd.read_csv(path_found)
     # Normalizar nombres
     camara_lower = camara.lower()
-    df['Cámara_normalizada'] = df['Cámara'].str.lower()
+    if 'Cámara' in df.columns:
+        df['Cámara_normalizada'] = df['Cámara'].str.lower()
+    elif 'Cámara ' in df.columns:
+        df['Cámara_normalizada'] = df['Cámara '].str.lower()
 
-    df_filtrado = df[(df['Año'] == anio) & (df['Cámara_normalizada'] == camara_lower)]
+    # Asegurar que columna Año exista con nombre flexible
+    año_col = 'Año' if 'Año' in df.columns else ('Año ' if 'Año ' in df.columns else None)
+    if año_col is None:
+        raise ValueError('CSV de escaños no contiene columna Año')
+
+    df_filtrado = df[(df[año_col] == anio) & (df['Cámara_normalizada'] == camara_lower)]
     if df_filtrado.empty:
-        raise ValueError(f"No hay datos 'vigente' para {camara} {anio} en {path}")
+        raise ValueError(f"No hay datos 'vigente' para {camara} {anio} en {path_found}")
 
     escanos_dict = {}
     votos_dict = {}
     for _, row in df_filtrado.iterrows():
-        partido = str(row['Partido']).strip()
+        partido = str(row.get('Partido') or row.get('PARTIDO') or '').strip()
+        if not partido:
+            continue
         try:
-            esca = int(row['Total'])
+            esca = int(row.get('Total', 0))
         except Exception:
-            esca = int(float(row['Total']))
-        # Usamos el porcentaje de escaños para construir un proxy de votos
-        porcentaje_esca = float(row.get('% Escaños', 0))
+            try:
+                esca = int(float(row.get('Total', 0)))
+            except Exception:
+                esca = 0
+        porcentaje_esca = 0
+        for col_try in ['% Escaños', '%Escaños', '% Escanos', 'Porcentaje Escaños']:
+            if col_try in df_filtrado.columns:
+                try:
+                    porcentaje_esca = float(row.get(col_try, 0))
+                    break
+                except Exception:
+                    porcentaje_esca = 0
         votos_proxy = int(porcentaje_esca * 1000) if porcentaje_esca > 0 else esca
         escanos_dict[partido] = esca
         votos_dict[partido] = votos_proxy
 
-    # Extraer KPIs oficiales si existen en el CSV (tomar valores únicos por año+camara)
+    # Extraer KPIs oficiales si existen en el CSV
     kpis_csv = {}
     if 'Gallagher' in df_filtrado.columns:
         try:
@@ -146,95 +172,78 @@ def cargar_vigente_desde_csv(camara: str, anio: int):
         except Exception:
             pass
 
-    resultado = {
+    return {
         'tot': escanos_dict,
         'votos': votos_dict,
-        'mr': {},
-        'rp': {},
         'kpis_csv': kpis_csv
     }
-    return resultado
 
-def transformar_resultado_a_formato_frontend(resultado_dict: Dict, plan: str) -> Dict:
+
+def transformar_resultado_a_formato_frontend(resultado_dict: dict, plan: str) -> dict:
     """
-    Transforma el resultado de las funciones de procesamiento al formato esperado por el frontend
+    Normaliza la salida de los procesadores (engine) al formato esperado por el frontend.
+    Entrada esperada (ej. desde procesar_diputados_v2/procesar_senadores_v2):
+      {'mr': {...}, 'rp': {...}, 'tot': {...}, 'votos': {...}, 'meta': {...}}
+    Salida:
+      { 'plan': plan, 'resultados': [...], 'kpis': {...}, 'seat_chart': [...], 'timestamp':..., 'cache_buster':... }
     """
     try:
-        # ...
-        if not resultado_dict or 'tot' not in resultado_dict:
-            return {"plan": plan, "resultados": [], "kpis": {}, "seat_chart": []}
-        
-        # Obtener datos base
-        escanos_dict = resultado_dict.get('tot', {})
-        votos_dict = resultado_dict.get('votos', {})
-        
-        # Crear lista de resultados para el frontend
+        tot = resultado_dict.get('tot', {}) if isinstance(resultado_dict, dict) else {}
+        votos = resultado_dict.get('votos', {}) if isinstance(resultado_dict, dict) else {}
+        mr = resultado_dict.get('mr', {}) if isinstance(resultado_dict, dict) else {}
+        rp = resultado_dict.get('rp', {}) if isinstance(resultado_dict, dict) else {}
+
+        total_votos = sum(votos.values()) if votos else 0
+        total_escanos = sum(tot.values()) if tot else 0
+
         resultados = []
         seat_chart = []
-        total_votos = sum(votos_dict.values()) if votos_dict else 1
-        total_escanos = sum(escanos_dict.values()) if escanos_dict else 1
-        
-        for partido in escanos_dict.keys():
-            # Incluir todos los partidos, incluso con 0 escaños
-            votos = votos_dict.get(partido, 0)
-            escanos = escanos_dict.get(partido, 0)
-            
+        partidos = sorted(set(list(tot.keys()) + list(votos.keys())))
+        for partido in partidos:
+            votos_p = int(votos.get(partido, 0))
+            escanos_p = int(tot.get(partido, 0))
+            porcentaje_votos = round((votos_p / total_votos) * 100, 2) if total_votos > 0 else 0
+            porcentaje_escanos = round((escanos_p / total_escanos) * 100, 2) if total_escanos > 0 else 0
+
             resultado_partido = {
-                "partido": partido,
-                "votos": votos,
-                "mr": resultado_dict.get('mr', {}).get(partido, 0),
-                "rp": resultado_dict.get('rp', {}).get(partido, 0), 
-                "total": escanos,
-                "porcentaje_votos": round((votos / total_votos) * 100, 2) if total_votos > 0 else 0,
-                "porcentaje_escanos": round((escanos / total_escanos) * 100, 2) if total_escanos > 0 else 0
+                'partido': partido,
+                'votos': votos_p,
+                'mr': int(mr.get(partido, 0)),
+                'rp': int(rp.get(partido, 0)),
+                'total': escanos_p,
+                'porcentaje_votos': porcentaje_votos,
+                'porcentaje_escanos': porcentaje_escanos
             }
             resultados.append(resultado_partido)
-            
-            # Agregar al seat_chart
-            seat_chart_item = {
-                "party": partido,
-                "seats": escanos,
-                "color": PARTY_COLORS.get(partido, "#888888"),
-                "percent": round((escanos / total_escanos) * 100, 2) if total_escanos > 0 else 0,
-                "votes": votos
-            }
-            seat_chart.append(seat_chart_item)
-        
-    # ...
-        
-        # Calcular KPIs
-        votos_list = [r["votos"] for r in resultados]
-        escanos_list = [r["total"] for r in resultados]
-        
-    # ...
-        
-        # Calcular métricas de proporcionalidad mejoradas
-        metricas_proporcionalidad = calcular_ratios_proporcionalidad(resultados, total_votos, total_escanos)
-        
+
+            seat_chart.append({
+                'party': partido,
+                'seats': escanos_p,
+                'color': PARTY_COLORS.get(partido, '#888888'),
+                'percent': porcentaje_escanos,
+                'votes': votos_p
+            })
+
+        # Calcular KPIs básicos con utilidades internas
+        votos_list = [r['votos'] for r in resultados]
+        escanos_list = [r['total'] for r in resultados]
         kpis = {
-            "total_votos": total_votos,
-            "total_escanos": total_escanos,
-            "gallagher": safe_gallagher(votos_list, escanos_list),
-            "mae_votos_vs_escanos": metricas_proporcionalidad["coeficiente_variacion"],  # Usar coef. variación como "MAE mejorado"
-            "ratio_promedio": metricas_proporcionalidad["ratio_promedio"],
-            "desviacion_proporcionalidad": metricas_proporcionalidad["desviacion_estandar"],
-            "partidos_con_escanos": len([r for r in resultados if r["total"] > 0])
+            'total_votos': total_votos,
+            'total_escanos': total_escanos,
+            'gallagher': safe_gallagher(votos_list, escanos_list),
+            'partidos_con_escanos': len([r for r in resultados if r['total'] > 0])
         }
-        
-    # ...
-        
+
         return {
-            "plan": plan,
-            "resultados": resultados,
-            "kpis": kpis,
-            "seat_chart": seat_chart,
-            "timestamp": datetime.now().isoformat(),
-            "cache_buster": datetime.now().timestamp()
+            'plan': plan,
+            'resultados': resultados,
+            'kpis': kpis,
+            'seat_chart': seat_chart,
+            'timestamp': datetime.now().isoformat(),
+            'cache_buster': datetime.now().timestamp()
         }
-        
     except Exception as e:
-    # ...
-        return {"plan": plan, "resultados": [], "kpis": {"error": str(e)}, "seat_chart": []}
+        return {'plan': plan, 'resultados': [], 'kpis': {'error': str(e)}, 'seat_chart': []}
 
 app = FastAPI(
     title="Backend Electoral API",
@@ -678,6 +687,9 @@ async def procesar_senado(
             resultado_formateado['seat_chart'] = seat_chart_csv
             resultado_formateado['timestamp'] = datetime.now().isoformat()
             resultado_formateado['cache_buster'] = datetime.now().timestamp()
+        # Indicar explícitamente si usamos CSV vigente (solo útil para frontend/debug)
+        resultado_formateado.setdefault('meta', {})
+        resultado_formateado['meta']['used_csv_vigente'] = bool(csv_vigente)
 
         # Retornar con headers anti-caché para evitar problemas de actualización
         return JSONResponse(
