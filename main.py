@@ -242,6 +242,14 @@ def transformar_resultado_a_formato_frontend(resultado_dict: dict, plan: str) ->
             'partidos_con_escanos': len([r for r in resultados if r['total'] > 0])
         }
 
+        # Compatibilidad: si no se proporcionó 'mae_votos_vs_escanos' pero hay 'ratio_promedio',
+        # exponer 'ratio_promedio' también como 'mae_votos_vs_escanos' para frontend legacy.
+        if kpis.get('mae_votos_vs_escanos') in (None, 0) and kpis.get('ratio_promedio') is not None:
+            try:
+                kpis['mae_votos_vs_escanos'] = float(kpis['ratio_promedio'])
+            except Exception:
+                pass
+
         return {
             'plan': plan,
             'resultados': resultados,
