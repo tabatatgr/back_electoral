@@ -224,13 +224,21 @@ def transformar_resultado_a_formato_frontend(resultado_dict: dict, plan: str) ->
                 'votes': votos_p
             })
 
-        # Calcular KPIs básicos con utilidades internas
+        # Calcular KPIs básicos y métricas de proporcionalidad
         votos_list = [r['votos'] for r in resultados]
         escanos_list = [r['total'] for r in resultados]
+
+        # Métricas de proporcionalidad (ratio promedio, desviación, coef. variación)
+        propor_m = calcular_ratios_proporcionalidad(resultados, total_votos, total_escanos)
+
         kpis = {
             'total_votos': total_votos,
             'total_escanos': total_escanos,
             'gallagher': safe_gallagher(votos_list, escanos_list),
+            'mae_votos_vs_escanos': round(safe_mae(votos_list, escanos_list), 4),
+            'ratio_promedio': propor_m.get('ratio_promedio'),
+            'desviacion_proporcionalidad': propor_m.get('desviacion_estandar'),
+            'coeficiente_variacion': propor_m.get('coeficiente_variacion'),
             'partidos_con_escanos': len([r for r in resultados if r['total'] > 0])
         }
 
