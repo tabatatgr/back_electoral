@@ -89,6 +89,65 @@ def calcular_ratios_proporcionalidad(resultados_list, total_votos, total_escanos
         "coeficiente_variacion": round(coeficiente_variacion, 4)
     }
 
+
+def cargar_vigente_desde_csv(camara: str, anio: int):
+    """
+    Carga el resumen de escaños publicado en CSV para el plan 'vigente'.
+    Devuelve un diccionario mínimo compatible con `transformar_resultado_a_formato_frontend`.
+    """
+    path = "data/escaños_resumen_camaras_2018_2021_2024_oficial.csv"
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Archivo de resumen no encontrado: {path}")
+
+    df = pd.read_csv(path)
+    # Normalizar nombres
+    camara_lower = camara.lower()
+    df['Cámara_normalizada'] = df['Cámara'].str.lower()
+
+    df_filtrado = df[(df['Año'] == anio) & (df['Cámara_normalizada'] == camara_lower)]
+    if df_filtrado.empty:
+        raise ValueError(f"No hay datos 'vigente' para {camara} {anio} en {path}")
+
+    escanos_dict = {}
+    votos_dict = {}
+    for _, row in df_filtrado.iterrows():
+        partido = str(row['Partido']).strip()
+        try:
+            esca = int(row['Total'])
+        except Exception:
+            esca = int(float(row['Total']))
+        # Usamos el porcentaje de escaños para construir un proxy de votos
+        porcentaje_esca = float(row.get('% Escaños', 0))
+        votos_proxy = int(porcentaje_esca * 1000) if porcentaje_esca > 0 else esca
+        escanos_dict[partido] = esca
+        votos_dict[partido] = votos_proxy
+
+    # Extraer KPIs oficiales si existen en el CSV (tomar valores únicos por año+camara)
+    kpis_csv = {}
+    if 'Gallagher' in df_filtrado.columns:
+        try:
+            gall_vals = df_filtrado['Gallagher'].dropna().unique()
+            if len(gall_vals) > 0:
+                kpis_csv['gallagher'] = float(gall_vals[0])
+        except Exception:
+            pass
+    if 'ratio_promedio' in df_filtrado.columns:
+        try:
+            ratio_vals = df_filtrado['ratio_promedio'].dropna().unique()
+            if len(ratio_vals) > 0:
+                kpis_csv['ratio_promedio'] = float(ratio_vals[0])
+        except Exception:
+            pass
+
+    resultado = {
+        'tot': escanos_dict,
+        'votos': votos_dict,
+        'mr': {},
+        'rp': {},
+        'kpis_csv': kpis_csv
+    }
+    return resultado
+
 def transformar_resultado_a_formato_frontend(resultado_dict: Dict, plan: str) -> Dict:
     """
     Transforma el resultado de las funciones de procesamiento al formato esperado por el frontend
@@ -450,6 +509,28 @@ async def procesar_senado(
     try:
         # Normalizar el nombre del plan para compatibilidad con frontend
         plan_normalizado = normalizar_plan(plan)
+        # Si el plan es 'vigente' usamos el CSV resumen en lugar del procesamiento completo
+        if plan_normalizado == 'vigente':
+            try:
+                resultado = cargar_vigente_desde_csv('senado', anio)
+                resultado_formateado = transformar_resultado_a_formato_frontend(resultado, plan)
+                # Si el CSV trae KPIs oficiales, sobrescribir/actualizar los KPIs calculados
+                kpis_csv = resultado.get('kpis_csv', {}) if isinstance(resultado, dict) else {}
+                if kpis_csv:
+                    if 'kpis' not in resultado_formateado or not isinstance(resultado_formateado['kpis'], dict):
+                        resultado_formateado['kpis'] = {}
+                    resultado_formateado['kpis'].update(kpis_csv)
+
+                return JSONResponse(
+                    content=resultado_formateado,
+                    headers={
+                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                        "Pragma": "no-cache",
+                        "Expires": "0"
+                    }
+                )
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Error cargando datos 'vigente' desde CSV: {str(e)}")
     # ...
         
         if anio not in [2018, 2024]:
@@ -721,6 +802,28 @@ async def procesar_diputados(
         
         # Normalizar el nombre del plan para compatibilidad con frontend
         plan_normalizado = normalizar_plan(plan)
+        # Si el plan es 'vigente' usamos el CSV resumen en lugar del procesamiento completo
+        if plan_normalizado == 'vigente':
+            try:
+                resultado = cargar_vigente_desde_csv('diputados', anio)
+                resultado_formateado = transformar_resultado_a_formato_frontend(resultado, plan)
+                # Si el CSV trae KPIs oficiales, sobrescribir/actualizar los KPIs calculados
+                kpis_csv = resultado.get('kpis_csv', {}) if isinstance(resultado, dict) else {}
+                if kpis_csv:
+                    if 'kpis' not in resultado_formateado or not isinstance(resultado_formateado['kpis'], dict):
+                        resultado_formateado['kpis'] = {}
+                    resultado_formateado['kpis'].update(kpis_csv)
+
+                return JSONResponse(
+                    content=resultado_formateado,
+                    headers={
+                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                        "Pragma": "no-cache",
+                        "Expires": "0"
+                    }
+                )
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Error cargando datos 'vigente' desde CSV: {str(e)}")
     # ...
         
         if anio not in [2018, 2021, 2024]:
@@ -1048,5 +1151,4 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)
 
-# --- Google OIDC Login (integrado al app principal) ---
 
