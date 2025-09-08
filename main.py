@@ -5,6 +5,7 @@ import pandas as pd
 import sys
 import os
 import json
+import glob
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -96,8 +97,14 @@ def cargar_vigente_desde_csv(camara: str, anio: int):
     Devuelve un diccionario mínimo compatible con `transformar_resultado_a_formato_frontend`.
     """
     path = "data/escaños_resumen_camaras_2018_2021_2024_oficial.csv"
+    # Soportar variantes en el nombre (ej. con sufijo _gallagher...) usando glob
     if not os.path.exists(path):
-        raise FileNotFoundError(f"Archivo de resumen no encontrado: {path}")
+        pattern = "data/escaños_resumen_camaras_2018_2021_2024_oficial*.csv"
+        matches = glob.glob(pattern)
+        if matches:
+            path = matches[0]
+        else:
+            raise FileNotFoundError(f"Archivo de resumen no encontrado: {path}")
 
     df = pd.read_csv(path)
     # Normalizar nombres
@@ -985,15 +992,14 @@ async def procesar_diputados(
         )
         
     except Exception as e:
+        import traceback
         error_msg = str(e)
         error_type = type(e).__name__
-    # ...
-        
-        # Crear mensaje de error más informativo
-        detail_msg = f"Error procesando diputados: {error_type} - {error_msg}"
+        tb = traceback.format_exc()
+        # Crear mensaje de error más informativo (temporalmente incluye traceback)
+        detail_msg = f"Error procesando diputados: {error_type} - {error_msg}\nTraceback:\n{tb}"
         if not error_msg.strip():
-            detail_msg = f"Error procesando diputados: {error_type} - Error silencioso en el procesamiento"
-        
+            detail_msg = f"Error procesando diputados: {error_type} - Error silencioso en el procesamiento\nTraceback:\n{tb}"
         raise HTTPException(status_code=500, detail=detail_msg)
 
 @app.get("/años-disponibles")
