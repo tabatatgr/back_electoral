@@ -94,11 +94,8 @@ def transformar_resultado_a_formato_frontend(resultado_dict: Dict, plan: str) ->
     Transforma el resultado de las funciones de procesamiento al formato esperado por el frontend
     """
     try:
-        print(f"[DEBUG] Transformando resultado para plan: {plan}")
-        print(f"[DEBUG] Keys en resultado_dict: {list(resultado_dict.keys()) if resultado_dict else 'None'}")
-        
+        # ...
         if not resultado_dict or 'tot' not in resultado_dict:
-            print(f"[DEBUG] Resultado vacío o sin 'tot', devolviendo vacío")
             return {"plan": plan, "resultados": [], "kpis": {}, "seat_chart": []}
         
         # Obtener datos base
@@ -137,19 +134,13 @@ def transformar_resultado_a_formato_frontend(resultado_dict: Dict, plan: str) ->
             }
             seat_chart.append(seat_chart_item)
         
-        print(f"[DEBUG] Seat chart construido: {len(seat_chart)} partidos")
-        for item in seat_chart:
-            print(f"[DEBUG] {item['party']}: {item['seats']} escaños")
+    # ...
         
         # Calcular KPIs
         votos_list = [r["votos"] for r in resultados]
         escanos_list = [r["total"] for r in resultados]
         
-        print(f"[DEBUG] Calculando KPIs con:")
-        print(f"[DEBUG] Total votos: {total_votos}")
-        print(f"[DEBUG] Total escaños: {total_escanos}")
-        print(f"[DEBUG] Votos por partido: {votos_list}")
-        print(f"[DEBUG] Escaños por partido: {escanos_list}")
+    # ...
         
         # Calcular métricas de proporcionalidad mejoradas
         metricas_proporcionalidad = calcular_ratios_proporcionalidad(resultados, total_votos, total_escanos)
@@ -164,7 +155,7 @@ def transformar_resultado_a_formato_frontend(resultado_dict: Dict, plan: str) ->
             "partidos_con_escanos": len([r for r in resultados if r["total"] > 0])
         }
         
-        print(f"[DEBUG] KPIs calculados: {kpis}")
+    # ...
         
         return {
             "plan": plan,
@@ -176,7 +167,7 @@ def transformar_resultado_a_formato_frontend(resultado_dict: Dict, plan: str) ->
         }
         
     except Exception as e:
-        print(f"[ERROR] Error transformando resultado: {e}")
+    # ...
         return {"plan": plan, "resultados": [], "kpis": {"error": str(e)}, "seat_chart": []}
 
 app = FastAPI(
@@ -221,7 +212,7 @@ async def get_initial_data():
     Este endpoint se usa para cargar los datos al inicializar el frontend
     """
     try:
-        print("[INFO] Cargando datos iniciales: Diputados 2024 vigente")
+    # ...
         
         # Procesar datos vigentes de diputados 2024
         resultado = await procesar_diputados(
@@ -264,11 +255,11 @@ async def get_initial_data():
                 reverse=True
             )
         
-        print(f"[INFO] Datos iniciales cargados exitosamente")
+    # ...
         return data
         
     except Exception as e:
-        print(f"[ERROR] Error cargando datos iniciales: {str(e)}")
+    # ...
         raise HTTPException(
             status_code=500, 
             detail=f"Error cargando datos iniciales: {str(e)}"
@@ -347,7 +338,7 @@ async def obtener_partidos_por_anio(
     Devuelve partidos disponibles para un año específico con sus porcentajes vigentes
     """
     try:
-        print(f"[DEBUG] Obteniendo partidos para año {anio}, cámara {camara}")
+    # ...
         
         # Cargar datos según cámara
         if camara == "diputados":
@@ -363,7 +354,7 @@ async def obtener_partidos_por_anio(
         
         # Cargar datos
         df = pd.read_parquet(path_datos)
-        print(f"[DEBUG] Datos cargados: {len(df)} filas")
+    # ...
         
         # Los datos están en formato ancho (cada partido es una columna)
         # Excluir columnas no partidarias
@@ -377,12 +368,11 @@ async def obtener_partidos_por_anio(
         
         # Filtrar partidos con votos > 0 (solo partidos que participaron)
         votos_por_partido = {k: v for k, v in votos_por_partido.items() if v > 0}
-        print(f"[DEBUG] Partidos que participaron en {anio}: {list(votos_por_partido.keys())}")
+    # ...
         
         total_votos = sum(votos_por_partido.values())
         
-        print(f"[DEBUG] Total votos: {total_votos}")
-        print(f"[DEBUG] Partidos encontrados: {list(votos_por_partido.keys())}")
+    # ...
         
         # Crear lista de partidos con porcentajes
         partidos_data = []
@@ -397,7 +387,7 @@ async def obtener_partidos_por_anio(
         # Ordenar por porcentaje descendente
         partidos_data.sort(key=lambda x: x['porcentaje_vigente'], reverse=True)
         
-        print(f"[DEBUG] Partidos procesados correctamente: {len(partidos_data)}")
+    # ...
         
         return {
             "anio": anio,
@@ -408,7 +398,7 @@ async def obtener_partidos_por_anio(
         }
         
     except Exception as e:
-        print(f"[ERROR] Error obteniendo partidos: {e}")
+    # ...
         raise HTTPException(
             status_code=400, 
             detail=f"Error obteniendo partidos para {camara} {anio}: {str(e)}"
@@ -460,7 +450,7 @@ async def procesar_senado(
     try:
         # Normalizar el nombre del plan para compatibilidad con frontend
         plan_normalizado = normalizar_plan(plan)
-        print(f"[DEBUG] Senado - Plan original: '{plan}' -> Plan normalizado: '{plan_normalizado}'")
+    # ...
         
         if anio not in [2018, 2024]:
             raise HTTPException(status_code=400, detail="Año no soportado. Use 2018 o 2024")
@@ -527,9 +517,7 @@ async def procesar_senado(
             umbral_final = umbral if umbral is not None else 0.03
             max_seats = mr_puro + rp_escanos  # Total fijo, PM no suma
             
-            print(f"[DEBUG] Plan personalizado - MR original: {mr_puro}, PM: {pm_escanos}, RP: {rp_escanos}")
-            print(f"[DEBUG] MR efectivo: {mr_final_efectivo}, PM: {pm_escanos}, Total: {max_seats}")
-            print(f"[DEBUG] Total para backend - mr_seats: {mr_seats_final}, rp_seats: {rp_seats_final}")
+            # ...
         else:
             raise HTTPException(status_code=400, detail="Plan no válido. Use 'vigente', 'plan_a', 'plan_c' o 'personalizado'")
             
@@ -537,11 +525,11 @@ async def procesar_senado(
         if reparto_mode == "cuota":
             quota_method_final = reparto_method
             divisor_method_final = None
-            print(f"[DEBUG] Senado - Modo cuota seleccionado: {quota_method_final}")
+            # ...
         elif reparto_mode == "divisor":
             quota_method_final = None
             divisor_method_final = reparto_method
-            print(f"[DEBUG] Senado - Modo divisor seleccionado: {divisor_method_final}")
+            # ...
         else:
             raise HTTPException(status_code=400, detail="reparto_mode debe ser 'cuota' o 'divisor'")
             
@@ -587,10 +575,7 @@ async def procesar_senado(
         )
         
     except Exception as e:
-        print(f"[ERROR] Error en /procesar/senado: {str(e)}")
-        print(f"[ERROR] Tipo de error: {type(e).__name__}")
-        import traceback
-        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+    # ...
         raise HTTPException(status_code=500, detail=f"Error procesando senado: {str(e)}")
 
 @app.options("/procesar/diputados")
@@ -648,29 +633,18 @@ async def procesar_diputados(
     - **porcentajes_partidos**: JSON con % de votos por partido {"MORENA":42.5, "PAN":20.7, ...}
     """
     try:
-        print(f"[DEBUG] Iniciando /procesar/diputados con:")
-        print(f"[DEBUG] - anio: {anio}")
-        print(f"[DEBUG] - plan: {plan}")
-        print(f"[DEBUG] - escanos_totales: {escanos_totales}")
-        print(f"[DEBUG] - sistema: {sistema}")
-        print(f"[DEBUG] - mr_seats: {mr_seats}")
-        print(f"[DEBUG] - rp_seats: {rp_seats}")
+    # ...
         
         # LEER FORM DATA del body de la petición
         form_data = await request.form()
         porcentajes_partidos = form_data.get('porcentajes_partidos')
         
-        print(f"[DEBUG] Form data recibido: {dict(form_data)}")
-        print(f"[DEBUG] porcentajes_partidos del form: {porcentajes_partidos}")
+    # ...
         
         # NUEVO: Procesar parámetros de redistribución de votos
         votos_redistribuidos = None
         if votos_custom or partidos_fijos or overrides_pool or porcentajes_partidos:
-            print(f"[DEBUG] Redistribución de votos solicitada:")
-            print(f"[DEBUG] - votos_custom: {votos_custom}")
-            print(f"[DEBUG] - partidos_fijos: {partidos_fijos}")
-            print(f"[DEBUG] - overrides_pool: {overrides_pool}")
-            print(f"[DEBUG] - porcentajes_partidos: {porcentajes_partidos}")
+            # ...
             
             try:
                 # Parsear JSON strings
@@ -682,17 +656,17 @@ async def procesar_diputados(
                 # Normalizar porcentajes a 100% si están presentes
                 if porcentajes_dict:
                     total_porcentajes = sum(porcentajes_dict.values())
-                    print(f"[DEBUG] Suma de porcentajes recibidos: {total_porcentajes}")
+                    # ...
                     
                     if total_porcentajes > 0 and abs(total_porcentajes - 100) > 0.01:
-                        print(f"[DEBUG] Normalizando porcentajes de {total_porcentajes} a 100%")
+                        # ...
                         factor_normalizacion = 100.0 / total_porcentajes
                         porcentajes_dict = {
                             partido: porcentaje * factor_normalizacion 
                             for partido, porcentaje in porcentajes_dict.items()
                         }
                         nueva_suma = sum(porcentajes_dict.values())
-                        print(f"[DEBUG] Porcentajes normalizados. Nueva suma: {nueva_suma}")
+                        # ...
                 
                 # Determinar archivo de datos
                 path_datos = f"data/computos_diputados_{anio}.parquet"
@@ -710,8 +684,7 @@ async def procesar_diputados(
                         if partido in partidos_validos
                     }
                     
-                    print(f"[DEBUG] Partidos válidos para {anio}: {partidos_validos}")
-                    print(f"[DEBUG] Porcentajes filtrados: {porcentajes_filtrados}")
+                    # ...
                     
                     # Re-normalizar después del filtrado
                     if porcentajes_filtrados:
@@ -722,16 +695,16 @@ async def procesar_diputados(
                                 partido: porcentaje * factor 
                                 for partido, porcentaje in porcentajes_filtrados.items()
                             }
-                            print(f"[DEBUG] Porcentajes re-normalizados: {porcentajes_filtrados}")
+                            # ...
                     
                     votos_redistribuidos = porcentajes_filtrados
                 elif votos_custom_dict:
                     # Usar porcentajes directos proporcionados (funcionalidad anterior)
-                    print(f"[DEBUG] Usando porcentajes directos: {votos_custom_dict}")
+                    # ...
                     votos_redistribuidos = votos_custom_dict
                 else:
                     # Usar redistribución mixta basada en datos reales
-                    print(f"[DEBUG] Aplicando redistribución mixta")
+                    # ...
                     df_datos, porcentajes_finales = simular_escenario_electoral(
                         path_datos,
                         porcentajes_objetivo={},
@@ -740,15 +713,15 @@ async def procesar_diputados(
                         mantener_geografia=True
                     )
                     votos_redistribuidos = porcentajes_finales
-                    print(f"[DEBUG] Votos redistribuidos: {votos_redistribuidos}")
+                    # ...
                 
             except Exception as e:
-                print(f"[ERROR] Error en redistribución de votos: {e}")
+                # ...
                 raise HTTPException(status_code=400, detail=f"Error en redistribución de votos: {str(e)}")
         
         # Normalizar el nombre del plan para compatibilidad con frontend
         plan_normalizado = normalizar_plan(plan)
-        print(f"[DEBUG] Diputados - Plan original: '{plan}' -> Plan normalizado: '{plan_normalizado}'")
+    # ...
         
         if anio not in [2018, 2021, 2024]:
             raise HTTPException(status_code=400, detail="Año no soportado. Use 2018, 2021 o 2024")
@@ -862,7 +835,7 @@ async def procesar_diputados(
         else:
             raise HTTPException(status_code=400, detail="Plan no válido. Use 'vigente', 'plan_a', 'plan_c' o 'personalizado'")
         
-        print(f"[DEBUG] Plan {plan_normalizado}: max_seats={max_seats}, mr={mr_seats_final}, rp={rp_seats_final}, umbral={umbral_final}")
+    # ...
             
         # Construir paths
         path_parquet = f"data/computos_diputados_{anio}.parquet"
@@ -893,10 +866,7 @@ async def procesar_diputados(
         )
         
         # Debug: Verificar qué devuelve procesar_diputados_v2
-        print(f"[DEBUG] Resultado de procesar_diputados_v2: {resultado}")
-        if 'tot' in resultado:
-            print(f"[DEBUG] Escaños totales por partido: {resultado['tot']}")
-            print(f"[DEBUG] Suma total escaños: {sum(resultado['tot'].values())}")
+    # ...
         
         # Transformar al formato esperado por el frontend con colores
         resultado_formateado = transformar_resultado_a_formato_frontend(resultado, plan)
@@ -914,11 +884,7 @@ async def procesar_diputados(
     except Exception as e:
         error_msg = str(e)
         error_type = type(e).__name__
-        print(f"[ERROR] Error en /procesar/diputados: {error_msg}")
-        print(f"[ERROR] Tipo de error: {error_type}")
-        import traceback
-        traceback_str = traceback.format_exc()
-        print(f"[ERROR] Traceback completo: {traceback_str}")
+    # ...
         
         # Crear mensaje de error más informativo
         detail_msg = f"Error procesando diputados: {error_type} - {error_msg}"
@@ -1075,7 +1041,7 @@ def normalizar_plan(plan: str) -> str:
     }
     
     resultado = mapeo_planes.get(plan_lower, plan_lower)
-    print(f"[DEBUG] Normalizando plan: '{plan}' -> '{resultado}'")
+    # ...
     return resultado
 
 if __name__ == "__main__":
@@ -1094,9 +1060,7 @@ GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
 
 # Prints de depuración para verificar valores de entorno
-print("[DEPURAR] GOOGLE_CLIENT_ID:", GOOGLE_CLIENT_ID)
-print("[DEPURAR] GOOGLE_CLIENT_SECRET:", GOOGLE_CLIENT_SECRET)
-print("[DEPURAR] GOOGLE_REDIRECT_URI:", GOOGLE_REDIRECT_URI)
+
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
