@@ -516,27 +516,15 @@ async def procesar_senado(
     try:
         # Normalizar el nombre del plan para compatibilidad con frontend
         plan_normalizado = normalizar_plan(plan)
-        # Si el plan es 'vigente' usamos el CSV resumen en lugar del procesamiento completo
+        # Si el plan es 'vigente' cargamos el CSV pero NO devolvemos inmediatamente:
+        # conservaremos los KPIs que se calculen a partir de los parquet y
+        # solo sustituiremos el `resultados` y `seat_chart` por la versión del CSV.
+        csv_vigente = None
         if plan_normalizado == 'vigente':
             try:
-                resultado = cargar_vigente_desde_csv('senado', anio)
-                resultado_formateado = transformar_resultado_a_formato_frontend(resultado, plan)
-                # Si el CSV trae KPIs oficiales, sobrescribir/actualizar los KPIs calculados
-                kpis_csv = resultado.get('kpis_csv', {}) if isinstance(resultado, dict) else {}
-                if kpis_csv:
-                    if 'kpis' not in resultado_formateado or not isinstance(resultado_formateado['kpis'], dict):
-                        resultado_formateado['kpis'] = {}
-                    resultado_formateado['kpis'].update(kpis_csv)
-
-                return JSONResponse(
-                    content=resultado_formateado,
-                    headers={
-                        "Cache-Control": "no-cache, no-store, must-revalidate",
-                        "Pragma": "no-cache",
-                        "Expires": "0"
-                    }
-                )
+                csv_vigente = cargar_vigente_desde_csv('senado', anio)
             except Exception as e:
+                # Si falla la carga del CSV, reportar error específico
                 raise HTTPException(status_code=500, detail=f"Error cargando datos 'vigente' desde CSV: {str(e)}")
     # ...
         
@@ -651,7 +639,44 @@ async def procesar_senado(
         
         # Transformar al formato esperado por el frontend con colores
         resultado_formateado = transformar_resultado_a_formato_frontend(resultado, plan)
-        
+
+        # Si cargamos CSV vigente, sobrescribimos `resultados` y `seat_chart`
+        if csv_vigente:
+            escanos_dict = csv_vigente.get('tot', {})
+            votos_dict = csv_vigente.get('votos', {})
+            total_votos_csv = sum(votos_dict.values()) or 1
+            total_escanos_csv = sum(escanos_dict.values()) or 1
+
+            resultados_csv = []
+            seat_chart_csv = []
+            for partido in escanos_dict.keys():
+                votos = votos_dict.get(partido, 0)
+                escanos = escanos_dict.get(partido, 0)
+                resultado_partido = {
+                    "partido": partido,
+                    "votos": votos,
+                    "mr": 0,
+                    "rp": 0,
+                    "total": escanos,
+                    "porcentaje_votos": round((votos / total_votos_csv) * 100, 2) if total_votos_csv > 0 else 0,
+                    "porcentaje_escanos": round((escanos / total_escanos_csv) * 100, 2) if total_escanos_csv > 0 else 0
+                }
+                resultados_csv.append(resultado_partido)
+
+                seat_chart_item = {
+                    "party": partido,
+                    "seats": escanos,
+                    "color": PARTY_COLORS.get(partido, "#888888"),
+                    "percent": round((escanos / total_escanos_csv) * 100, 2) if total_escanos_csv > 0 else 0,
+                    "votes": votos
+                }
+                seat_chart_csv.append(seat_chart_item)
+
+            resultado_formateado['resultados'] = resultados_csv
+            resultado_formateado['seat_chart'] = seat_chart_csv
+            resultado_formateado['timestamp'] = datetime.now().isoformat()
+            resultado_formateado['cache_buster'] = datetime.now().timestamp()
+
         # Retornar con headers anti-caché para evitar problemas de actualización
         return JSONResponse(
             content=resultado_formateado,
