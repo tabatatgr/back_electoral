@@ -54,40 +54,51 @@ def calcular_ratios_proporcionalidad(resultados_list, total_votos, total_escanos
     - coeficiente_variacion: Medida normalizada de desigualdad
     """
     import numpy as np
-    
-    if not resultados_list or total_votos == 0 or total_escanos == 0:
+
+    # Validación básica
+    if not resultados_list or total_votos is None or total_escanos is None or total_votos <= 0 or total_escanos <= 0:
         return {"ratio_promedio": 1.0, "desviacion_estandar": 0, "coeficiente_variacion": 0}
-    
+
+    # Calcular ratios por partido usando valores absolutos para evitar sesgos
     ratios = []
-    pesos_votos = []
-    
+    pesos = []
     for r in resultados_list:
-        if r["porcentaje_votos"] > 0:
-            # Ratio = % escaños / % votos (perfecto = 1.0)
-            ratio = r["porcentaje_escanos"] / r["porcentaje_votos"]
-            ratios.append(ratio)
-            pesos_votos.append(r["porcentaje_votos"])
-    
+        votos_p = r.get('votos', 0) or 0
+        escanos_p = r.get('total', 0) or 0
+        # Evitar división por cero: sólo incluir partidos con votos > 0
+        if votos_p <= 0:
+            continue
+
+        # ratio_i = (%escaños_i) / (%votos_i) = (escanos_p/total_escanos) / (votos_p/total_votos)
+        ratio_i = (escanos_p / total_escanos) / (votos_p / total_votos)
+        ratios.append(ratio_i)
+        pesos.append(votos_p)
+
     if not ratios:
         return {"ratio_promedio": 1.0, "desviacion_estandar": 0, "coeficiente_variacion": 0}
-    
-    # Promedio ponderado por votos
-    ratios = np.array(ratios)
-    pesos = np.array(pesos_votos)
-    
-    ratio_promedio = np.average(ratios, weights=pesos)
-    
-    # Desviación estándar ponderada
-    varianza_ponderada = np.average((ratios - ratio_promedio)**2, weights=pesos)
-    desviacion_estandar = np.sqrt(varianza_ponderada)
-    
-    # Coeficiente de variación (dispersión relativa)
-    coeficiente_variacion = desviacion_estandar / ratio_promedio if ratio_promedio != 0 else 0
-    
+
+    ratios_arr = np.array(ratios, dtype=float)
+    pesos_arr = np.array(pesos, dtype=float)
+
+    # Medidas alternativas para evitar que el promedio ponderado por votos sea 1
+    ratio_promedio_unweighted = float(np.mean(ratios_arr))
+    ratio_promedio_median = float(np.median(ratios_arr))
+
+    # Promedio ponderado por votos absolutos (la fórmula algebraica lo hace =1)
+    ratio_promedio_weighted = float(np.average(ratios_arr, weights=pesos_arr))
+
+    # Desviación estándar no ponderada y ponderada (usamos la no ponderada para 'desviacion_estandar')
+    desviacion_estandar = float(np.std(ratios_arr, ddof=0))
+
+    coeficiente_variacion = desviacion_estandar / ratio_promedio_median if ratio_promedio_median != 0 else 0
+
     return {
-        "ratio_promedio": round(ratio_promedio, 4),
-        "desviacion_estandar": round(desviacion_estandar, 4), 
-        "coeficiente_variacion": round(coeficiente_variacion, 4)
+        # Por compatibilidad con frontend, exponemos 'ratio_promedio' como la mediana
+        "ratio_promedio": round(ratio_promedio_median, 6),
+        "ratio_promedio_unweighted": round(ratio_promedio_unweighted, 6),
+        "ratio_promedio_ponderado_por_votos": round(ratio_promedio_weighted, 6),
+        "desviacion_estandar": round(desviacion_estandar, 6),
+        "coeficiente_variacion": round(coeficiente_variacion, 6)
     }
 
 
@@ -249,6 +260,13 @@ def transformar_resultado_a_formato_frontend(resultado_dict: dict, plan: str) ->
                 kpis['mae_votos_vs_escanos'] = float(kpis['ratio_promedio'])
             except Exception:
                 pass
+
+        # Campo explícito para frontend: relación votos/escaños promedio
+        # (nombre fijo que la UI puede leer sin ambigüedad)
+        try:
+            kpis['relacion_votos_escaños'] = float(kpis.get('ratio_promedio')) if kpis.get('ratio_promedio') is not None else None
+        except Exception:
+            kpis['relacion_votos_escaños'] = None
 
         return {
             'plan': plan,
@@ -929,9 +947,19 @@ async def procesar_diputados(
                 # Distribuir según el sistema elegido
                 if sistema_final == "mr":
                     # MR PURO: TODOS los escaños van a MR
+                    # Nota: el engine calcula MR a partir del siglado cuando
+                    # sistema=='mr' (suma distritos reales, p.ej. 300). Para
+                    # respetar una magnitud solicitada por el usuario (p.ej.
+                    # 96), enviamos el request al engine como 'mixto' y
+                    # pasamos mr_seats=max_seats para que el engine fije MR
+                    # al valor solicitado en lugar de usar el siglado.
                     mr_seats_final = max_seats
                     rp_seats_final = 0
-                    print(f"[DEBUG] Sistema MR puro: {mr_seats_final} MR + {rp_seats_final} RP = {max_seats}")
+                    # Forzamos sistema 'mixto' internamente para que el engine
+                    # utilice el parámetro mr_seats en lugar de derivar MR
+                    # del siglado/distritos.
+                    sistema_final = 'mixto'
+                    print(f"[DEBUG] Sistema MR puro solicitado; enviado al engine como 'mixto' con mr_seats={mr_seats_final}")
                 elif sistema_final == "rp":
                     # RP PURO: TODOS los escaños van a RP
                     mr_seats_final = 0
@@ -952,20 +980,50 @@ async def procesar_diputados(
             else:
                 # FALLBACK: Usuario no especificó magnitud total
                 print(f"[DEBUG] No se especificó magnitud, usando parámetros individuales o defaults")
+                # Si el usuario especificó mr_seats/rp_seats, respetarlos
                 if sistema_final == "mr":
-                    # Para MR puro, usar mr_seats como magnitud total
-                    mr_seats_final = mr_seats if mr_seats is not None else 300
-                    rp_seats_final = 0
-                    max_seats = mr_seats_final
+                    if mr_seats is not None:
+                        mr_seats_final = mr_seats
+                        rp_seats_final = 0
+                        max_seats = mr_seats_final
+                    else:
+                        # Si max_seats ya fue configurado por el plan personalizado, úsalo
+                        if 'max_seats' in locals() and max_seats:
+                            mr_seats_final = max_seats
+                            rp_seats_final = 0
+                        else:
+                            mr_seats_final = 300
+                            rp_seats_final = 0
+                            max_seats = mr_seats_final
                 elif sistema_final == "rp":
-                    # Para RP puro, usar rp_seats como magnitud total
-                    mr_seats_final = 0
-                    rp_seats_final = rp_seats if rp_seats is not None else 300
-                    max_seats = rp_seats_final
+                    if rp_seats is not None:
+                        rp_seats_final = rp_seats
+                        mr_seats_final = 0
+                        max_seats = rp_seats_final
+                    else:
+                        if 'max_seats' in locals() and max_seats:
+                            rp_seats_final = max_seats
+                            mr_seats_final = 0
+                        else:
+                            mr_seats_final = 0
+                            rp_seats_final = 300
+                            max_seats = rp_seats_final
                 else:  # mixto
-                    mr_seats_final = mr_seats if mr_seats is not None else 300
-                    rp_seats_final = rp_seats if rp_seats is not None else 200
-                    max_seats = mr_seats_final + rp_seats_final
+                    # Priorizar valores proporcionados por el usuario
+                    if mr_seats is not None or rp_seats is not None:
+                        mr_seats_final = mr_seats if mr_seats is not None else 0
+                        rp_seats_final = rp_seats if rp_seats is not None else 0
+                        max_seats = mr_seats_final + rp_seats_final
+                    else:
+                        # No hay especificaciones: no forzar valores fijos aquí.
+                        # Dejar que el engine determine la distribución si es posible
+                        # (pasando None para mr/rp). Solo asegurar una magnitud
+                        # por defecto razonable si ninguna fue definida.
+                        mr_seats_final = None
+                        rp_seats_final = None
+                        if 'max_seats' not in locals() or not max_seats:
+                            # Usamos 500 como magnitud por defecto para diputados
+                            max_seats = 500
             
             umbral_final = umbral if umbral is not None else 0.03
             max_seats_per_party_final = max_seats_per_party
