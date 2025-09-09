@@ -531,6 +531,7 @@ async def procesar_senado(
     anio: int,
     plan: str = "vigente",
     escanos_totales: Optional[int] = None,
+    req_id: Optional[str] = None,
     sistema: Optional[str] = None,
     umbral: Optional[float] = None,
     mr_seats: Optional[int] = None,
@@ -724,6 +725,9 @@ async def procesar_senado(
         # Indicar explícitamente si usamos CSV vigente (solo útil para frontend/debug)
         resultado_formateado.setdefault('meta', {})
         resultado_formateado['meta']['used_csv_vigente'] = bool(csv_vigente)
+        # Eco de request id y magnitud solicitada para correlación en frontend
+        resultado_formateado['meta']['req_id'] = req_id
+        resultado_formateado['meta']['requested_escanos_totales'] = escanos_totales
 
         # Retornar con headers anti-caché para evitar problemas de actualización
         return JSONResponse(
@@ -758,6 +762,7 @@ async def procesar_diputados(
     anio: int,
     plan: str = "vigente",
     escanos_totales: Optional[int] = None,
+    req_id: Optional[str] = None,
     sistema: Optional[str] = None,
     umbral: Optional[float] = None,
     mr_seats: Optional[int] = None,
@@ -992,9 +997,13 @@ async def procesar_diputados(
                             mr_seats_final = max_seats
                             rp_seats_final = 0
                         else:
-                            mr_seats_final = 300
+                            # No forzar 300: si el usuario no especificó magnitud
+                            # ni mr_seats, dejar que el engine derive MR a partir
+                            # del siglado (p. ej. 300 distritos) dejando mr_seats_final=None
+                            mr_seats_final = None
                             rp_seats_final = 0
-                            max_seats = mr_seats_final
+                            # max_seats se dejará sin forzar aquí
+                            print(f"[DEBUG] MR sin magnitud especificada; el engine derivará MR del siglado")
                 elif sistema_final == "rp":
                     if rp_seats is not None:
                         rp_seats_final = rp_seats
@@ -1125,6 +1134,11 @@ async def procesar_diputados(
             resultado_formateado['cache_buster'] = datetime.now().timestamp()
 
         # Retornar con headers anti-caché para evitar problemas de actualización
+        # Agregar meta útil para frontend: req_id y magnitud solicitada
+        resultado_formateado.setdefault('meta', {})
+        resultado_formateado['meta']['req_id'] = req_id
+        resultado_formateado['meta']['requested_escanos_totales'] = escanos_totales
+
         return JSONResponse(
             content=resultado_formateado,
             headers={
