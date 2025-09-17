@@ -212,10 +212,32 @@ def _pick_residue_siglado_dip(row: pd.Series, sig_map: pd.DataFrame, tokens: Lis
     # como "coalicion_key" en siglado puede no coincidir con tokens, nos quedamos con el dominante si es uno de los tokens
     hit = sig_map[(sig_map["entidad_key"]==ent) & (sig_map["distrito"]==dist)]
     if len(hit):
-        dom = str(hit.iloc[0]["dominante"])
-        if dom in tokens:
+        # 1) intentar matchear por coalición canonizada
+        try:
+            coal_key = canonizar_coalicion(tokens, 2024)
+        except Exception:
+            coal_key = None
+
+        if coal_key:
+            coal_key_norm = _normalize_text(coal_key)
+            sub = hit[hit.get('coalicion_key', '').astype(str) == coal_key_norm]
+            if len(sub):
+                dom = str(sub.iloc[0]["dominante"]).strip()
+                if dom and dom in tokens:
+                    return dom
+
+        # 2) intentar tomar una fila cuyo 'dominante' esté en los tokens
+        for _, r in hit.iterrows():
+            dom = str(r.get('dominante', '')).strip()
+            if dom and dom in tokens:
+                return dom
+
+        # 3) si no hay coincidencia, elegir el dominante disponible (primera fila)
+        dom = str(hit.iloc[0].get('dominante', '')).strip()
+        if dom:
             return dom
-    # fallback a solo
+
+    # fallback a reparto por solo si no encontramos información útil en siglado
     return _pick_residue_solo(row, parties_for_guess(tokens), tokens)
 
 def _pick_residue_siglado_sen(row: pd.Series, sig_map: pd.DataFrame, tokens: List[str]) -> str:

@@ -182,8 +182,57 @@ def procesar_diputados_parquet(path_parquet=None, partidos_base=None, anio=2024,
         if path_siglado is not None and os.path.exists(path_siglado):
             print(f"[DEBUG] Usando recomposición con siglado: {path_siglado}")
             # Normaliza nombres de columna del siglado antes de pasar a recompose_coalitions
-            siglado_df = pd.read_csv(path_siglado)
-            siglado_df.columns = [c.upper().replace('ASCII', '').replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U') for c in siglado_df.columns]
+            siglado_df = pd.read_csv(path_siglado, dtype=str)
+            # normalize siglado column names to uppercase without ASCII suffix and accents
+            siglado_df.columns = [c.upper().replace('ASCII', '').replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U').strip() for c in siglado_df.columns]
+
+            # Accept multiple possible column names for entidad/distrito and party/group
+            # Common alternatives in siglado files: ENTIDAD, ENTIDAD_ASCII, DISTRITO, DISTRITO_NUM
+            ent_col = next((c for c in ['ENTIDAD', 'ENTIDAD_ASCII', 'ENTIDAD_N'] if c in siglado_df.columns), None)
+            dist_col = next((c for c in ['DISTRITO', 'DISTRITO_NUM', 'DIST'] if c in siglado_df.columns), None)
+            gp_col = next((c for c in ['GRUPO_PARLAMENTARIO', 'PARTIDO_ORIGEN', 'PARTIDO', 'GRUPO'] if c in siglado_df.columns), None)
+
+            # Normalize ENTIDAD text and DISTRITO numeric columns
+            if ent_col:
+                siglado_df['ENTIDAD'] = siglado_df[ent_col].fillna('').apply(lambda x: x.upper().strip() if isinstance(x, str) else str(x))
+            else:
+                siglado_df['ENTIDAD'] = ''
+
+            if dist_col:
+                siglado_df['DISTRITO'] = pd.to_numeric(siglado_df[dist_col], errors='coerce').fillna(0).astype(int)
+            else:
+                # try to infer from a column named 'DISTRITO' in lowercase
+                siglado_df['DISTRITO'] = siglado_df.get('DISTRITO', 0)
+                siglado_df['DISTRITO'] = pd.to_numeric(siglado_df['DISTRITO'], errors='coerce').fillna(0).astype(int)
+
+            # pick a group/parliamentary column: prefer GRUPO_PARLAMENTARIO then PARTIDO_ORIGEN
+            if gp_col:
+                siglado_df['DOMINANTE'] = siglado_df[gp_col].fillna('').apply(lambda x: x.upper().strip() if isinstance(x, str) else str(x))
+            else:
+                # try common names
+                for candidate in ['GRUPO_PARLAMENTARIO', 'PARTIDO_ORIGEN', 'PARTIDO']:
+                    if candidate in siglado_df.columns:
+                        siglado_df['DOMINANTE'] = siglado_df[candidate].fillna('').apply(lambda x: x.upper().strip() if isinstance(x, str) else str(x))
+                        break
+                else:
+                    siglado_df['DOMINANTE'] = ''
+
+            # create a composite district id (ENTIDAD numeric if present or ENTIDAD text cleaned + DISTRITO zero-padded)
+            # try to find a numeric entidad code column
+            ent_code_col = next((c for c in ['CLAVE_ENTIDAD', 'CVE_ENT', 'CVE_ENTIDAD', 'ID_ENTIDAD'] if c in siglado_df.columns), None)
+            if ent_code_col:
+                siglado_df['ENT_CH'] = pd.to_numeric(siglado_df[ent_code_col], errors='coerce').fillna(0).astype(int).astype(str).str.zfill(2)
+            else:
+                # fallback: map ENTIDAD names to a pseudo-code by taking first two letters
+                siglado_df['ENT_CH'] = siglado_df['ENTIDAD'].apply(lambda x: ''.join([ch for ch in x if ch.isalnum()])[:2].upper().ljust(2, '0'))
+
+            siglado_df['DIST_CH'] = siglado_df['DISTRITO'].astype(int).astype(str).str.zfill(3)
+            siglado_df['DIST_UID'] = siglado_df['ENT_CH'] + '-' + siglado_df['DIST_CH']
+
+            # Ensure MR_DOMINANTE column (some downstream code checks MR_DOMINANTE)
+            if 'MR_DOMINANTE' not in siglado_df.columns:
+                siglado_df['MR_DOMINANTE'] = siglado_df['DOMINANTE']
+
             # Guardar temporalmente el siglado normalizado para que recompose_coalitions lo lea
             _sig_path = path_siglado + '.tmp_normalized.csv'
             siglado_df.to_csv(_sig_path, index=False)

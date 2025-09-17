@@ -692,6 +692,10 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     rule="equal_residue_solo", siglado_path=None
                 )
         
+        # Normalizar ENTIDAD en recomposed para emparejamientos consistentes
+        if 'ENTIDAD' in recomposed.columns:
+            recomposed['_ENT_N'] = recomposed['ENTIDAD'].astype(str).apply(lambda x: normalize_entidad_ascii(x))
+
         # Extraer votos nacionales (solo votos individuales para RP)
         votos_partido = {p: int(recomposed[p].sum()) if p in recomposed.columns else 0 for p in partidos_base}
         indep = int(recomposed['CI'].sum()) if 'CI' in recomposed.columns else 0
@@ -776,16 +780,117 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
             # Cargar siglado para saber qué partido específico gana cada distrito
             siglado_path_auto = f"data/siglado-diputados-{anio}.csv"
             siglado_df = pd.read_csv(siglado_path_auto)
+
+            # Si el siglado está incompleto (menos de 300 distritos), no lo usamos
+            # Mejor comprobación: contar pares únicos ENTIDAD+DISTRITO (clave compuesta)
+            try:
+                ent_cols = [c for c in siglado_df.columns if 'entidad' in c.lower()]
+                dist_cols = [c for c in siglado_df.columns if 'distrito' in c.lower()]
+                if ent_cols and dist_cols:
+                    entc = ent_cols[0]
+                    distc = dist_cols[0]
+                    # normalizar entidad a forma comparable
+                    siglado_df['_ENT_N'] = siglado_df[entc].astype(str).apply(lambda x: normalize_entidad_ascii(x))
+                    unique_pairs = siglado_df[['_ENT_N', distc]].drop_duplicates().shape[0]
+                else:
+                    # fallback a contar valores únicos en columna distrito
+                    unique_pairs = siglado_df[[c for c in siglado_df.columns if 'distrito' in c.lower()][0]].nunique()
+            except Exception:
+                unique_pairs = 0
+
+            if unique_pairs < 300:
+                print(f"[WARN] Siglado aparentemente incompleto ({unique_pairs} distritos). Forzando fallback a ganador por votos en parquet.")
+                coaliciones_detectadas = {}
+                # saltar la ruta de uso de siglado para evitar asignar MR parciales
+                # (el flujo posterior usará el método sin coaliciones / argmax por votos)
+                pass
             
             # Obtener todas las columnas candidatas (partidos + coaliciones)
             candidaturas_cols = cols_candidaturas_anio_con_coaliciones(recomposed, anio)
+
+            # Construir mapeos desde el siglado: postuladores por distrito y siglado_map
+            postuladores = {}   # key: (ENTIDAD_normalizada, DISTRITO) -> set(partidos que postulan)
+            siglado_map = {}     # key: (ENTIDAD_normalizada, DISTRITO) -> partido líder según convenio (PPN)
+            try:
+                # Normalizar columnas en siglado_df si existen
+                if 'entidad_ascii' in siglado_df.columns:
+                    siglado_df['_ENT_N'] = siglado_df['entidad_ascii'].astype(str).apply(lambda x: normalize_entidad_ascii(x))
+                elif 'entidad' in siglado_df.columns:
+                    siglado_df['_ENT_N'] = siglado_df['entidad'].astype(str).apply(lambda x: normalize_entidad_ascii(x))
+                else:
+                    siglado_df['_ENT_N'] = siglado_df.iloc[:,0].astype(str).apply(lambda x: normalize_entidad_ascii(x))
+
+                # Normalizar columna distrito
+                distcol = [c for c in siglado_df.columns if 'distrito' in c.lower()][0]
+                siglado_df['_DIST'] = pd.to_numeric(siglado_df[distcol], errors='coerce').fillna(0).astype(int)
+                # expose a uniform 'distrito' column for later masks
+                siglado_df['distrito'] = siglado_df['_DIST']
+
+                # Normalizar columnas de partido/coalicion
+                partido_cols = []
+                for c in ['partido_origen', 'grupo_parlamentario', 'coalicion']:
+                    if c in siglado_df.columns:
+                        partido_cols.append(c)
+
+                # Construir registros
+                for _, r in siglado_df.iterrows():
+                    ent = r.get('_ENT_N')
+                    d = int(r.get('_DIST', 0))
+                    key = (ent, d)
+                    # Nominalmente, 'partido_origen' indica el/los partidos que postularon
+                    # Legacy option: si se solicita, permitir que 'grupo_parlamentario' se
+                    # considere también como nominador local (comportamiento previo/custom).
+                    nominadores = set()
+                    if 'partido_origen' in siglado_df.columns and pd.notna(r.get('partido_origen')) and str(r.get('partido_origen')).strip() != '':
+                        nominadores.add(str(r.get('partido_origen')).strip().upper())
+                    # Si se activa legacy_postuladores consideramos 'grupo_parlamentario' como nominador
+                    if globals().get('__LEGACY_POSTULADORES_FLAG__', False):
+                        # global flag set programmatically (fallback)
+                        if 'grupo_parlamentario' in siglado_df.columns and pd.notna(r.get('grupo_parlamentario')) and str(r.get('grupo_parlamentario')).strip() != '':
+                            nominadores.add(str(r.get('grupo_parlamentario')).strip().upper())
+                    # Coalición nacional no implica nominadores locales; incluir solo si aparece explícito
+                    if 'coalicion' in siglado_df.columns and pd.notna(r.get('coalicion')):
+                        # No añadir coalicion como nominador; pero registrar PPN
+                        pass
+
+                    if len(nominadores) > 0:
+                        if key not in postuladores:
+                            postuladores[key] = set()
+                        postuladores[key].update(nominadores)
+
+                    # Registrar PPN (líder del convenio) si existe.
+                    # Por defecto preferimos 'grupo_parlamentario' como PPN (si existe),
+                    # pero la ruta de nominadores puede variar según legacy flag.
+                    ppn = None
+                    if 'ppn' in siglado_df.columns:
+                        ppn = r.get('ppn')
+                    else:
+                        # Preferimos 'grupo_parlamentario' cuando esté presente
+                        if 'grupo_parlamentario' in siglado_df.columns and pd.notna(r.get('grupo_parlamentario')):
+                            ppn = r.get('grupo_parlamentario')
+                        elif 'partido_origen' in siglado_df.columns and pd.notna(r.get('partido_origen')):
+                            ppn = r.get('partido_origen')
+
+                    if ppn is not None and pd.notna(ppn):
+                        siglado_map[key] = str(ppn).strip().upper()
+            except Exception:
+                # Si algo falla, no interrumpimos; postuladores queda vacío y usaremos fallback
+                postuladores = {}
+                siglado_map = {}
             
             # Calcular ganador por distrito
             mr_raw = {}
             distritos_procesados = 0
+            # SAFE_MODE global: evita asignaciones automáticas desde siglado
+            # cuando el PPN no coincide con el ganador inferido por votos/moda
+            SAFE_MODE = True
+            # Registrar asignaciones que incrementan mr_raw (traza por distrito)
+            mr_raw_assignments = []
             
             for _, distrito in recomposed.iterrows():
-                entidad = distrito['ENTIDAD']
+                entidad = distrito.get('ENTIDAD', '')
+                # Preferir clave normalizada si está en recomposed
+                entidad_normalizada = distrito.get('_ENT_N') if '_ENT_N' in distrito.index else normalize_entidad_ascii(entidad)
                 num_distrito = distrito['DISTRITO']
                 
                 # Encontrar candidatura con más votos
@@ -806,34 +911,118 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                         print(f"[DEBUG-SCOPE] coalicion_ganadora in coaliciones_detectadas: {coalicion_ganadora in coaliciones_detectadas if coaliciones_detectadas else 'coaliciones_detectadas is None'}")
                     
                     # Si ganó una coalición, buscar en siglado qué partido específico gana
-                    if coalicion_ganadora in coaliciones_detectadas:
+                    # Normalizar el nombre de la coalición para que coincida con las claves generadas
+                    # por extraer_coaliciones_de_siglado (se usan MAYÚSCULAS y guiones bajos)
+                    coal_norm = None
+                    try:
+                        coal_norm = str(coalicion_ganadora).upper().strip().replace(' ', '_')
+                    except Exception:
+                        coal_norm = coalicion_ganadora
+
+                    if coal_norm in coaliciones_detectadas:
                         # Normalizar entidad para matching
                         entidad_normalizada = normalize_entidad_ascii(entidad)
-                        
-                        # Buscar en siglado con normalización flexible
-                        siglado_df['entidad_normalizada'] = siglado_df['entidad_ascii'].apply(lambda x: normalize_entidad_ascii(str(x).replace(' ', '')))
-                        
+
+                        # Buscar en siglado con normalización flexible (no eliminar espacios antes)
+                        siglado_df['entidad_normalizada'] = siglado_df['entidad_ascii'].apply(lambda x: normalize_entidad_ascii(str(x)))
+
                         mask = (siglado_df['entidad_normalizada'] == entidad_normalizada) & (siglado_df['distrito'] == num_distrito)
                         distrito_siglado = siglado_df[mask]
                         
                         if len(distrito_siglado) > 0:
-                            # Obtener el partido ganador según siglado
-                            partido_ganador = distrito_siglado['grupo_parlamentario'].iloc[0]
-                            if partido_ganador in partidos_base:
-                                mr_raw[partido_ganador] = mr_raw.get(partido_ganador, 0) + 1
+                            # Trabajar sobre copia para evitar SettingWithCopyWarning
+                            ds = distrito_siglado.copy()
+                            partido_ganador = None
+
+                            # 1) Si existe 'partido_origen', usar la moda (más frecuente) como indicio del partido que tomó el escaño
+                            if 'partido_origen' in ds.columns:
+                                try:
+                                    po = ds['partido_origen'].dropna().astype(str).str.strip().str.upper()
+                                    if not po.empty:
+                                        moda_po = po.mode()
+                                        if not moda_po.empty:
+                                            candidato = moda_po.iloc[0]
+                                            if candidato in partidos_base:
+                                                partido_ganador = candidato
+                                except Exception:
+                                    partido_ganador = None
+
+                            # 2) Si no se obtuvo partido_ganador, intentar 'grupo_parlamentario' moda
+                            if partido_ganador is None and 'grupo_parlamentario' in ds.columns:
+                                try:
+                                    gp_vals_all = ds['grupo_parlamentario'].dropna().astype(str).str.strip().str.upper()
+                                    if not gp_vals_all.empty:
+                                        moda_gp = gp_vals_all.mode()
+                                        if not moda_gp.empty:
+                                            candidato2 = moda_gp.iloc[0]
+                                            if candidato2 in partidos_base:
+                                                partido_ganador = candidato2
+                                except Exception:
+                                    partido_ganador = None
+
+                            # 3) Si aun no hay ganador, usar fallback por votos directos / candidatos de la coalición
+                            if partido_ganador is None:
+                                miembros = coaliciones_detectadas.get(coal_norm, [])
+                                if miembros:
+                                    # elegir el miembro con más votos en el distrito (si existen columnas con sus votos)
+                                    votos_coal = {p: ds[p].sum() for p in miembros if p in ds.columns}
+                                    if votos_coal:
+                                        partido_fallback = max(votos_coal, key=votos_coal.get)
+                                        if partido_fallback in partidos_base:
+                                            partido_ganador = partido_fallback
+
+                            if partido_ganador and partido_ganador in partidos_base:
+                                # Aplicar regla operativa por distrito: si solo un nominador -> partido solo
+                                key = (entidad_normalizada, num_distrito)
+                                nominadores_locales = postuladores.get(key, set())
+                                if len(nominadores_locales) == 1:
+                                    solo = list(nominadores_locales)[0]
+                                    mr_raw[solo] = mr_raw.get(solo, 0) + 1
+                                    mr_raw_assignments.append({'ENTIDAD': entidad, 'DISTRITO': int(num_distrito), 'assigned_party': solo, 'reason': 'nominador_unico'})
+                                    if print_debug:
+                                        print(f"[RULE] Distrito {entidad}-{num_distrito}: nominador único {solo} -> asignado a partido solo")
+                                else:
+                                    # Si es candidatura de coalición, preferir PPN del siglado_map
+                                    # PERO: aplicar siglado solo si la coalición ganadora corresponde a
+                                    # 'SIGAMOS HACIENDO HISTORIA' (coal_norm fue calculada arriba)
+                                    if coal_norm == 'SIGAMOS_HACIENDO_HISTORIA':
+                                        ppn = siglado_map.get(key)
+                                        if ppn and ppn in partidos_base:
+                                            # SAFE_MODE: sólo asignar al PPN si coincide con el
+                                            # ganador inferido (partido_ganador). Si no coincide,
+                                            # respetar el ganador por votos (partido_ganador).
+                                            if SAFE_MODE and partido_ganador and str(ppn).upper() != str(partido_ganador).upper():
+                                                mr_raw[partido_ganador] = mr_raw.get(partido_ganador, 0) + 1
+                                                mr_raw_assignments.append({'ENTIDAD': entidad, 'DISTRITO': int(num_distrito), 'assigned_party': partido_ganador, 'reason': 'siglado_ppn_mismatch_fallback_votes'})
+                                                if print_debug:
+                                                    print(f"[RULE-SAFE] Distrito {entidad}-{num_distrito}: PPN {ppn} != ganador {partido_ganador}, usando {partido_ganador} (votos)")
+                                            else:
+                                                mr_raw[ppn] = mr_raw.get(ppn, 0) + 1
+                                                mr_raw_assignments.append({'ENTIDAD': entidad, 'DISTRITO': int(num_distrito), 'assigned_party': ppn, 'reason': 'siglado_ppn'})
+                                                if print_debug:
+                                                    print(f"[RULE] Distrito {entidad}-{num_distrito}: coalición SHH -> asignado a PPN {ppn} (siglado)")
+                                        else:
+                                            # fallback to partido_ganador if no ppn in siglado_map
+                                            mr_raw[partido_ganador] = mr_raw.get(partido_ganador, 0) + 1
+                                            mr_raw_assignments.append({'ENTIDAD': entidad, 'DISTRITO': int(num_distrito), 'assigned_party': partido_ganador, 'reason': 'siglado_missing_ppn_fallback_votes'})
+                                    else:
+                                        # No es la coalición SHH: no aplicar siglado_map, usar ganador por votos válido
+                                        mr_raw[partido_ganador] = mr_raw.get(partido_ganador, 0) + 1
                                 distrito_procesado = True
                                 if print_debug and len(mr_raw) <= 5:
-                                    print(f"[DEBUG] Distrito {entidad}-{num_distrito}: {coalicion_ganadora} -> {partido_ganador} (siglado)")
+                                    print(f"[DEBUG] Distrito {entidad}-{num_distrito}: {coalicion_ganadora} -> {partido_ganador} (siglado partido_origen mode)")
                         else:
                             # FALLBACK: No está en siglado, usar votos directos de coalición
                             if print_debug:
                                 print(f"[FALLBACK] Distrito {entidad}-{num_distrito} no en siglado, usando votos directos")
                             
-                            partidos_coalicion = partidos_de_col(coalicion_ganadora)
+                            # Intentar obtener la lista de partidos a partir del nombre normalizado primero
+                            partidos_coalicion = partidos_de_col(coal_norm if coal_norm is not None else coalicion_ganadora)
                             if len(partidos_coalicion) == 1:
                                 # Si es partido individual, asignar directamente
                                 if partidos_coalicion[0] in partidos_base:
                                     mr_raw[partidos_coalicion[0]] = mr_raw.get(partidos_coalicion[0], 0) + 1
+                                    mr_raw_assignments.append({'ENTIDAD': entidad, 'DISTRITO': int(num_distrito), 'assigned_party': partidos_coalicion[0], 'reason': 'coalicion_individual'})
                                     distrito_procesado = True
                                     if print_debug:
                                         print(f"[FALLBACK] Distrito {entidad}-{num_distrito}: {coalicion_ganadora} -> {partidos_coalicion[0]} (directo)")
@@ -846,7 +1035,16 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                                 
                                 if votos_coalicion:
                                     partido_fallback = max(votos_coalicion, key=votos_coalicion.get)
-                                    mr_raw[partido_fallback] = mr_raw.get(partido_fallback, 0) + 1
+                                    # Aplicar regla operativa: si postuladores locales indican partido único, respetarlo
+                                    key = (normalize_entidad_ascii(entidad), num_distrito)
+                                    nominadores_locales = postuladores.get(key, set())
+                                    if len(nominadores_locales) == 1:
+                                        solo = list(nominadores_locales)[0]
+                                        mr_raw[solo] = mr_raw.get(solo, 0) + 1
+                                        mr_raw_assignments.append({'ENTIDAD': entidad, 'DISTRITO': int(num_distrito), 'assigned_party': solo, 'reason': 'fallback_nominador_unico'})
+                                    else:
+                                        mr_raw[partido_fallback] = mr_raw.get(partido_fallback, 0) + 1
+                                        mr_raw_assignments.append({'ENTIDAD': entidad, 'DISTRITO': int(num_distrito), 'assigned_party': partido_fallback, 'reason': 'fallback_coalition_votes'})
                                     distrito_procesado = True
                                     if print_debug:
                                         print(f"[FALLBACK] Distrito {entidad}-{num_distrito}: {coalicion_ganadora} -> {partido_fallback} (por votos coalición)")
@@ -854,7 +1052,16 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                                     # Último recurso: primer partido de la coalición
                                     partido_fallback = partidos_coalicion[0]
                                     if partido_fallback in partidos_base:
-                                        mr_raw[partido_fallback] = mr_raw.get(partido_fallback, 0) + 1
+                                        # Aplicar regla operativa por postuladores locales
+                                        key = (normalize_entidad_ascii(entidad), num_distrito)
+                                        nominadores_locales = postuladores.get(key, set())
+                                        if len(nominadores_locales) == 1:
+                                            solo = list(nominadores_locales)[0]
+                                            mr_raw[solo] = mr_raw.get(solo, 0) + 1
+                                            mr_raw_assignments.append({'ENTIDAD': entidad, 'DISTRITO': int(num_distrito), 'assigned_party': solo, 'reason': 'fallback_firstcoal_nominador_unico'})
+                                        else:
+                                            mr_raw[partido_fallback] = mr_raw.get(partido_fallback, 0) + 1
+                                            mr_raw_assignments.append({'ENTIDAD': entidad, 'DISTRITO': int(num_distrito), 'assigned_party': partido_fallback, 'reason': 'fallback_firstcoal'})
                                         distrito_procesado = True
                                         if print_debug:
                                             print(f"[FALLBACK] Distrito {entidad}-{num_distrito}: {coalicion_ganadora} -> {partido_fallback} (primero de coalición)")
@@ -862,6 +1069,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                         # Partido individual ganó directamente
                         if coalicion_ganadora in partidos_base:
                             mr_raw[coalicion_ganadora] = mr_raw.get(coalicion_ganadora, 0) + 1
+                            mr_raw_assignments.append({'ENTIDAD': entidad, 'DISTRITO': int(num_distrito), 'assigned_party': coalicion_ganadora, 'reason': 'individual_party_win'})
                             distrito_procesado = True
                             if print_debug and len(mr_raw) <= 5:
                                 print(f"[DEBUG] Distrito {entidad}-{num_distrito}: {coalicion_ganadora} (individual)")
@@ -877,6 +1085,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     if votos_individuales:
                         ganador_individual = max(votos_individuales, key=votos_individuales.get)
                         mr_raw[ganador_individual] = mr_raw.get(ganador_individual, 0) + 1
+                        mr_raw_assignments.append({'ENTIDAD': entidad, 'DISTRITO': int(num_distrito), 'assigned_party': ganador_individual, 'reason': 'garantia_votos_individuales'})
                         distrito_procesado = True
                         if print_debug:
                             print(f"[GARANTÍA] Distrito {entidad}-{num_distrito}: {ganador_individual} (ganador directo por votos parquet)")
@@ -887,8 +1096,255 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
             if print_debug:
                 print(f"[DEBUG] Total distritos procesados para MR: {distritos_procesados}/300")
             
+            # Conteo directo desde mr_raw (intenciones basadas en siglado)
             mr_aligned = {p: int(mr_raw.get(p, 0)) for p in partidos_base}
             indep_mr = 0
+            # Preparar estructuras para debug de orígenes
+            mr_votes_counts = {}
+            usar_mr_votes = False
+
+            # --- Fallback robusto: computar ganadores por distrito usando las
+            # columnas de partidos en el dataframe recomposed. Esto evita
+            # dependencias frágiles con columnas del siglado o nombres
+            # mal normalizados que provocan que partidos como PVEM queden
+            # con 0 MR a pesar de ganar distritos por votos.
+            try:
+                # Agrupar por ENTIDAD+DISTRITO y sumar votos por partido_base,
+                # luego tomar el partido con más votos en cada distrito.
+                partidos_presentes = [p for p in partidos_base if p in recomposed.columns]
+                if partidos_presentes:
+                    winners = recomposed.groupby(['ENTIDAD', 'DISTRITO'])[partidos_presentes].sum().idxmax(axis=1)
+                    mr_votes_counts = winners.value_counts().to_dict()
+
+                    total_mr_raw = sum(mr_raw.values())
+                    total_mr_votes = sum(mr_votes_counts.values())
+
+                    # Decidir usar mr_votes_counts si el conteo por siglado fue
+                    # incompleto (menos de 300 distritos procesados) o si hay
+                    # evidencia de discrepancia (ej. un partido con 0 MR en
+                    # mr_raw pero con victorias por votos)
+                    usar_mr_votes = False
+                    if distritos_procesados < 300 or total_mr_raw != 300:
+                        usar_mr_votes = True
+                    else:
+                        # Caso específico: sólo cambiar a conteo por votos si hay
+                        # evidencia clara de que mr_raw está inconsistente para
+                        # múltiples partidos. Requerimos al menos 2 partidos con
+                        # mr_aligned==0 pero mr_votes_counts>0 para activar el
+                        # fallback. Esto evita hacer el switch por una sola
+                        # discrepancia menor que distorsione todo el resultado.
+                        problem_count = 0
+                        for p in partidos_presentes:
+                            if mr_aligned.get(p, 0) == 0 and mr_votes_counts.get(p, 0) > 0:
+                                problem_count += 1
+                                if problem_count >= 2:
+                                    usar_mr_votes = True
+                                    break
+
+                    if usar_mr_votes:
+                        if print_debug:
+                            print(f"[DEBUG] Usando conteo por votos en recomposed para MR (mr_raw suma={total_mr_raw}, mr_votes suma={total_mr_votes})")
+                        mr_aligned = {p: int(mr_votes_counts.get(p, 0)) for p in partidos_base}
+                        indep_mr = int(mr_votes_counts.get('CI', 0) if 'CI' in mr_votes_counts else 0)
+            except Exception as e:
+                if print_debug:
+                    print(f"[WARN] Fallback MR por votos falló: {e}")
+
+            # --- Debug: escribir origen de MR por partido para trazabilidad
+            try:
+                os.makedirs('outputs', exist_ok=True)
+                rows = []
+                for p in partidos_base:
+                    row = {
+                        'party': p,
+                        'mr_raw': int(mr_raw.get(p, 0)),
+                        'mr_votes': int(mr_votes_counts.get(p, 0)) if mr_votes_counts else 0,
+                        'used_source': 'votes' if usar_mr_votes else 'siglado',
+                        'mr_aligned': int(mr_aligned.get(p, 0))
+                    }
+                    rows.append(row)
+                import csv
+                with open('outputs/mr_origin_debug.csv', 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.DictWriter(f, fieldnames=['party','mr_raw','mr_votes','used_source','mr_aligned'])
+                    writer.writeheader()
+                    for r in rows:
+                        writer.writerow(r)
+                if print_debug:
+                    print('[DEBUG] MR origin debug written to outputs/mr_origin_debug.csv')
+            except Exception as e:
+                if print_debug:
+                    print(f"[WARN] No se pudo escribir mr_origin_debug: {e}")
+
+            # --- Generar CSV de auditoría por distrito
+            try:
+                audit_rows = []
+                partidos_presentes = [p for p in partidos_base if p in recomposed.columns]
+                if partidos_presentes:
+                    grouped = recomposed.groupby(['ENTIDAD','DISTRITO'])[partidos_presentes].sum()
+                    winners_raw = grouped.idxmax(axis=1)
+
+                    for (ent, dist), raw_series in grouped.iterrows():
+                        key = (normalize_entidad_ascii(ent), int(dist))
+                        nominadores_locales = sorted(list(postuladores.get(key, set()))) if postuladores else []
+                        ppn = siglado_map.get(key, '')
+
+                        # winner raw (sin filtrar por nominadores)
+                        winner_raw = winners_raw.get((ent, dist), '') if isinstance(winners_raw, pd.Series) else ''
+
+                        # Votos válidos: cero a logos que no postularon
+                        valid_series = raw_series.copy()
+                        if postuladores and key in postuladores and len(postuladores[key]) > 0:
+                            for p in list(valid_series.index):
+                                if p not in postuladores[key]:
+                                    valid_series[p] = 0
+                        # winner after filtering
+                        try:
+                            winner_valid = valid_series.idxmax()
+                        except Exception:
+                            winner_valid = winner_raw
+
+                        # mr_por_convenio: si nominadores size==1 -> ese partido; else -> ppn
+                        # SAFE_MODE: si está activado, no asignar MR a un
+                        # nominador único cuando ese partido no coincide con
+                        # el ganador por votos (valid o raw). Esto evita
+                        # asignaciones que provienen de filas siglado
+                        # potencialmente incompletas.
+                        SAFE_MODE = True
+                        if len(nominadores_locales) == 1:
+                            candidate = nominadores_locales[0]
+                            if SAFE_MODE and candidate:
+                                # comparar con ganador filtrado (valid) y raw
+                                if str(candidate).upper() != str(winner_valid).upper() and str(candidate).upper() != str(winner_raw).upper():
+                                    # No asignar por convenio: marcar vacío para ser revisado
+                                    mr_por_convenio = ''
+                                else:
+                                    mr_por_convenio = candidate
+                            else:
+                                mr_por_convenio = candidate
+                        else:
+                            # Si no hay nominadores locales pero hay ppn (siglado_ppn),
+                            # en SAFE_MODE evitamos asignar MR a ese ppn si no coincide
+                            # con el ganador por votos.
+                            if SAFE_MODE and (not nominadores_locales) and ppn:
+                                if str(ppn).upper() != str(winner_valid).upper() and str(ppn).upper() != str(winner_raw).upper():
+                                    mr_por_convenio = ''
+                                else:
+                                    mr_por_convenio = ppn
+                            else:
+                                mr_por_convenio = ppn if ppn else ''
+
+                        # placeholder for afiliación efectiva overrides (no aplicado aquí)
+                        mr_por_afiliacion = ''
+
+                        # flags
+                        pvem_raw_gana_sin_nominar = (str(winner_raw).upper() == 'PVEM' and 'PVEM' not in [p.upper() for p in nominadores_locales])
+                        incompleto_siglado = (key not in siglado_map)
+
+                        audit_rows.append({
+                            'ENTIDAD': ent,
+                            'DISTRITO': int(dist),
+                            'postuladores': '|'.join(nominadores_locales),
+                            'winner_by_votes_raw': winner_raw,
+                            'winner_by_votes_valid': winner_valid,
+                            'siglado_ppn': ppn,
+                            'mr_por_convenio': mr_por_convenio,
+                            'mr_por_afiliacion': mr_por_afiliacion,
+                            'PVEM_raw_gana_sin_nominar': int(pvem_raw_gana_sin_nominar),
+                            'incompleto_siglado': int(incompleto_siglado)
+                        })
+
+                audit_df = pd.DataFrame(audit_rows)
+                audit_path = 'outputs/mr_audit_by_district.csv'
+                if not audit_df.empty:
+                    os.makedirs(os.path.dirname(audit_path), exist_ok=True)
+                    # Aplicar overrides de afiliación si existe el CSV
+                    overrides_path = 'data/overrides_afiliacion_2024.csv'
+                    if os.path.exists(overrides_path):
+                        try:
+                            ov = pd.read_csv(overrides_path, dtype=str)
+                            # Normalizar llaves
+                            ov['ENT_N'] = ov['ENTIDAD'].astype(str).apply(lambda x: normalize_entidad_ascii(x))
+                            ov['DISTRITO'] = pd.to_numeric(ov['DISTRITO'], errors='coerce').fillna(0).astype(int)
+                            ov_map = {(normalize_entidad_ascii(r['ENTIDAD']), int(r['DISTRITO'])): str(r['PPN_afiliacion']).strip().upper() for _, r in ov.iterrows()}
+                        except Exception:
+                            ov_map = {}
+                    else:
+                        ov_map = {}
+
+                    # Rellenar mr_por_afiliacion en audit_df
+                    def apply_affiliation(row):
+                        key = (normalize_entidad_ascii(row['ENTIDAD']), int(row['DISTRITO']))
+                        if key in ov_map:
+                            return ov_map[key]
+                        # Si no hay override, dejar mr_por_convenio (normalizado)
+                        return row.get('mr_por_convenio', '')
+
+                    audit_df['mr_por_afiliacion'] = audit_df.apply(lambda r: apply_affiliation(r), axis=1)
+
+                    # Escribir audit CSV actualizado
+                    audit_df.to_csv(audit_path, index=False)
+                    if print_debug:
+                        print(f"[DEBUG] Audit MR por distrito escrito a: {audit_path}")
+
+                    # Calcular contadores para PVEM
+                    try:
+                        dfp = audit_df.copy()
+                        # Normalizar postuladores col
+                        def cnt_post(s):
+                            if pd.isna(s) or s == '':
+                                return []
+                            return [x.strip().upper() for x in str(s).split('|') if x.strip()!='']
+
+                        dfp['post_list'] = dfp['postuladores'].apply(cnt_post)
+                        # Considerar convenios PVEM solo si postuladores locales son SHH
+                        def is_shh_post(L):
+                            if not L: return False
+                            s = set([x.upper() for x in L])
+                            return s == set(['MORENA','PT','PVEM'])
+
+                        pvem_partido_solo = dfp[(dfp['post_list'].apply(len) == 1) & (dfp['post_list'].apply(lambda L: L[0] if L else '') == 'PVEM')].shape[0]
+                        pvem_convenio = dfp[(dfp['post_list'].apply(is_shh_post)) & (dfp['siglado_ppn'].astype(str).str.upper() == 'PVEM')].shape[0]
+                        pvem_total = pvem_partido_solo + pvem_convenio
+
+                        counts = {
+                            'PVEM_MR_partido_solo': pvem_partido_solo,
+                            'PVEM_MR_convenio': pvem_convenio,
+                            'PVEM_MR_total': pvem_total,
+                            'total_distritos_audit': dfp.shape[0]
+                        }
+
+                        # Escribir resumen
+                        counts_path = 'outputs/pvem_mr_counts.csv'
+                        pd.DataFrame([counts]).to_csv(counts_path, index=False)
+                        if print_debug:
+                            print(f"[DEBUG] PVEM MR counters written to: {counts_path} -> {counts}")
+                        # Export diagnostics: PVEM assigned where ganador != SHH
+                        bad_assign = dfp[(dfp['siglado_ppn'].astype(str).str.upper() == 'PVEM') & (~dfp['post_list'].apply(is_shh_post))]
+                        if not bad_assign.empty:
+                            bad_assign.to_csv('outputs/pvem_bad_assignments.csv', index=False)
+                            if print_debug:
+                                print(f"[DEBUG] PVEM bad assignments written to outputs/pvem_bad_assignments.csv (count={len(bad_assign)})")
+                    except Exception as e:
+                        if print_debug:
+                            print(f"[WARN] Error computing PVEM counters: {e}")
+            except Exception as e:
+                if print_debug:
+                    print(f"[WARN] No se pudo escribir audit CSV: {e}")
+            # Escribir traza detallada de incrementos a mr_raw por distrito
+            try:
+                if mr_raw_assignments:
+                    import csv
+                    mr_raw_path = 'outputs/mr_raw_by_district.csv'
+                    with open(mr_raw_path, 'w', newline='', encoding='utf-8') as f:
+                        writer = csv.DictWriter(f, fieldnames=['ENTIDAD','DISTRITO','assigned_party','reason'])
+                        writer.writeheader()
+                        for r in mr_raw_assignments:
+                            writer.writerow(r)
+                    if print_debug:
+                        print(f"[DEBUG] MR raw assignments written to: {mr_raw_path} (count={len(mr_raw_assignments)})")
+            except Exception as e:
+                if print_debug:
+                    print(f"[WARN] No se pudo escribir mr_raw_by_district: {e}")
         else:
             # Usar método tradicional sin coaliciones (partido individual con más votos gana)
             if print_debug:
@@ -898,10 +1354,12 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
             
             from .core import mr_by_siglado
             try:
+                # Prefer 'WINNERS' column if recomposition produced explicit per-district winners
+                gp_choice = 'WINNERS' if 'WINNERS' in recomposed.columns else ("MR_DOMINANTE" if "MR_DOMINANTE" in recomposed.columns else "DOMINANTE")
                 mr, indep_mr = mr_by_siglado(
                     winners_df=recomposed,
                     group_keys=["ENTIDAD", "DISTRITO"],
-                    gp_col="MR_DOMINANTE" if "MR_DOMINANTE" in recomposed.columns else "DOMINANTE",
+                    gp_col=gp_choice,
                     parties=partidos_base
                 )
                 mr_aligned = {p: int(mr.get(p, 0)) for p in partidos_base}

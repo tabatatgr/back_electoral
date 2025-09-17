@@ -1,0 +1,17 @@
+C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\__pycache__
+C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\redistribucion_simple.py
+C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\test_correccion_final.py
+C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\test_correccion_sistema.py
+C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\test_debug_detallado.py
+C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\test_debug_planes.py
+C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\test_debug_porcentajes.py
+C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\test_directo_porcentajes.py
+C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\test_endpoint_final.py
+C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\test_extremo_backend.py
+C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\test_fix_porcentajes.py
+C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\test_pm_sobrer.py
+C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\test_simulacion_frontend.py
+C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\test_solo_porcentajes.py
+C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\test_todos_sistemas.py
+C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\engine\__pycache__
+C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\engine\procesar_diputados_v3.py
