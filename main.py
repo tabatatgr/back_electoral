@@ -1,11 +1,10 @@
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import pandas as pd
 import sys
 import os
 import json
-import glob
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -54,230 +53,131 @@ def calcular_ratios_proporcionalidad(resultados_list, total_votos, total_escanos
     - coeficiente_variacion: Medida normalizada de desigualdad
     """
     import numpy as np
-
-    # Validación básica
-    if not resultados_list or total_votos is None or total_escanos is None or total_votos <= 0 or total_escanos <= 0:
+    
+    if not resultados_list or total_votos == 0 or total_escanos == 0:
         return {"ratio_promedio": 1.0, "desviacion_estandar": 0, "coeficiente_variacion": 0}
-
-    # Calcular ratios por partido usando valores absolutos para evitar sesgos
+    
     ratios = []
-    pesos = []
+    pesos_votos = []
+    
     for r in resultados_list:
-        votos_p = r.get('votos', 0) or 0
-        escanos_p = r.get('total', 0) or 0
-        # Evitar división por cero: sólo incluir partidos con votos > 0
-        if votos_p <= 0:
-            continue
-
-        # ratio_i = (%escaños_i) / (%votos_i) = (escanos_p/total_escanos) / (votos_p/total_votos)
-        ratio_i = (escanos_p / total_escanos) / (votos_p / total_votos)
-        ratios.append(ratio_i)
-        pesos.append(votos_p)
-
+        if r["porcentaje_votos"] > 0:
+            # Ratio = % escaños / % votos (perfecto = 1.0)
+            ratio = r["porcentaje_escanos"] / r["porcentaje_votos"]
+            ratios.append(ratio)
+            pesos_votos.append(r["porcentaje_votos"])
+    
     if not ratios:
         return {"ratio_promedio": 1.0, "desviacion_estandar": 0, "coeficiente_variacion": 0}
-
-    ratios_arr = np.array(ratios, dtype=float)
-    pesos_arr = np.array(pesos, dtype=float)
-
-    # Medidas alternativas para evitar que el promedio ponderado por votos sea 1
-    ratio_promedio_unweighted = float(np.mean(ratios_arr))
-    ratio_promedio_median = float(np.median(ratios_arr))
-
-    # Promedio ponderado por votos absolutos (la fórmula algebraica lo hace =1)
-    ratio_promedio_weighted = float(np.average(ratios_arr, weights=pesos_arr))
-
-    # Desviación estándar no ponderada y ponderada (usamos la no ponderada para 'desviacion_estandar')
-    desviacion_estandar = float(np.std(ratios_arr, ddof=0))
-
-    coeficiente_variacion = desviacion_estandar / ratio_promedio_median if ratio_promedio_median != 0 else 0
-
+    
+    # Promedio ponderado por votos
+    ratios = np.array(ratios)
+    pesos = np.array(pesos_votos)
+    
+    ratio_promedio = np.average(ratios, weights=pesos)
+    
+    # Desviación estándar ponderada
+    varianza_ponderada = np.average((ratios - ratio_promedio)**2, weights=pesos)
+    desviacion_estandar = np.sqrt(varianza_ponderada)
+    
+    # Coeficiente de variación (dispersión relativa)
+    coeficiente_variacion = desviacion_estandar / ratio_promedio if ratio_promedio != 0 else 0
+    
     return {
-        # Por compatibilidad con frontend, exponemos 'ratio_promedio' como la mediana
-        "ratio_promedio": round(ratio_promedio_median, 6),
-        "ratio_promedio_unweighted": round(ratio_promedio_unweighted, 6),
-        "ratio_promedio_ponderado_por_votos": round(ratio_promedio_weighted, 6),
-        "desviacion_estandar": round(desviacion_estandar, 6),
-        "coeficiente_variacion": round(coeficiente_variacion, 6)
+        "ratio_promedio": round(ratio_promedio, 4),
+        "desviacion_estandar": round(desviacion_estandar, 4), 
+        "coeficiente_variacion": round(coeficiente_variacion, 4)
     }
 
-
-def cargar_vigente_desde_csv(camara: str, anio: int):
+def transformar_resultado_a_formato_frontend(resultado_dict: Dict, plan: str) -> Dict:
     """
-    Carga el resumen de escaños publicado en CSV para el plan 'vigente'.
-    Devuelve un diccionario mínimo compatible con `transformar_resultado_a_formato_frontend`.
-    """
-    # Buscar archivo con glob fallback
-    default_paths = [
-        "data/escaños_resumen_camaras_2018_2021_2024_oficial.csv",
-        "data/escaños_resumen_camaras_2018_2021_2024_oficial_gallagher_ratio_promedio(2).csv"
-    ]
-    path_found = None
-    for p in default_paths:
-        if os.path.exists(p):
-            path_found = p
-            break
-    if path_found is None:
-        matches = glob.glob("data/escaños_resumen_camaras_2018_2021_2024_oficial*.csv")
-        if matches:
-            path_found = matches[0]
-    if path_found is None:
-        raise FileNotFoundError("Archivo de resumen no encontrado (buscando escaños 'vigente')")
-
-    df = pd.read_csv(path_found)
-    # Normalizar nombres
-    camara_lower = camara.lower()
-    if 'Cámara' in df.columns:
-        df['Cámara_normalizada'] = df['Cámara'].str.lower()
-    elif 'Cámara ' in df.columns:
-        df['Cámara_normalizada'] = df['Cámara '].str.lower()
-
-    # Asegurar que columna Año exista con nombre flexible
-    año_col = 'Año' if 'Año' in df.columns else ('Año ' if 'Año ' in df.columns else None)
-    if año_col is None:
-        raise ValueError('CSV de escaños no contiene columna Año')
-
-    df_filtrado = df[(df[año_col] == anio) & (df['Cámara_normalizada'] == camara_lower)]
-    if df_filtrado.empty:
-        raise ValueError(f"No hay datos 'vigente' para {camara} {anio} en {path_found}")
-
-    escanos_dict = {}
-    votos_dict = {}
-    for _, row in df_filtrado.iterrows():
-        partido = str(row.get('Partido') or row.get('PARTIDO') or '').strip()
-        if not partido:
-            continue
-        try:
-            esca = int(row.get('Total', 0))
-        except Exception:
-            try:
-                esca = int(float(row.get('Total', 0)))
-            except Exception:
-                esca = 0
-        porcentaje_esca = 0
-        for col_try in ['% Escaños', '%Escaños', '% Escanos', 'Porcentaje Escaños']:
-            if col_try in df_filtrado.columns:
-                try:
-                    porcentaje_esca = float(row.get(col_try, 0))
-                    break
-                except Exception:
-                    porcentaje_esca = 0
-        votos_proxy = int(porcentaje_esca * 1000) if porcentaje_esca > 0 else esca
-        escanos_dict[partido] = esca
-        votos_dict[partido] = votos_proxy
-
-    # Extraer KPIs oficiales si existen en el CSV
-    kpis_csv = {}
-    if 'Gallagher' in df_filtrado.columns:
-        try:
-            gall_vals = df_filtrado['Gallagher'].dropna().unique()
-            if len(gall_vals) > 0:
-                kpis_csv['gallagher'] = float(gall_vals[0])
-        except Exception:
-            pass
-    if 'ratio_promedio' in df_filtrado.columns:
-        try:
-            ratio_vals = df_filtrado['ratio_promedio'].dropna().unique()
-            if len(ratio_vals) > 0:
-                kpis_csv['ratio_promedio'] = float(ratio_vals[0])
-        except Exception:
-            pass
-
-    return {
-        'tot': escanos_dict,
-        'votos': votos_dict,
-        'kpis_csv': kpis_csv
-    }
-
-
-def transformar_resultado_a_formato_frontend(resultado_dict: dict, plan: str) -> dict:
-    """
-    Normaliza la salida de los procesadores (engine) al formato esperado por el frontend.
-    Entrada esperada (ej. desde procesar_diputados_v2/procesar_senadores_v2):
-      {'mr': {...}, 'rp': {...}, 'tot': {...}, 'votos': {...}, 'meta': {...}}
-    Salida:
-      { 'plan': plan, 'resultados': [...], 'kpis': {...}, 'seat_chart': [...], 'timestamp':..., 'cache_buster':... }
+    Transforma el resultado de las funciones de procesamiento al formato esperado por el frontend
     """
     try:
-        tot = resultado_dict.get('tot', {}) if isinstance(resultado_dict, dict) else {}
-        votos = resultado_dict.get('votos', {}) if isinstance(resultado_dict, dict) else {}
-        mr = resultado_dict.get('mr', {}) if isinstance(resultado_dict, dict) else {}
-        rp = resultado_dict.get('rp', {}) if isinstance(resultado_dict, dict) else {}
-
-        total_votos = sum(votos.values()) if votos else 0
-        total_escanos = sum(tot.values()) if tot else 0
-
+        print(f"[DEBUG] Transformando resultado para plan: {plan}")
+        print(f"[DEBUG] Keys en resultado_dict: {list(resultado_dict.keys()) if resultado_dict else 'None'}")
+        
+        if not resultado_dict or 'tot' not in resultado_dict:
+            print(f"[DEBUG] Resultado vacío o sin 'tot', devolviendo vacío")
+            return {"plan": plan, "resultados": [], "kpis": {}, "seat_chart": []}
+        
+        # Obtener datos base
+        escanos_dict = resultado_dict.get('tot', {})
+        votos_dict = resultado_dict.get('votos', {})
+        
+        # Crear lista de resultados para el frontend
         resultados = []
         seat_chart = []
-        partidos = sorted(set(list(tot.keys()) + list(votos.keys())))
-        for partido in partidos:
-            votos_p = int(votos.get(partido, 0))
-            escanos_p = int(tot.get(partido, 0))
-            porcentaje_votos = round((votos_p / total_votos) * 100, 2) if total_votos > 0 else 0
-            porcentaje_escanos = round((escanos_p / total_escanos) * 100, 2) if total_escanos > 0 else 0
-
+        total_votos = sum(votos_dict.values()) if votos_dict else 1
+        total_escanos = sum(escanos_dict.values()) if escanos_dict else 1
+        
+        for partido in escanos_dict.keys():
+            # Incluir todos los partidos, incluso con 0 escaños
+            votos = votos_dict.get(partido, 0)
+            escanos = escanos_dict.get(partido, 0)
+            
             resultado_partido = {
-                'partido': partido,
-                'votos': votos_p,
-                'mr': int(mr.get(partido, 0)),
-                'rp': int(rp.get(partido, 0)),
-                'total': escanos_p,
-                'porcentaje_votos': porcentaje_votos,
-                'porcentaje_escanos': porcentaje_escanos
+                "partido": partido,
+                "votos": votos,
+                "mr": resultado_dict.get('mr', {}).get(partido, 0),
+                "rp": resultado_dict.get('rp', {}).get(partido, 0), 
+                "total": escanos,
+                "porcentaje_votos": round((votos / total_votos) * 100, 2) if total_votos > 0 else 0,
+                "porcentaje_escanos": round((escanos / total_escanos) * 100, 2) if total_escanos > 0 else 0
             }
             resultados.append(resultado_partido)
-
-            seat_chart.append({
-                'party': partido,
-                'seats': escanos_p,
-                'color': PARTY_COLORS.get(partido, '#888888'),
-                'percent': porcentaje_escanos,
-                'votes': votos_p
-            })
-
-        # Calcular KPIs básicos y métricas de proporcionalidad
-        votos_list = [r['votos'] for r in resultados]
-        escanos_list = [r['total'] for r in resultados]
-
-        # Métricas de proporcionalidad (ratio promedio, desviación, coef. variación)
-        propor_m = calcular_ratios_proporcionalidad(resultados, total_votos, total_escanos)
-
+            
+            # Agregar al seat_chart
+            seat_chart_item = {
+                "party": partido,
+                "seats": escanos,
+                "color": PARTY_COLORS.get(partido, "#888888"),
+                "percent": round((escanos / total_escanos) * 100, 2) if total_escanos > 0 else 0,
+                "votes": votos
+            }
+            seat_chart.append(seat_chart_item)
+        
+        print(f"[DEBUG] Seat chart construido: {len(seat_chart)} partidos")
+        for item in seat_chart:
+            print(f"[DEBUG] {item['party']}: {item['seats']} escaños")
+        
+        # Calcular KPIs
+        votos_list = [r["votos"] for r in resultados]
+        escanos_list = [r["total"] for r in resultados]
+        
+        print(f"[DEBUG] Calculando KPIs con:")
+        print(f"[DEBUG] Total votos: {total_votos}")
+        print(f"[DEBUG] Total escaños: {total_escanos}")
+        print(f"[DEBUG] Votos por partido: {votos_list}")
+        print(f"[DEBUG] Escaños por partido: {escanos_list}")
+        
+        # Calcular métricas de proporcionalidad mejoradas
+        metricas_proporcionalidad = calcular_ratios_proporcionalidad(resultados, total_votos, total_escanos)
+        
         kpis = {
-            'total_votos': total_votos,
-            'total_escanos': total_escanos,
-            'gallagher': safe_gallagher(votos_list, escanos_list),
-            'mae_votos_vs_escanos': round(safe_mae(votos_list, escanos_list), 4),
-            'ratio_promedio': propor_m.get('ratio_promedio'),
-            'desviacion_proporcionalidad': propor_m.get('desviacion_estandar'),
-            'coeficiente_variacion': propor_m.get('coeficiente_variacion'),
-            'partidos_con_escanos': len([r for r in resultados if r['total'] > 0])
+            "total_votos": total_votos,
+            "total_escanos": total_escanos,
+            "gallagher": safe_gallagher(votos_list, escanos_list),
+            "mae_votos_vs_escanos": metricas_proporcionalidad["coeficiente_variacion"],  # Usar coef. variación como "MAE mejorado"
+            "ratio_promedio": metricas_proporcionalidad["ratio_promedio"],
+            "desviacion_proporcionalidad": metricas_proporcionalidad["desviacion_estandar"],
+            "partidos_con_escanos": len([r for r in resultados if r["total"] > 0])
         }
-
-        # Compatibilidad: si no se proporcionó 'mae_votos_vs_escanos' pero hay 'ratio_promedio',
-        # exponer 'ratio_promedio' también como 'mae_votos_vs_escanos' para frontend legacy.
-        if kpis.get('mae_votos_vs_escanos') in (None, 0) and kpis.get('ratio_promedio') is not None:
-            try:
-                kpis['mae_votos_vs_escanos'] = float(kpis['ratio_promedio'])
-            except Exception:
-                pass
-
-        # Campo explícito para frontend: relación votos/escaños promedio
-        # (nombre fijo que la UI puede leer sin ambigüedad)
-        try:
-            kpis['relacion_votos_escaños'] = float(kpis.get('ratio_promedio')) if kpis.get('ratio_promedio') is not None else None
-        except Exception:
-            kpis['relacion_votos_escaños'] = None
-
+        
+        print(f"[DEBUG] KPIs calculados: {kpis}")
+        
         return {
-            'plan': plan,
-            'resultados': resultados,
-            'kpis': kpis,
-            'seat_chart': seat_chart,
-            'timestamp': datetime.now().isoformat(),
-            'cache_buster': datetime.now().timestamp()
+            "plan": plan,
+            "resultados": resultados,
+            "kpis": kpis,
+            "seat_chart": seat_chart,
+            "timestamp": datetime.now().isoformat(),
+            "cache_buster": datetime.now().timestamp()
         }
+        
     except Exception as e:
-        return {'plan': plan, 'resultados': [], 'kpis': {'error': str(e)}, 'seat_chart': []}
+        print(f"[ERROR] Error transformando resultado: {e}")
+        return {"plan": plan, "resultados": [], "kpis": {"error": str(e)}, "seat_chart": []}
 
 app = FastAPI(
     title="Backend Electoral API",
@@ -321,7 +221,7 @@ async def get_initial_data():
     Este endpoint se usa para cargar los datos al inicializar el frontend
     """
     try:
-    # ...
+        print("[INFO] Cargando datos iniciales: Diputados 2024 vigente")
         
         # Procesar datos vigentes de diputados 2024
         resultado = await procesar_diputados(
@@ -364,11 +264,11 @@ async def get_initial_data():
                 reverse=True
             )
         
-    # ...
+        print(f"[INFO] Datos iniciales cargados exitosamente")
         return data
         
     except Exception as e:
-    # ...
+        print(f"[ERROR] Error cargando datos iniciales: {str(e)}")
         raise HTTPException(
             status_code=500, 
             detail=f"Error cargando datos iniciales: {str(e)}"
@@ -447,7 +347,7 @@ async def obtener_partidos_por_anio(
     Devuelve partidos disponibles para un año específico con sus porcentajes vigentes
     """
     try:
-    # ...
+        print(f"[DEBUG] Obteniendo partidos para año {anio}, cámara {camara}")
         
         # Cargar datos según cámara
         if camara == "diputados":
@@ -463,7 +363,7 @@ async def obtener_partidos_por_anio(
         
         # Cargar datos
         df = pd.read_parquet(path_datos)
-    # ...
+        print(f"[DEBUG] Datos cargados: {len(df)} filas")
         
         # Los datos están en formato ancho (cada partido es una columna)
         # Excluir columnas no partidarias
@@ -477,11 +377,12 @@ async def obtener_partidos_por_anio(
         
         # Filtrar partidos con votos > 0 (solo partidos que participaron)
         votos_por_partido = {k: v for k, v in votos_por_partido.items() if v > 0}
-    # ...
+        print(f"[DEBUG] Partidos que participaron en {anio}: {list(votos_por_partido.keys())}")
         
         total_votos = sum(votos_por_partido.values())
         
-    # ...
+        print(f"[DEBUG] Total votos: {total_votos}")
+        print(f"[DEBUG] Partidos encontrados: {list(votos_por_partido.keys())}")
         
         # Crear lista de partidos con porcentajes
         partidos_data = []
@@ -496,7 +397,7 @@ async def obtener_partidos_por_anio(
         # Ordenar por porcentaje descendente
         partidos_data.sort(key=lambda x: x['porcentaje_vigente'], reverse=True)
         
-    # ...
+        print(f"[DEBUG] Partidos procesados correctamente: {len(partidos_data)}")
         
         return {
             "anio": anio,
@@ -507,7 +408,7 @@ async def obtener_partidos_por_anio(
         }
         
     except Exception as e:
-    # ...
+        print(f"[ERROR] Error obteniendo partidos: {e}")
         raise HTTPException(
             status_code=400, 
             detail=f"Error obteniendo partidos para {camara} {anio}: {str(e)}"
@@ -531,7 +432,6 @@ async def procesar_senado(
     anio: int,
     plan: str = "vigente",
     escanos_totales: Optional[int] = None,
-    req_id: Optional[str] = None,
     sistema: Optional[str] = None,
     umbral: Optional[float] = None,
     mr_seats: Optional[int] = None,
@@ -560,19 +460,7 @@ async def procesar_senado(
     try:
         # Normalizar el nombre del plan para compatibilidad con frontend
         plan_normalizado = normalizar_plan(plan)
-        # Si el plan es 'vigente' cargamos el CSV pero NO devolvemos inmediatamente:
-        # conservaremos los KPIs que se calculen a partir de los parquet y
-        # solo sustituiremos el `resultados` y `seat_chart` por la versión del CSV.
-        csv_vigente = None
-        if plan_normalizado == 'vigente':
-            try:
-                csv_vigente = cargar_vigente_desde_csv('senado', anio)
-            except Exception as e:
-                # No fallar si el CSV no contiene datos para ese año/cámara.
-                # Simplemente continuamos y procesamos desde los parquet.
-                # Registrar en el detalle del error en desarrollo (no levanta excepción).
-                csv_vigente = None
-    # ...
+        print(f"[DEBUG] Senado - Plan original: '{plan}' -> Plan normalizado: '{plan_normalizado}'")
         
         if anio not in [2018, 2024]:
             raise HTTPException(status_code=400, detail="Año no soportado. Use 2018 o 2024")
@@ -639,7 +527,9 @@ async def procesar_senado(
             umbral_final = umbral if umbral is not None else 0.03
             max_seats = mr_puro + rp_escanos  # Total fijo, PM no suma
             
-            # ...
+            print(f"[DEBUG] Plan personalizado - MR original: {mr_puro}, PM: {pm_escanos}, RP: {rp_escanos}")
+            print(f"[DEBUG] MR efectivo: {mr_final_efectivo}, PM: {pm_escanos}, Total: {max_seats}")
+            print(f"[DEBUG] Total para backend - mr_seats: {mr_seats_final}, rp_seats: {rp_seats_final}")
         else:
             raise HTTPException(status_code=400, detail="Plan no válido. Use 'vigente', 'plan_a', 'plan_c' o 'personalizado'")
             
@@ -647,11 +537,11 @@ async def procesar_senado(
         if reparto_mode == "cuota":
             quota_method_final = reparto_method
             divisor_method_final = None
-            # ...
+            print(f"[DEBUG] Senado - Modo cuota seleccionado: {quota_method_final}")
         elif reparto_mode == "divisor":
             quota_method_final = None
             divisor_method_final = reparto_method
-            # ...
+            print(f"[DEBUG] Senado - Modo divisor seleccionado: {divisor_method_final}")
         else:
             raise HTTPException(status_code=400, detail="reparto_mode debe ser 'cuota' o 'divisor'")
             
@@ -677,58 +567,15 @@ async def procesar_senado(
             mr_seats=mr_seats_final,
             rp_seats=rp_seats_final,
             umbral=umbral_final,
-            pm_seats=pm_escanos,  
+            pm_seats=pm_escanos,  # ⬅️ AGREGAR PARÁMETRO PM
             quota_method=quota_method_final,
             divisor_method=divisor_method_final,
-            usar_coaliciones=usar_coaliciones  
+            usar_coaliciones=usar_coaliciones  # ⬅️ NUEVO: toggle coaliciones
         )
         
         # Transformar al formato esperado por el frontend con colores
         resultado_formateado = transformar_resultado_a_formato_frontend(resultado, plan)
-
-        # Si cargamos CSV vigente, sobrescribimos `resultados` y `seat_chart`
-        if csv_vigente:
-            escanos_dict = csv_vigente.get('tot', {})
-            votos_dict = csv_vigente.get('votos', {})
-            total_votos_csv = sum(votos_dict.values()) or 1
-            total_escanos_csv = sum(escanos_dict.values()) or 1
-
-            resultados_csv = []
-            seat_chart_csv = []
-            for partido in escanos_dict.keys():
-                votos = votos_dict.get(partido, 0)
-                escanos = escanos_dict.get(partido, 0)
-                resultado_partido = {
-                    "partido": partido,
-                    "votos": votos,
-                    "mr": 0,
-                    "rp": 0,
-                    "total": escanos,
-                    "porcentaje_votos": round((votos / total_votos_csv) * 100, 2) if total_votos_csv > 0 else 0,
-                    "porcentaje_escanos": round((escanos / total_escanos_csv) * 100, 2) if total_escanos_csv > 0 else 0
-                }
-                resultados_csv.append(resultado_partido)
-
-                seat_chart_item = {
-                    "party": partido,
-                    "seats": escanos,
-                    "color": PARTY_COLORS.get(partido, "#888888"),
-                    "percent": round((escanos / total_escanos_csv) * 100, 2) if total_escanos_csv > 0 else 0,
-                    "votes": votos
-                }
-                seat_chart_csv.append(seat_chart_item)
-
-            resultado_formateado['resultados'] = resultados_csv
-            resultado_formateado['seat_chart'] = seat_chart_csv
-            resultado_formateado['timestamp'] = datetime.now().isoformat()
-            resultado_formateado['cache_buster'] = datetime.now().timestamp()
-        # Indicar explícitamente si usamos CSV vigente (solo útil para frontend/debug)
-        resultado_formateado.setdefault('meta', {})
-        resultado_formateado['meta']['used_csv_vigente'] = bool(csv_vigente)
-        # Eco de request id y magnitud solicitada para correlación en frontend
-        resultado_formateado['meta']['req_id'] = req_id
-        resultado_formateado['meta']['requested_escanos_totales'] = escanos_totales
-
+        
         # Retornar con headers anti-caché para evitar problemas de actualización
         return JSONResponse(
             content=resultado_formateado,
@@ -740,7 +587,10 @@ async def procesar_senado(
         )
         
     except Exception as e:
-    # ...
+        print(f"[ERROR] Error en /procesar/senado: {str(e)}")
+        print(f"[ERROR] Tipo de error: {type(e).__name__}")
+        import traceback
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error procesando senado: {str(e)}")
 
 @app.options("/procesar/diputados")
@@ -758,11 +608,9 @@ async def options_procesar_diputados():
 
 @app.post("/procesar/diputados")
 async def procesar_diputados(
-    request: Request,  # ← Agregar Request para leer form data
     anio: int,
     plan: str = "vigente",
     escanos_totales: Optional[int] = None,
-    req_id: Optional[str] = None,
     sistema: Optional[str] = None,
     umbral: Optional[float] = None,
     mr_seats: Optional[int] = None,
@@ -774,8 +622,8 @@ async def procesar_diputados(
     usar_coaliciones: bool = True,
     votos_custom: Optional[str] = None,  # JSON string con redistribución
     partidos_fijos: Optional[str] = None,  # JSON string con partidos fijos
-    overrides_pool: Optional[str] = None   # JSON string con overrides del pool
-    # porcentajes_partidos se leerá del form data
+    overrides_pool: Optional[str] = None,   # JSON string con overrides del pool
+    porcentajes_partidos: Optional[str] = None  # JSON string con porcentajes por partido
 ):
     """
     Procesa los datos de diputados para un año específico con soporte de coaliciones
@@ -799,18 +647,22 @@ async def procesar_diputados(
     - **porcentajes_partidos**: JSON con % de votos por partido {"MORENA":42.5, "PAN":20.7, ...}
     """
     try:
-    # ...
-        
-        # LEER FORM DATA del body de la petición
-        form_data = await request.form()
-        porcentajes_partidos = form_data.get('porcentajes_partidos')
-        
-    # ...
+        print(f"[DEBUG] Iniciando /procesar/diputados con:")
+        print(f"[DEBUG] - anio: {anio}")
+        print(f"[DEBUG] - plan: {plan}")
+        print(f"[DEBUG] - escanos_totales: {escanos_totales}")
+        print(f"[DEBUG] - sistema: {sistema}")
+        print(f"[DEBUG] - mr_seats: {mr_seats}")
+        print(f"[DEBUG] - rp_seats: {rp_seats}")
         
         # NUEVO: Procesar parámetros de redistribución de votos
         votos_redistribuidos = None
         if votos_custom or partidos_fijos or overrides_pool or porcentajes_partidos:
-            # ...
+            print(f"[DEBUG] Redistribución de votos solicitada:")
+            print(f"[DEBUG] - votos_custom: {votos_custom}")
+            print(f"[DEBUG] - partidos_fijos: {partidos_fijos}")
+            print(f"[DEBUG] - overrides_pool: {overrides_pool}")
+            print(f"[DEBUG] - porcentajes_partidos: {porcentajes_partidos}")
             
             try:
                 # Parsear JSON strings
@@ -822,17 +674,17 @@ async def procesar_diputados(
                 # Normalizar porcentajes a 100% si están presentes
                 if porcentajes_dict:
                     total_porcentajes = sum(porcentajes_dict.values())
-                    # ...
+                    print(f"[DEBUG] Suma de porcentajes recibidos: {total_porcentajes}")
                     
                     if total_porcentajes > 0 and abs(total_porcentajes - 100) > 0.01:
-                        # ...
+                        print(f"[DEBUG] Normalizando porcentajes de {total_porcentajes} a 100%")
                         factor_normalizacion = 100.0 / total_porcentajes
                         porcentajes_dict = {
                             partido: porcentaje * factor_normalizacion 
                             for partido, porcentaje in porcentajes_dict.items()
                         }
                         nueva_suma = sum(porcentajes_dict.values())
-                        # ...
+                        print(f"[DEBUG] Porcentajes normalizados. Nueva suma: {nueva_suma}")
                 
                 # Determinar archivo de datos
                 path_datos = f"data/computos_diputados_{anio}.parquet"
@@ -850,7 +702,8 @@ async def procesar_diputados(
                         if partido in partidos_validos
                     }
                     
-                    # ...
+                    print(f"[DEBUG] Partidos válidos para {anio}: {partidos_validos}")
+                    print(f"[DEBUG] Porcentajes filtrados: {porcentajes_filtrados}")
                     
                     # Re-normalizar después del filtrado
                     if porcentajes_filtrados:
@@ -861,16 +714,16 @@ async def procesar_diputados(
                                 partido: porcentaje * factor 
                                 for partido, porcentaje in porcentajes_filtrados.items()
                             }
-                            # ...
+                            print(f"[DEBUG] Porcentajes re-normalizados: {porcentajes_filtrados}")
                     
                     votos_redistribuidos = porcentajes_filtrados
                 elif votos_custom_dict:
                     # Usar porcentajes directos proporcionados (funcionalidad anterior)
-                    # ...
+                    print(f"[DEBUG] Usando porcentajes directos: {votos_custom_dict}")
                     votos_redistribuidos = votos_custom_dict
                 else:
                     # Usar redistribución mixta basada en datos reales
-                    # ...
+                    print(f"[DEBUG] Aplicando redistribución mixta")
                     df_datos, porcentajes_finales = simular_escenario_electoral(
                         path_datos,
                         porcentajes_objetivo={},
@@ -879,23 +732,15 @@ async def procesar_diputados(
                         mantener_geografia=True
                     )
                     votos_redistribuidos = porcentajes_finales
-                    # ...
+                    print(f"[DEBUG] Votos redistribuidos: {votos_redistribuidos}")
                 
             except Exception as e:
-                # ...
+                print(f"[ERROR] Error en redistribución de votos: {e}")
                 raise HTTPException(status_code=400, detail=f"Error en redistribución de votos: {str(e)}")
         
         # Normalizar el nombre del plan para compatibilidad con frontend
         plan_normalizado = normalizar_plan(plan)
-        # Intentar cargar CSV vigente si corresponde, pero no abortar si no hay datos
-        csv_vigente = None
-        if plan_normalizado == 'vigente':
-            try:
-                csv_vigente = cargar_vigente_desde_csv('diputados', anio)
-            except Exception:
-                # No existe CSV para este año/cámara: seguiremos con el procesamiento normal
-                csv_vigente = None
-    # ...
+        print(f"[DEBUG] Diputados - Plan original: '{plan}' -> Plan normalizado: '{plan_normalizado}'")
         
         if anio not in [2018, 2021, 2024]:
             raise HTTPException(status_code=400, detail="Año no soportado. Use 2018, 2021 o 2024")
@@ -937,11 +782,8 @@ async def procesar_diputados(
         elif plan_normalizado == "personalizado":
             # Plan personalizado con parámetros del usuario
             if not sistema:
-                sistema_final = "mixto"  # Default: sistema mixto
-                print(f"[DEBUG] Sistema no especificado, usando default: mixto")
-            else:
-                sistema_final = sistema
-                print(f"[DEBUG] Sistema especificado: {sistema_final}")
+                raise HTTPException(status_code=400, detail="Sistema requerido para plan personalizado")
+            sistema_final = sistema
             
             # Lógica inteligente para parámetros personalizados
             # SIEMPRE usar escanos_totales como base si está definido
@@ -952,19 +794,9 @@ async def procesar_diputados(
                 # Distribuir según el sistema elegido
                 if sistema_final == "mr":
                     # MR PURO: TODOS los escaños van a MR
-                    # Nota: el engine calcula MR a partir del siglado cuando
-                    # sistema=='mr' (suma distritos reales, p.ej. 300). Para
-                    # respetar una magnitud solicitada por el usuario (p.ej.
-                    # 96), enviamos el request al engine como 'mixto' y
-                    # pasamos mr_seats=max_seats para que el engine fije MR
-                    # al valor solicitado en lugar de usar el siglado.
                     mr_seats_final = max_seats
                     rp_seats_final = 0
-                    # Forzamos sistema 'mixto' internamente para que el engine
-                    # utilice el parámetro mr_seats en lugar de derivar MR
-                    # del siglado/distritos.
-                    sistema_final = 'mixto'
-                    print(f"[DEBUG] Sistema MR puro solicitado; enviado al engine como 'mixto' con mr_seats={mr_seats_final}")
+                    print(f"[DEBUG] Sistema MR puro: {mr_seats_final} MR + {rp_seats_final} RP = {max_seats}")
                 elif sistema_final == "rp":
                     # RP PURO: TODOS los escaños van a RP
                     mr_seats_final = 0
@@ -985,54 +817,20 @@ async def procesar_diputados(
             else:
                 # FALLBACK: Usuario no especificó magnitud total
                 print(f"[DEBUG] No se especificó magnitud, usando parámetros individuales o defaults")
-                # Si el usuario especificó mr_seats/rp_seats, respetarlos
                 if sistema_final == "mr":
-                    if mr_seats is not None:
-                        mr_seats_final = mr_seats
-                        rp_seats_final = 0
-                        max_seats = mr_seats_final
-                    else:
-                        # Si max_seats ya fue configurado por el plan personalizado, úsalo
-                        if 'max_seats' in locals() and max_seats:
-                            mr_seats_final = max_seats
-                            rp_seats_final = 0
-                        else:
-                            # No forzar 300: si el usuario no especificó magnitud
-                            # ni mr_seats, dejar que el engine derive MR a partir
-                            # del siglado (p. ej. 300 distritos) dejando mr_seats_final=None
-                            mr_seats_final = None
-                            rp_seats_final = 0
-                            # max_seats se dejará sin forzar aquí
-                            print(f"[DEBUG] MR sin magnitud especificada; el engine derivará MR del siglado")
+                    # Para MR puro, usar mr_seats como magnitud total
+                    mr_seats_final = mr_seats if mr_seats is not None else 300
+                    rp_seats_final = 0
+                    max_seats = mr_seats_final
                 elif sistema_final == "rp":
-                    if rp_seats is not None:
-                        rp_seats_final = rp_seats
-                        mr_seats_final = 0
-                        max_seats = rp_seats_final
-                    else:
-                        if 'max_seats' in locals() and max_seats:
-                            rp_seats_final = max_seats
-                            mr_seats_final = 0
-                        else:
-                            mr_seats_final = 0
-                            rp_seats_final = 300
-                            max_seats = rp_seats_final
+                    # Para RP puro, usar rp_seats como magnitud total
+                    mr_seats_final = 0
+                    rp_seats_final = rp_seats if rp_seats is not None else 300
+                    max_seats = rp_seats_final
                 else:  # mixto
-                    # Priorizar valores proporcionados por el usuario
-                    if mr_seats is not None or rp_seats is not None:
-                        mr_seats_final = mr_seats if mr_seats is not None else 0
-                        rp_seats_final = rp_seats if rp_seats is not None else 0
-                        max_seats = mr_seats_final + rp_seats_final
-                    else:
-                        # No hay especificaciones: no forzar valores fijos aquí.
-                        # Dejar que el engine determine la distribución si es posible
-                        # (pasando None para mr/rp). Solo asegurar una magnitud
-                        # por defecto razonable si ninguna fue definida.
-                        mr_seats_final = None
-                        rp_seats_final = None
-                        if 'max_seats' not in locals() or not max_seats:
-                            # Usamos 500 como magnitud por defecto para diputados
-                            max_seats = 500
+                    mr_seats_final = mr_seats if mr_seats is not None else 300
+                    rp_seats_final = rp_seats if rp_seats is not None else 200
+                    max_seats = mr_seats_final + rp_seats_final
             
             umbral_final = umbral if umbral is not None else 0.03
             max_seats_per_party_final = max_seats_per_party
@@ -1053,7 +851,7 @@ async def procesar_diputados(
         else:
             raise HTTPException(status_code=400, detail="Plan no válido. Use 'vigente', 'plan_a', 'plan_c' o 'personalizado'")
         
-    # ...
+        print(f"[DEBUG] Plan {plan_normalizado}: max_seats={max_seats}, mr={mr_seats_final}, rp={rp_seats_final}, umbral={umbral_final}")
             
         # Construir paths
         path_parquet = f"data/computos_diputados_{anio}.parquet"
@@ -1080,65 +878,19 @@ async def procesar_diputados(
             divisor_method=divisor_method_final,
             usar_coaliciones=usar_coaliciones,
             votos_redistribuidos=votos_redistribuidos,
-            print_debug=False
+            print_debug=True
         )
         
         # Debug: Verificar qué devuelve procesar_diputados_v2
-    # ...
+        print(f"[DEBUG] Resultado de procesar_diputados_v2: {resultado}")
+        if 'tot' in resultado:
+            print(f"[DEBUG] Escaños totales por partido: {resultado['tot']}")
+            print(f"[DEBUG] Suma total escaños: {sum(resultado['tot'].values())}")
         
         # Transformar al formato esperado por el frontend con colores
         resultado_formateado = transformar_resultado_a_formato_frontend(resultado, plan)
-
-        # Si cargamos CSV vigente, sobrescribimos `resultados` y `seat_chart` (modo híbrido)
-        if csv_vigente:
-            escanos_dict = csv_vigente.get('tot', {})
-            votos_dict = csv_vigente.get('votos', {})
-            total_votos_csv = sum(votos_dict.values()) or 1
-            total_escanos_csv = sum(escanos_dict.values()) or 1
-
-            resultados_csv = []
-            seat_chart_csv = []
-            for partido in escanos_dict.keys():
-                votos = votos_dict.get(partido, 0)
-                escanos = escanos_dict.get(partido, 0)
-                resultado_partido = {
-                    "partido": partido,
-                    "votos": votos,
-                    "mr": 0,
-                    "rp": 0,
-                    "total": escanos,
-                    "porcentaje_votos": round((votos / total_votos_csv) * 100, 2) if total_votos_csv > 0 else 0,
-                    "porcentaje_escanos": round((escanos / total_escanos_csv) * 100, 2) if total_escanos_csv > 0 else 0
-                }
-                resultados_csv.append(resultado_partido)
-
-                seat_chart_item = {
-                    "party": partido,
-                    "seats": escanos,
-                    "color": PARTY_COLORS.get(partido, "#888888"),
-                    "percent": round((escanos / total_escanos_csv) * 100, 2) if total_escanos_csv > 0 else 0,
-                    "votes": votos
-                }
-                seat_chart_csv.append(seat_chart_item)
-
-            resultado_formateado['resultados'] = resultados_csv
-            resultado_formateado['seat_chart'] = seat_chart_csv
-            # Si el CSV trae KPIs oficiales, sobrescribir/actualizar los KPIs calculados
-            kpis_csv = csv_vigente.get('kpis_csv', {}) if isinstance(csv_vigente, dict) else {}
-            if kpis_csv:
-                if 'kpis' not in resultado_formateado or not isinstance(resultado_formateado['kpis'], dict):
-                    resultado_formateado['kpis'] = {}
-                resultado_formateado['kpis'].update(kpis_csv)
-
-            resultado_formateado['timestamp'] = datetime.now().isoformat()
-            resultado_formateado['cache_buster'] = datetime.now().timestamp()
-
+        
         # Retornar con headers anti-caché para evitar problemas de actualización
-        # Agregar meta útil para frontend: req_id y magnitud solicitada
-        resultado_formateado.setdefault('meta', {})
-        resultado_formateado['meta']['req_id'] = req_id
-        resultado_formateado['meta']['requested_escanos_totales'] = escanos_totales
-
         return JSONResponse(
             content=resultado_formateado,
             headers={
@@ -1149,14 +901,19 @@ async def procesar_diputados(
         )
         
     except Exception as e:
-        import traceback
         error_msg = str(e)
         error_type = type(e).__name__
-        tb = traceback.format_exc()
-        # Crear mensaje de error más informativo (temporalmente incluye traceback)
-        detail_msg = f"Error procesando diputados: {error_type} - {error_msg}\nTraceback:\n{tb}"
+        print(f"[ERROR] Error en /procesar/diputados: {error_msg}")
+        print(f"[ERROR] Tipo de error: {error_type}")
+        import traceback
+        traceback_str = traceback.format_exc()
+        print(f"[ERROR] Traceback completo: {traceback_str}")
+        
+        # Crear mensaje de error más informativo
+        detail_msg = f"Error procesando diputados: {error_type} - {error_msg}"
         if not error_msg.strip():
-            detail_msg = f"Error procesando diputados: {error_type} - Error silencioso en el procesamiento\nTraceback:\n{tb}"
+            detail_msg = f"Error procesando diputados: {error_type} - Error silencioso en el procesamiento"
+        
         raise HTTPException(status_code=500, detail=detail_msg)
 
 @app.get("/años-disponibles")
@@ -1307,11 +1064,9 @@ def normalizar_plan(plan: str) -> str:
     }
     
     resultado = mapeo_planes.get(plan_lower, plan_lower)
-    # ...
+    print(f"[DEBUG] Normalizando plan: '{plan}' -> '{resultado}'")
     return resultado
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)
-
-

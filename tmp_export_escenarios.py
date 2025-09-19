@@ -1,80 +1,123 @@
-import pandas as pd
-from engine.procesar_diputados_v2 import procesar_diputados_v2
-
-PARQUET = 'data/computos_diputados_2024.parquet'
-SIGLADO = 'data/siglado-diputados-2024.normalized.csv'
+import os
 from datetime import datetime
-OUT = f"outputs/escenarios_diputados_custom.{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+from typing import List, Tuple, Dict
 
-# Scenarios requested by user:
-# - 500 seats: 300 MR + 200 RP
-# - 500 seats: 250 MR + 250 RP
-# - 500 seats: 300 MR + 200 PM (primera minoría) -> usar_pm=True
-# - 500 seats: 0 MR + 500 RP
-# - 500 seats: 300 MR + 100 RP + 100 PM
-scenarios = [
-    # dejar mr_seats=None para usar MR recomputado por el siglado (no forzar magnitud MR)
-    ('500_300MR_200RP', dict(max_seats=500, sistema='mixto', mr_seats=None, rp_seats=200)),
-    ('500_250MR_250RP', dict(max_seats=500, sistema='mixto', mr_seats=250, rp_seats=250)),
-    ('500_300MR_200PM', dict(max_seats=500, sistema='mixto', mr_seats=300, rp_seats=200, usar_pm=True, pm_seats=200)),
-    ('500_0MR_500RP', dict(max_seats=500, sistema='rp', mr_seats=0, rp_seats=500)),
-    ('500_300MR_100RP_100PM', dict(max_seats=500, sistema='mixto', mr_seats=300, rp_seats=100, usar_pm=True, pm_seats=100)),
-]
-
-# función simple para simular PM (primera minoría) si el engine no lo tiene: asignar pm_seats a los segundos lugares por votos MR
-# esto es aproximado: extraemos recomposed y por distrito ordenamos votos, tomamos segundo puesto
-
-def simulate_pm_by_runnerup(recomposed_df, pm_seats, partidos):
-    # recomposed_df debe contener columnas ENTIDAD,DISTRITO y partidos con votos
-    rows = []
-    for _, row in recomposed_df.iterrows():
-        votos = [(p, float(row.get(p,0))) for p in partidos]
-        votos_sorted = sorted(votos, key=lambda x: -x[1])
-        if len(votos_sorted) >= 2:
-            segundo = votos_sorted[1][0]
-            rows.append(segundo)
-    # contar moda hasta pm_seats
-    from collections import Counter
-    c = Counter(rows)
-    pm_dict = {p: 0 for p in partidos}
-    for p, _ in c.most_common()[:pm_seats]:
-        pm_dict[p] = c[p]
-    return pm_dict
+import pandas as pd
+from engine.procesar_diputados_v2 import export_scenarios, extraer_coaliciones_de_siglado
 
 
-with pd.ExcelWriter(OUT) as writer:
-    for name, params in scenarios:
-        print('ejecutando', name, params)
-        usar_pm = params.pop('usar_pm', False)
-        # enforce VVE 3% and sobrerrepresentacion 8pp inside call
-        res = procesar_diputados_v2(path_parquet=PARQUET, anio=2024, path_siglado=SIGLADO, max_seats=params.get('max_seats',500), sistema=params.get('sistema','mixto'), mr_seats=params.get('mr_seats',None), rp_seats=params.get('rp_seats',None), usar_coaliciones=True, sobrerrepresentacion=8.0, umbral=0.03, print_debug=False)
-        mr = res.get('mr', {})
-        rp = res.get('rp', {})
-        tot = res.get('tot', {})
-        partidos = list(tot.keys())
-        df = pd.DataFrame([{
-            'partido': p,
-            'mr': mr.get(p,0),
-            'rp': rp.get(p,0),
-            'tot': tot.get(p,0)
-        } for p in partidos])
+def make_scenarios() -> List[Tuple[str, Dict]]:
+    """Return the full list of scenarios including S=500, S=400 and S=300 variants."""
+    scenarios = []
 
-        # simular PM si pide: usar recomposition para elegir segundos lugares por DIST_UID
-        if usar_pm:
-            try:
-                from engine.recomposicion import recompose_coalitions
-                import pyarrow.parquet as pq
-                table = pq.read_table(PARQUET)
-                df_parq = table.to_pandas()
-                recomposed = recompose_coalitions(df_parq, 2024, 'diputados', rule='equal_residue_siglado', siglado_path=SIGLADO)
-                pm_assigned = simulate_pm_by_runnerup(recomposed, params.get('pm_seats',100), partidos)
-                df['pm'] = df['partido'].map(lambda p: pm_assigned.get(p,0))
-            except Exception as e:
-                print('Error simulando PM:', e)
-                df['pm'] = 0
-        else:
-            df['pm'] = 0
+    # Restore the original 500-seat scenarios the user asked to keep
+    scenarios += [
+        ('500_300MR_200RP', dict(max_seats=500, sistema='mixto', mr_seats=None, rp_seats=200)),
+        ('500_250MR_250RP', dict(max_seats=500, sistema='mixto', mr_seats=250, rp_seats=250)),
+        ('500_300MR_200PM', dict(max_seats=500, sistema='mixto', mr_seats=300, rp_seats=200, usar_pm=True, pm_seats=200)),
+        ('500_0MR_500RP', dict(max_seats=500, sistema='rp', mr_seats=0, rp_seats=500)),
+        ('500_300MR_100RP_100PM', dict(max_seats=500, sistema='mixto', mr_seats=300, rp_seats=100, usar_pm=True, pm_seats=100)),
+    ]
 
-        df.to_excel(writer, sheet_name=name[:31], index=False)
+    # Add S=400 variants
+    scenarios += [
+        ('400_300MR_100PM', dict(max_seats=400, sistema='mixto', mr_seats=300, rp_seats=100, usar_pm=True, pm_seats=100)),
+        ('400_300MR_100RP', dict(max_seats=400, sistema='mixto', mr_seats=300, rp_seats=100)),
+        ('400_300MR_50RP_50PM', dict(max_seats=400, sistema='mixto', mr_seats=300, rp_seats=50, usar_pm=True, pm_seats=50)),
+        ('400_200MR_200RP', dict(max_seats=400, sistema='mixto', mr_seats=200, rp_seats=200)),
+        ('400_200MR_200PM', dict(max_seats=400, sistema='mixto', mr_seats=200, rp_seats=200, usar_pm=True, pm_seats=200)),
+        ('400_400RP', dict(max_seats=400, sistema='rp', mr_seats=0, rp_seats=400)),
+    ]
 
-print('Exportado a', OUT)
+    # Add S=300 variants
+    scenarios += [
+        ('300_200MR_100RP', dict(max_seats=300, sistema='mixto', mr_seats=200, rp_seats=100)),
+        ('300_200MR_100PM', dict(max_seats=300, sistema='mixto', mr_seats=200, rp_seats=100, usar_pm=True, pm_seats=100)),
+        ('300_200MR_50PM_50RP', dict(max_seats=300, sistema='mixto', mr_seats=200, rp_seats=50, usar_pm=True, pm_seats=50)),
+        ('300_300RP', dict(max_seats=300, sistema='rp', mr_seats=0, rp_seats=300)),
+    ]
+
+    return scenarios
+
+
+def run_for_year(anio: int, out_dir: str = 'outputs') -> str:
+    parquet = f'data/computos_diputados_{anio}.parquet'
+    siglado = f'data/siglado-diputados-{anio}.csv'
+
+    scenarios = make_scenarios()
+
+    # Ensure output directory exists
+    os.makedirs(out_dir, exist_ok=True)
+
+    out = export_scenarios(parquet, siglado, scenarios, out_path=None, anio=anio, print_debug=False)
+
+    # Post-process: add per-scenario coalition/solo summaries into a new Excel
+    try:
+        sheets = pd.read_excel(out, sheet_name=None)
+        coaliciones = extraer_coaliciones_de_siglado(siglado, anio)
+
+        # Build summary sheets
+        summaries = {}
+        parties_in_coalitions = set()
+        for cname, plist in coaliciones.items():
+            parties_in_coalitions.update(plist)
+
+        for sheet_name, df in sheets.items():
+            # Ensure expected columns
+            cols = [c.lower() for c in df.columns]
+            col_map = {c.lower(): c for c in df.columns}
+            # normalize column access
+            def g(col):
+                return df[col_map[col]] if col in col_map else 0
+
+            # compute coalition aggregates (mr/rp/pm/tot)
+            rows = []
+            for cname, plist in coaliciones.items():
+                mask = df['partido'].isin(plist)
+                mr = int(df.loc[mask, 'mr'].sum()) if 'mr' in df.columns else 0
+                rp = int(df.loc[mask, 'rp'].sum()) if 'rp' in df.columns else 0
+                pm = int(df.loc[mask, 'pm'].sum()) if 'pm' in df.columns else 0
+                tot = int(df.loc[mask, 'tot'].sum()) if 'tot' in df.columns else 0
+                rows.append({'group_type': 'coalicion', 'name': cname, 'mr': mr, 'rp': rp, 'pm': pm, 'tot': tot})
+
+            # solo parties (not in any coalition)
+            solo_mask = ~df['partido'].isin(parties_in_coalitions)
+            for _, r in df.loc[solo_mask].iterrows():
+                rows.append({'group_type': 'party', 'name': r['partido'], 'mr': int(r.get('mr', 0)), 'rp': int(r.get('rp', 0)), 'pm': int(r.get('pm', 0)), 'tot': int(r.get('tot', 0))})
+
+            summaries[sheet_name + '_summary'] = pd.DataFrame(rows)
+
+        # Write a new Excel that includes original sheets and summary sheets
+        base, ext = os.path.splitext(out)
+        out_with = f"{base}.with_summaries{ext}"
+        with pd.ExcelWriter(out_with, engine='openpyxl') as writer:
+            # original sheets
+            for name, df in sheets.items():
+                df.to_excel(writer, sheet_name=name, index=False)
+            # summary sheets
+            for name, sdf in summaries.items():
+                # Excel sheet names max 31 chars
+                writer.sheets
+                safe = name[:31]
+                sdf.to_excel(writer, sheet_name=safe, index=False)
+
+        return out_with
+    except Exception as e:
+        print('Warning: no se pudo agregar resúmenes por coalición:', e)
+        return out
+
+
+if __name__ == '__main__':
+    years = [2024, 2021]
+    generated = []
+    for y in years:
+        print(f'Ejecutando escenario {y} con escenarios S=500/400/300')
+        try:
+            out = run_for_year(y)
+            print('Exportado a', out)
+            generated.append(out)
+        except Exception as e:
+            print(f'Error ejecutando para {y}:', e)
+
+    if generated:
+        print('\nGenerados:', ' '.join(generated))
