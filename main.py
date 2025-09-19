@@ -14,7 +14,8 @@ sys.path.append('.')
 from engine.procesar_senadores_v2 import procesar_senadores_v2  
 from engine.procesar_diputados_v2 import procesar_diputados_v2
 from engine.redistribucion_votos import simular_escenario_electoral, redistribuir_votos_mixto
-from outputs.kpi_utils import calcular_kpis_electorales, formato_seat_chart
+# kpi_utils se encuentra en el paquete engine (no en outputs)
+from engine.kpi_utils import calcular_kpis_electorales, formato_seat_chart
 
 # Mapea colores por partido
 PARTY_COLORS = {
