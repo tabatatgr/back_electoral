@@ -1,0 +1,2 @@
+C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\tmp_diagnose_prd.py
+C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\tmp_inspect_siglado_prd.py

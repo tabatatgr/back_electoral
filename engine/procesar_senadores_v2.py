@@ -247,7 +247,8 @@ def gp_lookup(entidad: str, coalicion: str, formula: int, acred_row: pd.Series,
 
 def conteo_senado_MR_PM_sigladoF(df_boleta_est: pd.DataFrame, df_acred_est: pd.DataFrame, 
                                  partidos_base: List[str], gp_long: pd.DataFrame, anio: int,
-                                 escanos_mr_efectivos: int = 64, escanos_pm: int = 32) -> Dict:
+                                 escanos_mr_efectivos: int = 64, escanos_pm: int = 32,
+                                 siglado_map: Optional[Dict] = None) -> Dict:
     """
     Conteo MR+PM con siglado por fórmula - traducción directa del R
     MR: senadores por entidad distribuidos proporcionalmente según escanos_mr_efectivos
@@ -340,9 +341,51 @@ def conteo_senado_MR_PM_sigladoF(df_boleta_est: pd.DataFrame, df_acred_est: pd.D
         
         print(f"[DEBUG] {entidad} - Asignación: {mr_esta_entidad} MR efectivos, {pm_esta_entidad} PM")
         
-        # MR efectivos: asignar al ganador
+        # MR efectivos: asignar al ganador (aplicar reglas jurídicas usando siglado_map cuando exista)
         for formula in range(1, mr_esta_entidad + 1):
-            gp = gp_lookup(entidad, top1, formula, df_acred_est.iloc[i], gp_long, partidos_base, anio)
+            gp = None
+            # intentar usar siglado_map si está disponible
+            try:
+                entk = normalize_entidad_ascii(entidad)
+                coalN = norm_ascii_up(str(top1)) if top1 is not None else ''
+                key = (entk, coalN, int(formula))
+                entry = siglado_map.get(key) if siglado_map else None
+            except Exception:
+                entry = None
+
+            if entry:
+                nominadores_set = set([canonizar_siglado(x) for x in entry.get('nominadores_set', set())])
+                ppn_gp = entry.get('ppn_gp', '')
+
+                SHH = {"MORENA", "PT", "PVEM"}
+                FCM = {"PAN", "PRI", "PRD"}
+
+                # tokens de la coalición ganadora (si aplica)
+                tokens = tokens_de_coalicion(coalN, anio) if coalN else []
+                tokens_set = set(tokens) if tokens else set()
+
+                # 1) nominadores == SHH y ganó SHH -> acreditar ppn_gp
+                if nominadores_set == SHH and tokens_set == SHH and ppn_gp:
+                    gp = ppn_gp
+                    if gp not in partidos_base and gp != 'CI':
+                        gp = None
+
+                # 2) nominadores == FCM y ganó FCM -> acreditar ppn_gp
+                if gp is None and nominadores_set == FCM and tokens_set == FCM and ppn_gp:
+                    gp = ppn_gp
+                    if gp not in partidos_base and gp != 'CI':
+                        gp = None
+
+                # 3) único nominador y coincide con ganador -> acreditar
+                if gp is None and len(nominadores_set) == 1:
+                    solo = list(nominadores_set)[0]
+                    if solo in partidos_base and (not tokens_set or solo in tokens_set or solo == norm_ascii_up(str(top1))):
+                        gp = solo
+
+            # fallback: usar gp_lookup como antes
+            if gp is None:
+                gp = gp_lookup(entidad, top1, formula, df_acred_est.iloc[i], gp_long, partidos_base, anio)
+
             print(f"[DEBUG] {entidad} - MR F{formula}: {top1} -> {gp}")
             if gp is not None:
                 if gp == "CI":
@@ -353,7 +396,37 @@ def conteo_senado_MR_PM_sigladoF(df_boleta_est: pd.DataFrame, df_acred_est: pd.D
         # PM: asignar al segundo lugar si hay PM para esta entidad
         if pm_esta_entidad > 0 and top2 is not None:
             for formula in range(1, pm_esta_entidad + 1):
-                gp2 = gp_lookup(entidad, top2, formula, df_acred_est.iloc[i], gp_long, partidos_base, anio)
+                gp2 = None
+                try:
+                    entk = normalize_entidad_ascii(entidad)
+                    coalN2 = norm_ascii_up(str(top2)) if top2 is not None else ''
+                    key2 = (entk, coalN2, int(formula))
+                    entry2 = siglado_map.get(key2) if siglado_map else None
+                except Exception:
+                    entry2 = None
+
+                if entry2:
+                    nominadores_set2 = set([canonizar_siglado(x) for x in entry2.get('nominadores_set', set())])
+                    ppn_gp2 = entry2.get('ppn_gp', '')
+
+                    SHH = {"MORENA", "PT", "PVEM"}
+                    FCM = {"PAN", "PRI", "PRD"}
+
+                    tokens2 = tokens_de_coalicion(coalN2, anio) if coalN2 else []
+                    tokens2_set = set(tokens2) if tokens2 else set()
+
+                    if nominadores_set2 == SHH and tokens2_set == SHH and ppn_gp2:
+                        gp2 = ppn_gp2 if ppn_gp2 in partidos_base or ppn_gp2 == 'CI' else None
+                    if gp2 is None and nominadores_set2 == FCM and tokens2_set == FCM and ppn_gp2:
+                        gp2 = ppn_gp2 if ppn_gp2 in partidos_base or ppn_gp2 == 'CI' else None
+                    if gp2 is None and len(nominadores_set2) == 1:
+                        solo2 = list(nominadores_set2)[0]
+                        if solo2 in partidos_base and (not tokens2_set or solo2 in tokens2_set or solo2 == norm_ascii_up(str(top2))):
+                            gp2 = solo2
+
+                if gp2 is None:
+                    gp2 = gp_lookup(entidad, top2, formula, df_acred_est.iloc[i], gp_long, partidos_base, anio)
+
                 print(f"[DEBUG] {entidad} - PM F{formula}: {top2} -> {gp2}")
                 if gp2 is not None:
                     if gp2 == "CI":
@@ -549,14 +622,25 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
             print(f"[DEBUG] Saltando recomposición: ya tenemos coaliciones del siglado")
             recomposed = df_boletas
         else:
-            print(f"[DEBUG] Realizando recomposición con siglado: {path_siglado}")
-            recomposed = recompose_coalitions(
-                df=df_boletas,
-                year=anio,
-                chamber="senado", 
-                rule="equal_residue_siglado",
-                siglado_path=path_siglado
-            )
+            # Si se proporcionó siglado, usar la regla con siglado; si no, usar la regla por defecto sin siglado
+            if path_siglado:
+                print(f"[DEBUG] Realizando recomposición con siglado: {path_siglado}")
+                recomposed = recompose_coalitions(
+                    df=df_boletas,
+                    year=anio,
+                    chamber="senado", 
+                    rule="equal_residue_siglado",
+                    siglado_path=path_siglado
+                )
+            else:
+                print(f"[DEBUG] Realizando recomposición SIN siglado (equal_residue_solo)")
+                recomposed = recompose_coalitions(
+                    df=df_boletas,
+                    year=anio,
+                    chamber="senado", 
+                    rule="equal_residue_solo",
+                    siglado_path=None
+                )
         print(f"[DEBUG] Recomposición completada, shape: {recomposed.shape}")
         
         # 3) Crear df_acred_est (votos por entidad y partido)
@@ -564,10 +648,48 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
         df_acred_est = recomposed.groupby('ENTIDAD')[partidos_base].sum().reset_index()
         print(f"[DEBUG] Acreditación por entidad shape: {df_acred_est.shape}")
         
-        # 4) Leer siglado
-        print(f"[DEBUG] Leyendo siglado: {path_siglado}")
-        gp_long = read_siglado_sen_long(path_siglado)
-        print(f"[DEBUG] Siglado shape: {gp_long.shape}")
+        # 4) Leer siglado (si fue provisto)
+        if path_siglado:
+            print(f"[DEBUG] Leyendo siglado: {path_siglado}")
+            gp_long = read_siglado_sen_long(path_siglado)
+            print(f"[DEBUG] Siglado shape: {gp_long.shape}")
+
+            # 4.5) Construir siglado_map: llave (ENTIDAD_ASCII, COALICION, FORMULA) -> {nominadores_set, ppn_gp}
+            siglado_map = {}
+            try:
+                grouped = gp_long.groupby(['ENTIDAD_ASCII', 'COALICION', 'FORMULA'])
+                for key, dfg in grouped:
+                    entk, coalN, formula = key
+                    nominadores = set()
+                    gps = set()
+                    # PARTIDO_ORIGEN puede contener el partido nominador
+                    if 'PARTIDO_ORIGEN' in dfg.columns:
+                        for v in dfg['PARTIDO_ORIGEN'].unique():
+                            if pd.notna(v) and str(v).strip() != '':
+                                nominadores.add(canonizar_siglado(v))
+                    # GRUPO_PARLAMENTARIO puede indicar el grupo parlamentario a acreditar
+                    for g in dfg['GRUPO_PARLAMENTARIO'].unique():
+                        if pd.notna(g) and str(g).strip() != '':
+                            gps.add(canonizar_siglado(g))
+
+                    ppn_gp = ''
+                    if len(gps) == 1:
+                        ppn_gp = list(gps)[0]
+                    elif len(gps) > 1:
+                        print(f"[WARN] Múltiples GRUPO_PARLAMENTARIO para {key}: {gps}; ignorando ppn_gp")
+
+                    siglado_map[(normalize_entidad_ascii(entk), norm_ascii_up(coalN), int(formula))] = {
+                        'nominadores_set': nominadores,
+                        'ppn_gp': ppn_gp
+                    }
+                print(f"[DEBUG] siglado_map construido con {len(siglado_map)} entradas")
+            except Exception as e:
+                print(f"[WARN] No se pudo construir siglado_map: {e}")
+                siglado_map = None
+        else:
+            print(f"[DEBUG] No se proporcionó path_siglado; gp_long vacío y sin siglado_map")
+            gp_long = pd.DataFrame(columns=['ENTIDAD_ASCII','COALICION','FORMULA','GRUPO_PARLAMENTARIO','PARTIDO_ORIGEN'])
+            siglado_map = None
         
         # 5) Calcular MR+PM usando siglado por fórmula (solo si aplica)
         if escanos_mr_total > 0:
@@ -578,7 +700,8 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
                 gp_long=gp_long,
                 anio=anio,
                 escanos_mr_efectivos=escanos_mr_efectivos,
-                escanos_pm=escanos_pm
+                escanos_pm=escanos_pm,
+                siglado_map=siglado_map
             )
             
             ssd = mrpm_result['ssd_partidos']
