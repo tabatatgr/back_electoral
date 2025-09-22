@@ -760,6 +760,9 @@ async def procesar_diputados(
             
         elif plan_normalizado == "plan_a":
             # PLAN A: 300 total (0 MR + 300 RP), umbral 3%, sin tope
+            # Ignorar cualquier escanos_totales enviado desde el frontend: plan_a es RP puro 300
+            if escanos_totales is not None:
+                print(f"[DEBUG] plan_a recibido escanos_totales={escanos_totales} pero será IGNORADO (plan_a fuerza 300)")
             max_seats = 300
             mr_seats_final = 0
             rp_seats_final = 300
@@ -771,6 +774,9 @@ async def procesar_diputados(
             
         elif plan_normalizado == "plan_c":
             # PLAN C: 300 total (300 MR + 0 RP), sin umbral, sin tope
+            # Ignorar cualquier escanos_totales enviado desde el frontend: plan_c es MR puro 300
+            if escanos_totales is not None:
+                print(f"[DEBUG] plan_c recibido escanos_totales={escanos_totales} pero será IGNORADO (plan_c fuerza 300)")
             max_seats = 300
             mr_seats_final = 300
             rp_seats_final = 0
@@ -979,7 +985,25 @@ async def obtener_coaliciones(anio: int):
         raise HTTPException(status_code=500, detail=f"Error obteniendo coaliciones: {str(e)}")
 
 @app.get("/kpis/{camara}/{anio}")
-async def obtener_kpis(camara: str, anio: int, plan: str = "vigente"):
+async def obtener_kpis(
+    camara: str,
+    anio: int,
+    plan: str = "vigente",
+    escanos_totales: Optional[int] = None,
+    sistema: Optional[str] = None,
+    umbral: Optional[float] = None,
+    mr_seats: Optional[int] = None,
+    rp_seats: Optional[int] = None,
+    max_seats_per_party: Optional[int] = None,
+    sobrerrepresentacion: Optional[float] = None,
+    reparto_mode: str = "divisor",
+    reparto_method: str = "dhondt",
+    usar_coaliciones: bool = True,
+    votos_custom: Optional[str] = None,
+    partidos_fijos: Optional[str] = None,
+    overrides_pool: Optional[str] = None,
+    porcentajes_partidos: Optional[str] = None,
+):
     """
     Obtiene los KPIs electorales para una cámara y año específicos
     Usa los nuevos endpoints de procesamiento para obtener datos actualizados
@@ -988,11 +1012,39 @@ async def obtener_kpis(camara: str, anio: int, plan: str = "vigente"):
         if camara not in ["senado", "diputados"]:
             raise HTTPException(status_code=400, detail="Cámara debe ser 'senado' o 'diputados'")
         
-        # Llamar al endpoint de procesamiento correspondiente
+        # Llamar al endpoint de procesamiento correspondiente y reenviar parámetros
         if camara == "senado":
-            response = await procesar_senado(anio=anio, plan=plan)
+            response = await procesar_senado(
+                anio=anio,
+                plan=plan,
+                escanos_totales=escanos_totales,
+                sistema=sistema,
+                umbral=umbral,
+                mr_seats=mr_seats,
+                rp_seats=rp_seats,
+                reparto_mode=reparto_mode,
+                reparto_method=reparto_method,
+                usar_coaliciones=usar_coaliciones,
+            )
         else:
-            response = await procesar_diputados(anio=anio, plan=plan)
+            response = await procesar_diputados(
+                anio=anio,
+                plan=plan,
+                escanos_totales=escanos_totales,
+                sistema=sistema,
+                umbral=umbral,
+                mr_seats=mr_seats,
+                rp_seats=rp_seats,
+                max_seats_per_party=max_seats_per_party,
+                sobrerrepresentacion=sobrerrepresentacion,
+                reparto_mode=reparto_mode,
+                reparto_method=reparto_method,
+                usar_coaliciones=usar_coaliciones,
+                votos_custom=votos_custom,
+                partidos_fijos=partidos_fijos,
+                overrides_pool=overrides_pool,
+                porcentajes_partidos=porcentajes_partidos,
+            )
         
         # Extraer el contenido del JSONResponse
         if hasattr(response, 'body'):
@@ -1020,7 +1072,25 @@ async def obtener_kpis(camara: str, anio: int, plan: str = "vigente"):
         raise HTTPException(status_code=500, detail=f"Error obteniendo KPIs: {str(e)}")
 
 @app.get("/seat-chart/{camara}/{anio}")
-async def obtener_seat_chart(camara: str, anio: int, plan: str = "vigente"):
+async def obtener_seat_chart(
+    camara: str,
+    anio: int,
+    plan: str = "vigente",
+    escanos_totales: Optional[int] = None,
+    sistema: Optional[str] = None,
+    umbral: Optional[float] = None,
+    mr_seats: Optional[int] = None,
+    rp_seats: Optional[int] = None,
+    max_seats_per_party: Optional[int] = None,
+    sobrerrepresentacion: Optional[float] = None,
+    reparto_mode: str = "divisor",
+    reparto_method: str = "dhondt",
+    usar_coaliciones: bool = True,
+    votos_custom: Optional[str] = None,
+    partidos_fijos: Optional[str] = None,
+    overrides_pool: Optional[str] = None,
+    porcentajes_partidos: Optional[str] = None,
+):
     """
     Obtiene los datos formateados para el seat-chart
     Usa los nuevos endpoints de procesamiento para obtener datos actualizados
@@ -1029,11 +1099,39 @@ async def obtener_seat_chart(camara: str, anio: int, plan: str = "vigente"):
         if camara not in ["senado", "diputados"]:
             raise HTTPException(status_code=400, detail="Cámara debe ser 'senado' o 'diputados'")
         
-        # Llamar al endpoint de procesamiento correspondiente
+        # Llamar al endpoint de procesamiento correspondiente y reenviar parámetros
         if camara == "senado":
-            response = await procesar_senado(anio=anio, plan=plan)
+            response = await procesar_senado(
+                anio=anio,
+                plan=plan,
+                escanos_totales=escanos_totales,
+                sistema=sistema,
+                umbral=umbral,
+                mr_seats=mr_seats,
+                rp_seats=rp_seats,
+                reparto_mode=reparto_mode,
+                reparto_method=reparto_method,
+                usar_coaliciones=usar_coaliciones,
+            )
         else:
-            response = await procesar_diputados(anio=anio, plan=plan)
+            response = await procesar_diputados(
+                anio=anio,
+                plan=plan,
+                escanos_totales=escanos_totales,
+                sistema=sistema,
+                umbral=umbral,
+                mr_seats=mr_seats,
+                rp_seats=rp_seats,
+                max_seats_per_party=max_seats_per_party,
+                sobrerrepresentacion=sobrerrepresentacion,
+                reparto_mode=reparto_mode,
+                reparto_method=reparto_method,
+                usar_coaliciones=usar_coaliciones,
+                votos_custom=votos_custom,
+                partidos_fijos=partidos_fijos,
+                overrides_pool=overrides_pool,
+                porcentajes_partidos=porcentajes_partidos,
+            )
         
         # Extraer el contenido del JSONResponse
         if hasattr(response, 'body'):
