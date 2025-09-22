@@ -16,11 +16,44 @@ import pandas as pd
 import os
 import re
 import unicodedata
+import logging
 from typing import Dict, List, Optional, Tuple
 from .recomposicion import recompose_coalitions, parties_for, _load_siglado_dip
+from .scale_siglado import scale_siglado
 from .core import apply_overrep_cap
 from .core import DipParams
 from .core import largest_remainder, divisor_apportionment
+
+# Configurar logger del módulo
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    # handler por defecto que no doble el logging si ya está configurado por el consumidor
+    ch = logging.StreamHandler()
+    formatter = logging.Formatter('[%(levelname)s] %(message)s')
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    logger.setLevel(logging.INFO)
+
+# Helper para logging que respeta el flag print_debug
+def _maybe_log(msg: str, level: str = 'debug', print_debug: bool = False):
+    """Registra msg usando logger; si print_debug=True registra todo (debug/info/warn/error),
+    si False registra solo warnings y errors.
+    """
+    lvl = level.lower()
+    if print_debug:
+        if lvl in ('warn', 'warning'):
+            logger.warning(msg)
+        elif lvl == 'error':
+            logger.error(msg)
+        elif lvl == 'info':
+            logger.info(msg)
+        else:
+            logger.debug(msg)
+    else:
+        if lvl in ('warn', 'warning'):
+            logger.warning(msg)
+        elif lvl == 'error':
+            logger.error(msg)
 
 # ====================== UTILIDADES ======================
 
@@ -56,34 +89,33 @@ def extraer_coaliciones_de_siglado(siglado_path: str, anio: int) -> Dict[str, Li
     
     try:
         siglado = pd.read_csv(siglado_path)
-        print(f"[DEBUG] Extrayendo coaliciones del siglado: {siglado_path}")
-        
+        logger.debug(f"Extrayendo coaliciones del siglado: {siglado_path}")
+
         # Verificar estructura del archivo
         if 'coalicion' not in siglado.columns or 'grupo_parlamentario' not in siglado.columns:
-            print(f"[DEBUG] Archivo siglado no tiene estructura esperada: {siglado.columns.tolist()}")
+            logger.debug(f"Archivo siglado no tiene estructura esperada: {siglado.columns.tolist()}")
             return {}
-        
+
         # Renombrar columnas para estandarizar
         siglado = siglado.rename(columns={'coalicion': 'COALICION', 'grupo_parlamentario': 'PARTIDO_ORIGEN'})
-        
+
         # Agrupar por coalición y obtener partidos únicos
         for coalicion_name in siglado['COALICION'].unique():
             if pd.isna(coalicion_name) or coalicion_name.strip() == '':
                 continue
-                
+
             partidos_en_coalicion = siglado[siglado['COALICION'] == coalicion_name]['PARTIDO_ORIGEN'].unique()
             partidos_limpios = [p for p in partidos_en_coalicion if pd.notna(p) and p.strip() != '']
-            
+
             if len(partidos_limpios) > 1:  # Solo considerar verdaderas coaliciones (más de 1 partido)
                 # Normalizar nombre de coalición para que coincida con las columnas del dataset
                 nombre_normalizado = coalicion_name.upper().replace(' ', '_')
                 coaliciones[nombre_normalizado] = sorted(partidos_limpios)
-        
-        print(f"[DEBUG] Coaliciones detectadas: {coaliciones}")
+
+        logger.debug(f"Coaliciones detectadas: {coaliciones}")
         return coaliciones
-        
     except Exception as e:
-        print(f"[ERROR] Error leyendo siglado {siglado_path}: {e}")
+        logger.error(f"Error leyendo siglado {siglado_path}: {e}")
         return {}
 
 def agregar_columnas_coalicion(df, coaliciones):
@@ -102,7 +134,7 @@ def agregar_columnas_coalicion(df, coaliciones):
         if len(partidos_disponibles) >= 2:  # Solo crear coalición si hay al menos 2 partidos
             # Sumar votos de los partidos de la coalición
             df_modificado[col_name] = df_modificado[partidos_disponibles].sum(axis=1)
-            print(f"[DEBUG] Coalición creada: {col_name} = {partidos_disponibles} ({df_modificado[col_name].sum():,} votos)")
+            logger.debug(f"Coalición creada: {col_name} = {partidos_disponibles} ({df_modificado[col_name].sum():,} votos)")
     
     return df_modificado
 
@@ -203,11 +235,11 @@ def asignar_rp_con_metodo(votos: np.ndarray, escanos: int, quota_method: Optiona
         method_normalized = quota_method.lower().replace("_", "").replace("-", "")
         
         if method_normalized in ["hare", "droop", "hb", "imperiali"]:
-            print(f"[DEBUG] Usando método cuota: {method_normalized}")
+            _maybe_log(f"Usando método cuota: {method_normalized}", 'debug')
             return largest_remainder(votos, escanos, method_normalized)
         else:
             # Fallback a LR_ties original si método no reconocido
-            print(f"[DEBUG] Método cuota '{quota_method}' no reconocido, usando LR_ties")
+            _maybe_log(f"Método cuota '{quota_method}' no reconocido, usando LR_ties", 'debug')
             q = np.sum(votos) / escanos if escanos > 0 else 0
             return LR_ties(votos, n=escanos, q=q, seed=seed)
             
@@ -222,17 +254,17 @@ def asignar_rp_con_metodo(votos: np.ndarray, escanos: int, quota_method: Optiona
         
         if method_normalized in ["dhondt", "saintelague"]:
             # Usar el nombre normalizado que acepta core.py
-            print(f"[DEBUG] Usando método divisor: {method_normalized}")
+            _maybe_log(f"Usando método divisor: {method_normalized}", 'debug')
             return divisor_apportionment(votos, escanos, method_normalized)
         else:
             # Fallback a LR_ties si método no reconocido
-            print(f"[DEBUG] Método divisor '{divisor_method}' no reconocido, usando LR_ties")
+            _maybe_log(f"Método divisor '{divisor_method}' no reconocido, usando LR_ties", 'debug')
             q = np.sum(votos) / escanos if escanos > 0 else 0
             return LR_ties(votos, n=escanos, q=q, seed=seed)
             
     else:
         # FALLBACK: usar LR_ties original (comportamiento anterior)
-        print(f"[DEBUG] Sin método específico o ambos definidos, usando LR_ties por defecto")
+        _maybe_log(f"Sin método específico o ambos definidos, usando LR_ties por defecto", 'debug')
         q = np.sum(votos) / escanos if escanos > 0 else 0
         return LR_ties(votos, n=escanos, q=q, seed=seed)
 
@@ -548,7 +580,7 @@ def asignadip_v2(x: np.ndarray, ssd: np.ndarray,
     VVE = int(VTE - nulos - no_reg)
     
     if print_debug:
-        print(f"[DEBUG] VTE: {VTE}, VVE: {VVE}, threshold: {threshold}")
+        _maybe_log(f"VTE: {VTE}, VVE: {VVE}, threshold: {threshold}", 'debug', print_debug)
     
     # Aplicar umbral de 3%
     ok = (x / VVE >= threshold) if VVE > 0 else np.zeros_like(x, dtype=bool)
@@ -556,8 +588,8 @@ def asignadip_v2(x: np.ndarray, ssd: np.ndarray,
     x_ok[~ok] = 0.0  # Partidos <3% no participan en RP
     
     if print_debug:
-        print(f"[DEBUG] Partidos que pasan 3%: {np.sum(ok)}")
-        print(f"[DEBUG] Votos elegibles: {np.sum(x_ok)}")
+        _maybe_log(f"Partidos que pasan 3%: {np.sum(ok)}", 'debug', print_debug)
+        _maybe_log(f"Votos elegibles: {np.sum(x_ok)}", 'debug', print_debug)
     
     # Asignación inicial de RP usando LR
     if seed is not None:
@@ -589,7 +621,7 @@ def asignadip_v2(x: np.ndarray, ssd: np.ndarray,
         # Verificar suma exacta
         if np.sum(s_tot) != S:
             if print_debug:
-                print(f"[DEBUG] Ajustando suma: {np.sum(s_tot)} -> {S}")
+                _maybe_log(f"Ajustando suma: {np.sum(s_tot)} -> {S}", 'debug', print_debug)
             s_rp_final = s_rp_final.copy()
             s_tot = ssd + s_rp_final
     else:
@@ -627,10 +659,10 @@ def asignadip_v2(x: np.ndarray, ssd: np.ndarray,
     ])
     
     if print_debug:
-        print("[DEBUG] Resultados finales:")
-        print(f"MR: {dict(zip(range(len(ssd)), ssd))}")
-        print(f"RP: {dict(zip(range(len(s_rp_final)), s_rp_final))}")
-        print(f"Total: {dict(zip(range(len(s_tot)), s_tot))}")
+        _maybe_log("Resultados finales:", 'debug', print_debug)
+        _maybe_log(f"MR: {dict(zip(range(len(ssd)), ssd))}", 'debug', print_debug)
+        _maybe_log(f"RP: {dict(zip(range(len(s_rp_final)), s_rp_final))}", 'debug', print_debug)
+        _maybe_log(f"Total: {dict(zip(range(len(s_tot)), s_tot))}", 'debug', print_debug)
     
     return {
         'votes': votes,
@@ -685,13 +717,13 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
             partidos_base = parties_for(anio)
         
         if print_debug:
-            print(f"[DEBUG] Procesando diputados {anio} con {len(partidos_base)} partidos")
+            _maybe_log(f"Procesando diputados {anio} con {len(partidos_base)} partidos", 'debug', print_debug)
         
         # Leer datos
         try:
             df = pd.read_parquet(path_parquet)
         except Exception as e:
-            print(f"[WARN] Error leyendo Parquet: {e}")
+            _maybe_log(f"Error leyendo Parquet: {e}", 'warn', print_debug)
             import pyarrow.parquet as pq
             table = pq.read_table(path_parquet)
             df = table.to_pandas()
@@ -718,20 +750,20 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
             if coaliciones_detectadas:
                 df = agregar_columnas_coalicion(df, coaliciones_detectadas)
                 if print_debug:
-                    print(f"[DEBUG] Dataset con coaliciones shape: {df.shape}")
-                    print("[DEBUG] Saltando recomposición: ya tenemos coaliciones del siglado")
+                    _maybe_log(f"Dataset con coaliciones shape: {df.shape}", 'debug', print_debug)
+                    _maybe_log("Saltando recomposición: ya tenemos coaliciones del siglado", 'debug', print_debug)
             else:
                 if print_debug:
-                    print("[DEBUG] No se detectaron coaliciones válidas")
+                    _maybe_log("No se detectaron coaliciones válidas", 'debug', print_debug)
         else:
             if print_debug:
-                print(f"[DEBUG] No existe archivo siglado: {siglado_path_auto}")
+                _maybe_log(f"No existe archivo siglado: {siglado_path_auto}", 'debug', print_debug)
         
         # Recomposición: siempre usar la recomposición oficial. Si existe el CSV de siglado,
         # usar la regla 'equal_residue_siglado' pasando una versión normalizada del CSV.
         if path_siglado and os.path.exists(path_siglado):
             if print_debug:
-                print(f"[DEBUG] Usando recomposición con siglado: {path_siglado}")
+                _maybe_log(f"Usando recomposición con siglado: {path_siglado}", 'debug', print_debug)
             # Normalizar siglado para el loader de recomposición
             siglado_df = pd.read_csv(path_siglado, dtype=str, keep_default_na=False)
             # Normalize column names to ASCII lowercase but keep tokens like 'ASCII'
@@ -754,7 +786,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                 pass
         else:
             if print_debug:
-                print("[DEBUG] Usando recomposición estándar")
+                _maybe_log("Usando recomposición estándar", 'debug', print_debug)
             recomposed = recompose_coalitions(
                 df=df, year=anio, chamber="diputados",
                 rule="equal_residue_solo", siglado_path=None
@@ -765,13 +797,13 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
         indep = int(recomposed['CI'].sum()) if 'CI' in recomposed.columns else 0
         
         if print_debug:
-            print(f"[DEBUG] Votos por partido (originales): {votos_partido}")
-            print(f"[DEBUG] Independientes: {indep}")
+            _maybe_log(f"Votos por partido (originales): {votos_partido}", 'debug', print_debug)
+            _maybe_log(f"Independientes: {indep}", 'debug', print_debug)
         
         # NUEVO: Aplicar redistribución de votos si se proporciona
         if votos_redistribuidos:
             if print_debug:
-                print(f"[DEBUG] Aplicando redistribución de votos: {votos_redistribuidos}")
+                _maybe_log(f"Aplicando redistribución de votos: {votos_redistribuidos}", 'debug', print_debug)
             
             # Calcular total de votos válidos (excluyendo independientes)
             total_votos_validos = sum(votos_partido.values())
@@ -793,14 +825,14 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                 votos_partido = votos_partido_redistribuidos
                 
                 if print_debug:
-                    print(f"[DEBUG] Votos por partido (redistribuidos): {votos_partido}")
+                    _maybe_log(f"Votos por partido (redistribuidos): {votos_partido}", 'debug', print_debug)
                     total_redistribuido = sum(votos_partido.values())
-                    print(f"[DEBUG] Total votos después de redistribución: {total_redistribuido}")
+                    _maybe_log(f"Total votos después de redistribución: {total_redistribuido}", 'debug', print_debug)
         
-        # Calcular MR por distrito considerando coaliciones
+    # Calcular MR por distrito considerando coaliciones
         if coaliciones_detectadas and usar_coaliciones:
             if print_debug:
-                print("[DEBUG] Calculando MR con coaliciones y siglado")
+                _maybe_log("Calculando MR con coaliciones y siglado", 'debug', print_debug)
             
             # Cargar siglado para saber qué partido específico gana cada distrito
             siglado_path_auto = f"data/siglado-diputados-{anio}.csv"
@@ -890,11 +922,11 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     if len(ppn_vals) == 1:
                         ppn_gp = list(ppn_vals)[0]
                     elif len(ppn_vals) > 1:
-                        print(f"[WARN] Múltiples GRUPO_PARLAMENTARIO para {k}: {ppn_vals}; ignorando ppn_gp")
+                        _maybe_log(f"Múltiples GRUPO_PARLAMENTARIO para {k}: {ppn_vals}; ignorando ppn_gp", 'warn', print_debug)
                         ppn_gp = ''
                     siglado_map[k] = {'nominadores_set': nominadores, 'ppn_gp': ppn_gp}
             except Exception as e:
-                print(f"[WARN] No se pudo construir siglado_map desde {siglado_path_auto}: {e}")
+                _maybe_log(f"No se pudo construir siglado_map desde {siglado_path_auto}: {e}", 'warn', print_debug)
 
             # Calcular ganador por distrito
             mr_raw = {}
@@ -920,10 +952,10 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                 # votos por coalición = suma de partidos miembros
                 for coal_name, miembros in candidaturas_coaliciones.items():
                     s = 0.0
-                    for m in miembros:
+                    for miembro in miembros:
                         # sólo sumar si la columna existe en el recomposed
-                        if m in distrito:
-                            s += float(distrito.get(m, 0) or 0.0)
+                        if miembro in distrito:
+                            s += float(distrito.get(miembro, 0) or 0.0)
                     candidate_votes[coal_name] = s
 
                 # Determinar ganador (nombre de partido o coalición)
@@ -952,9 +984,9 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                 if coalicion_ganadora:
                     # DEBUG: Verificar variables en scope
                     if print_debug and entidad == "AGUASCALIENTES" and num_distrito == 1:
-                        print(f"[DEBUG-SCOPE] coalicion_ganadora: {coalicion_ganadora}")
-                        print(f"[DEBUG-SCOPE] coaliciones_detectadas keys: {list(coaliciones_detectadas.keys()) if coaliciones_detectadas else 'None'}")
-                        print(f"[DEBUG-SCOPE] coalicion_ganadora in coaliciones_detectadas: {coalicion_ganadora in coaliciones_detectadas if coaliciones_detectadas else 'coaliciones_detectadas is None'}")
+                        _maybe_log(f"coalicion_ganadora: {coalicion_ganadora}", 'debug', print_debug)
+                        _maybe_log(f"coaliciones_detectadas keys: {list(coaliciones_detectadas.keys()) if coaliciones_detectadas else 'None'}", 'debug', print_debug)
+                        _maybe_log(f"coalicion_ganadora in coaliciones_detectadas: {coalicion_ganadora in coaliciones_detectadas if coaliciones_detectadas else 'coaliciones_detectadas is None'}", 'debug', print_debug)
                     
                     # Si ganó una coalición (y efectivamente es una coalición en el parquet), decidir si usar siglado o fallback según nominadores
                     if is_coalition_win and coalicion_ganadora in coaliciones_detectadas:
@@ -970,9 +1002,9 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
 
                         # Sanity checks
                         if nominadores_set and len(nominadores_set) not in (1,3):
-                            print(f"[WARN] Distrito {entidad}-{num_distrito}: nominadores_set inesperado {nominadores_set}")
+                            _maybe_log(f"Distrito {entidad}-{num_distrito}: nominadores_set inesperado {nominadores_set}", 'warn', print_debug)
                         if (set(partidos_coalicion) == {"MORENA","PT","PVEM"} or set(partidos_coalicion) == {"PAN","PRI","PRD"}) and not ppn_gp:
-                            print(f"[WARN] Distrito {entidad}-{num_distrito}: coalición detectada pero ppn_gp ausente")
+                            _maybe_log(f"Distrito {entidad}-{num_distrito}: coalición detectada pero ppn_gp ausente", 'warn', print_debug)
 
                         # Reglas jurídicas (prioridad):
                         SHH = {"MORENA","PT","PVEM"}
@@ -985,7 +1017,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                                     mr_raw[ppn_gp] = mr_raw.get(ppn_gp, 0) + 1
                                     distrito_procesado = True
                                     if print_debug:
-                                        print(f"[SIGLADO] {entidad}-{num_distrito}: SHH ganó -> acreditar a {ppn_gp}")
+                                        _maybe_log(f"{entidad}-{num_distrito}: SHH ganó -> acreditar a {ppn_gp}", 'info', print_debug)
                                 else:
                                     # ppn_gp no corresponde a partido base: fallback por votos
                                     pass
@@ -997,7 +1029,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                                     mr_raw[ppn_gp] = mr_raw.get(ppn_gp, 0) + 1
                                     distrito_procesado = True
                                     if print_debug:
-                                        print(f"[SIGLADO] {entidad}-{num_distrito}: FCM ganó -> acreditar a {ppn_gp}")
+                                        _maybe_log(f"{entidad}-{num_distrito}: FCM ganó -> acreditar a {ppn_gp}", 'info', print_debug)
 
                         # 3) Si solo hay un nominador y ganó ese partido -> acreditar a ese partido
                         if not distrito_procesado and len(nominadores_set) == 1:
@@ -1007,7 +1039,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                                     mr_raw[solo] = mr_raw.get(solo, 0) + 1
                                     distrito_procesado = True
                                     if print_debug:
-                                        print(f"[SIGLADO] {entidad}-{num_distrito}: único nominador {solo} y ganó -> acreditar a {solo}")
+                                        _maybe_log(f"{entidad}-{num_distrito}: único nominador {solo} y ganó -> acreditar a {solo}", 'info', print_debug)
 
                         # 4) En otros casos, solo acreditar ppn_gp si la coalición ganó y ppn_gp pertenece a la coalición
                         if not distrito_procesado:
@@ -1027,7 +1059,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                                     mr_raw[partido_ganador] = mr_raw.get(partido_ganador, 0) + 1
                                     distrito_procesado = True
                                     if print_debug:
-                                        print(f"[SIGLADO-FALLBACK] {entidad}-{num_distrito}: acreditar a dominante {partido_ganador}")
+                                        _maybe_log(f"{entidad}-{num_distrito}: acreditar a dominante {partido_ganador}", 'warn', print_debug)
 
                             # Si no hay registro en siglado o no aplica, usar fallback por votos dentro de la coalición
                             if not distrito_procesado:
@@ -1038,7 +1070,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                                     mr_raw[partido_fallback] = mr_raw.get(partido_fallback, 0) + 1
                                     distrito_procesado = True
                                     if print_debug:
-                                        print(f"[FALLBACK] Distrito {entidad}-{num_distrito}: {coalicion_ganadora} -> {partido_fallback} (por votos coalición)")
+                                        _maybe_log(f"Distrito {entidad}-{num_distrito}: {coalicion_ganadora} -> {partido_fallback} (por votos coalición)", 'warn', print_debug)
                     elif not is_coalition_win:
                         # Aunque la suma ponderada sugiera una coalición, la columna de coalición
                         # no existía o no tenía votos en el parquet: tratar como partido individual
@@ -1046,7 +1078,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                             mr_raw[coalicion_ganadora] = mr_raw.get(coalicion_ganadora, 0) + 1
                             distrito_procesado = True
                             if print_debug and len(mr_raw) <= 5:
-                                print(f"[DEBUG] Distrito {entidad}-{num_distrito}: {coalicion_ganadora} (individual, sin columna de coalición)")
+                                _maybe_log(f"Distrito {entidad}-{num_distrito}: {coalicion_ganadora} (individual, sin columna de coalición)", 'debug', print_debug)
                         else:
                             # Fallback conservador: asignar al partido con más votos entre partidos base
                             votos_ind = {p: float(distrito.get(p,0) or 0) for p in partidos_base}
@@ -1055,14 +1087,14 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                                 mr_raw[ganador_ind] = mr_raw.get(ganador_ind, 0) + 1
                                 distrito_procesado = True
                                 if print_debug:
-                                    print(f"[DEBUG] Distrito {entidad}-{num_distrito}: {ganador_ind} (fallback sin columna de coalición)")
+                                    _maybe_log(f"Distrito {entidad}-{num_distrito}: {ganador_ind} (fallback sin columna de coalición)", 'debug', print_debug)
                     else:
                         # Partido individual ganó directamente
                         if coalicion_ganadora in partidos_base:
                             mr_raw[coalicion_ganadora] = mr_raw.get(coalicion_ganadora, 0) + 1
                             distrito_procesado = True
                             if print_debug and len(mr_raw) <= 5:
-                                print(f"[DEBUG] Distrito {entidad}-{num_distrito}: {coalicion_ganadora} (individual)")
+                                _maybe_log(f"Distrito {entidad}-{num_distrito}: {coalicion_ganadora} (individual)", 'debug', print_debug)
                 
                 # GARANTÍA: Si el distrito aún no se procesó, usar VOTOS DIRECTOS del parquet
                 if not distrito_procesado:
@@ -1077,13 +1109,13 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                         mr_raw[ganador_individual] = mr_raw.get(ganador_individual, 0) + 1
                         distrito_procesado = True
                         if print_debug:
-                            print(f"[GARANTÍA] Distrito {entidad}-{num_distrito}: {ganador_individual} (ganador directo por votos parquet)")
+                            _maybe_log(f"Distrito {entidad}-{num_distrito}: {ganador_individual} (ganador directo por votos parquet)", 'info', print_debug)
                 
                 if distrito_procesado:
                     distritos_procesados += 1
             
             if print_debug:
-                print(f"[DEBUG] Total distritos procesados para MR: {distritos_procesados}/300")
+                _maybe_log(f"Total distritos procesados para MR: {distritos_procesados}/300", 'debug', print_debug)
             
             mr_aligned = {p: int(mr_raw.get(p, 0)) for p in partidos_base}
             indep_mr = 0
@@ -1091,8 +1123,8 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
             # Usar método tradicional sin coaliciones (partido individual con más votos gana)
             if print_debug:
                 if coaliciones_detectadas and not usar_coaliciones:
-                    print("[DEBUG] Coaliciones detectadas pero DESACTIVADAS por parámetro")
-                print("[DEBUG] Calculando MR por partido individual (sin coaliciones)")
+                    _maybe_log("Coaliciones detectadas pero DESACTIVADAS por parámetro", 'debug', print_debug)
+                _maybe_log("Calculando MR por partido individual (sin coaliciones)", 'debug', print_debug)
             
             from .core import mr_by_siglado
             try:
@@ -1105,14 +1137,14 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                 mr_aligned = {p: int(mr.get(p, 0)) for p in partidos_base}
             except Exception as e:
                 if print_debug:
-                    print(f"[WARN] Error en mr_by_siglado: {e}")
+                    _maybe_log(f"Error en mr_by_siglado: {e}", 'warn', print_debug)
                 # Fallback: ganador por votos
                 ganadores = recomposed.groupby(['ENTIDAD', 'DISTRITO'])[partidos_base].sum().idxmax(axis=1)
                 mr = ganadores.value_counts().to_dict()
                 mr_aligned = {p: int(mr.get(p, 0)) for p in partidos_base}
                 indep_mr = mr.get('CI', 0)
         
-        # Configurar parámetros
+    # Configurar parámetros
         if umbral is None:
             umbral = 0.03
         if umbral >= 1:
@@ -1122,51 +1154,185 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
         sistema_tipo = sistema.lower() if sistema else 'mixto'
         
         if print_debug:
-            print(f"[DEBUG] Parámetros recibidos: sistema={sistema}, mr_seats={mr_seats}, rp_seats={rp_seats}, max_seats={max_seats}")
+            _maybe_log(f"Parámetros recibidos: sistema={sistema}, mr_seats={mr_seats}, rp_seats={rp_seats}, max_seats={max_seats}", 'debug', print_debug)
         
         if sistema_tipo == 'mr':
             # Solo MR, sin RP
             m = 0
             S = max_seats
             # Mantener MR calculado del siglado
+            # Si la magnitud solicitada difiere del total de distritos originales,
+            # escalamos el siglado para que sea determinístico y estratificado.
+            total_distritos_base = sum([mr_aligned.get(p, 0) for p in partidos_base])
+            if total_distritos_base != S:
+                try:
+                    # Preparar df de recomposed con las columnas necesarias
+                    df_siglado_like = recomposed.copy()
+                    # Asegurar columnas ENTIDAD, DISTRITO y dominantes
+                    if 'ENTIDAD' not in df_siglado_like.columns:
+                        df_siglado_like['ENTIDAD'] = df_siglado_like.get('entidad', '')
+                    if 'DISTRITO' not in df_siglado_like.columns:
+                        df_siglado_like['DISTRITO'] = df_siglado_like.get('distrito', 0)
+
+                    scaled = scale_siglado(
+                        df=df_siglado_like,
+                        M_target=S,
+                        partidos_base=partidos_base,
+                        strata='ENTIDAD',
+                        weight_var=None,
+                        seed=seed or 123
+                    )
+
+                    # Reconstruir mr_aligned a partir del scaled siglado
+                    mr_count = scaled.groupby('sigla').size().to_dict()
+                    # Normalizar claves y asegurar presencia de todos los partidos
+                    mr_aligned = {p: int(mr_count.get(p, 0)) for p in partidos_base}
+
+                    # Añadir info de scaled al meta para trazabilidad
+                    # Híbrido: persistir CSV en outputs/ para auditoría (archivo) y
+                    # mantener un resumen pequeño inline en meta para trazabilidad.
+                    try:
+                        # Determinar si se debe persistir el CSV a disco (por defecto ON)
+                        use_persist = os.environ.get('SCALED_SIGLADO_PERSIST', '1')
+                        use_persist = str(use_persist).strip() not in ('0', 'false', 'False', '')
+                        from datetime import datetime
+                        import uuid
+                        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                        out_dir = 'outputs'
+                        scaled_csv_path = None
+                        if use_persist:
+                            os.makedirs(out_dir, exist_ok=True)
+                            filename = f'scaled_siglado.{ts}.{uuid.uuid4().hex[:8]}.csv'
+                            out_path = os.path.join(out_dir, filename)
+                            # Escribir CSV en disco de forma segura
+                            scaled.to_csv(out_path, index=False)
+                            scaled_csv_path = out_path
+                    except Exception as _e:
+                        # En caso de fallo al escribir, mantener el CSV en memoria
+                        if print_debug:
+                            _maybe_log(f"No se pudo escribir scaled CSV a disco: {_e}", 'warn', print_debug)
+                        scaled_csv_path = None
+
+                    scaled_info = {
+                        'total_base': int(total_distritos_base),
+                        'total_target': int(S),
+                        'by_party': mr_aligned,
+                        'by_entidad': scaled.groupby('ENTIDAD').size().to_dict(),
+                        'virtual_count': int(scaled['virtual'].sum()),
+                        # Path al CSV persistido (si se pudo escribir). Si es None,
+                        # se mantiene el CSV inline en 'scaled_csv' para compatibilidad.
+                        'scaled_csv_path': scaled_csv_path,
+                        'scaled_csv': None if scaled_csv_path is not None else scaled.to_csv(index=False),
+                        'provenance': {
+                            'method': 'scale_siglado',
+                            'seed': int(seed or 123),
+                            'strata': 'ENTIDAD'
+                        }
+                    }
+                except Exception as e:
+                    if print_debug:
+                        _maybe_log(f"scale_siglado fallo: {e}", 'warn', print_debug)
+                    scaled_info = {'error': str(e)}
+            # Validación: no tiene sentido pedir una magnitud total menor
+            # que la cantidad de distritos (MR) ya ganados. Si el caller
+            # pidió una magnitud menor, lanzamos un error claro para que
+            # el frontend no reciba resultados inconsistentes.
+            total_mr_actual = sum(mr_aligned.values())
+            if S is not None and S < total_mr_actual:
+                raise ValueError(f"max_seats ({S}) es menor que la suma de MR ({total_mr_actual}). No se puede asignar menos escaños totales que distritos MR existentes.")
         elif sistema_tipo == 'rp':
             # Solo RP, sin MR (Plan A)
             m = max_seats
             S = max_seats
             mr_aligned = {p: 0 for p in partidos_base}  # FORZAR MR=0 para Plan A
             if print_debug:
-                print(f"[DEBUG] Plan A detectado: forzando MR=0 para todos los partidos")
+                _maybe_log(f"Plan A detectado: forzando MR=0 para todos los partidos", 'debug', print_debug)
         else:  # sistema_tipo == 'mixto'
             if mr_seats is not None and rp_seats is not None:
                 # Plan C o similar: parámetros explícitos para MR y RP
                 if print_debug:
-                    print(f"[DEBUG] Plan con parámetros explícitos: MR={mr_seats}, RP={rp_seats}")
+                    _maybe_log(f"Plan con parámetros explícitos: MR={mr_seats}, RP={rp_seats}", 'debug', print_debug)
                 # Ajustar MR calculado para que sume exactamente mr_seats
                 total_mr_actual = sum(mr_aligned.values())
                 if total_mr_actual != mr_seats:
                     if print_debug:
-                        print(f"[DEBUG] Ajustando MR de {total_mr_actual} a {mr_seats}")
-                    # Reescalar proporcionalmente
+                        _maybe_log(f"Ajustando MR de {total_mr_actual} a {mr_seats}", 'debug', print_debug)
+                    # Intentar escalado estratificado determinista usando scale_siglado
                     if total_mr_actual > 0:
-                        factor = mr_seats / total_mr_actual
-                        mr_ajustado = {}
-                        for p in partidos_base:
-                            mr_ajustado[p] = int(round(mr_aligned[p] * factor))
-                        # Ajuste fino para suma exacta
-                        diferencia = mr_seats - sum(mr_ajustado.values())
-                        if diferencia != 0:
-                            # Ordenar por MR descendente y ajustar
-                            partidos_ordenados = sorted(partidos_base, key=lambda x: mr_ajustado[x], reverse=True)
-                            for i in range(abs(diferencia)):
-                                if diferencia > 0:
-                                    mr_ajustado[partidos_ordenados[i % len(partidos_ordenados)]] += 1
-                                else:
-                                    if mr_ajustado[partidos_ordenados[i % len(partidos_ordenados)]] > 0:
-                                        mr_ajustado[partidos_ordenados[i % len(partidos_ordenados)]] -= 1
-                        mr_aligned = mr_ajustado
+                        try:
+                            df_siglado_like = recomposed.copy()
+                            if 'ENTIDAD' not in df_siglado_like.columns:
+                                df_siglado_like['ENTIDAD'] = df_siglado_like.get('entidad', '')
+                            if 'DISTRITO' not in df_siglado_like.columns:
+                                df_siglado_like['DISTRITO'] = df_siglado_like.get('distrito', 0)
+
+                            scaled = scale_siglado(
+                                df=df_siglado_like,
+                                M_target=mr_seats,
+                                partidos_base=partidos_base,
+                                strata='ENTIDAD',
+                                weight_var=None,
+                                seed=seed or 123
+                            )
+
+                            mr_count = scaled.groupby('sigla').size().to_dict()
+                            mr_ajustado = {p: int(mr_count.get(p, 0)) for p in partidos_base}
+
+                            # Híbrido: persistir CSV y dejar resumen inline
+                            try:
+                                # Determinar si se debe persistir el CSV a disco (por defecto ON)
+                                use_persist = os.environ.get('SCALED_SIGLADO_PERSIST', '1')
+                                use_persist = str(use_persist).strip() not in ('0', 'false', 'False', '')
+                                from datetime import datetime
+                                import uuid
+                                ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                                out_dir = 'outputs'
+                                scaled_csv_path = None
+                                if use_persist:
+                                    os.makedirs(out_dir, exist_ok=True)
+                                    filename = f'scaled_siglado.{ts}.{uuid.uuid4().hex[:8]}.csv'
+                                    out_path = os.path.join(out_dir, filename)
+                                    scaled.to_csv(out_path, index=False)
+                                    scaled_csv_path = out_path
+                            except Exception as _e:
+                                if print_debug:
+                                    _maybe_log(f"No se pudo escribir scaled CSV a disco (mixto): {_e}", 'warn', print_debug)
+                                scaled_csv_path = None
+
+                            scaled_info = {
+                                'total_base': int(total_mr_actual),
+                                'total_target': int(mr_seats),
+                                'by_party': mr_ajustado,
+                                'by_entidad': scaled.groupby('ENTIDAD').size().to_dict(),
+                                'virtual_count': int(scaled['virtual'].sum()),
+                                'scaled_csv_path': scaled_csv_path,
+                                'scaled_csv': None if scaled_csv_path is not None else scaled.to_csv(index=False),
+                                'provenance': {
+                                    'method': 'scale_siglado',
+                                    'seed': int(seed or 123),
+                                    'strata': 'ENTIDAD'
+                                }
+                            }
+                            mr_aligned = mr_ajustado
+                        except Exception as e:
+                            if print_debug:
+                                _maybe_log(f"scale_siglado (mixto) fallo: {e}, cayendo a reescalado proporcional", 'warn', print_debug)
+                            # Fallback proporcional
+                            factor = mr_seats / total_mr_actual if total_mr_actual > 0 else 0
+                            mr_ajustado = {p: int(round(mr_aligned.get(p, 0) * factor)) for p in partidos_base}
+                            diferencia = mr_seats - sum(mr_ajustado.values())
+                            if diferencia != 0:
+                                partidos_ordenados = sorted(partidos_base, key=lambda x: mr_ajustado[x], reverse=True)
+                                for i in range(abs(diferencia)):
+                                    if diferencia > 0:
+                                        mr_ajustado[partidos_ordenados[i % len(partidos_ordenados)]] += 1
+                                    else:
+                                        if mr_ajustado[partidos_ordenados[i % len(partidos_ordenados)]] > 0:
+                                            mr_ajustado[partidos_ordenados[i % len(partidos_ordenados)]] -= 1
+                            mr_aligned = mr_ajustado
                     else:
                         # Si no hay MR calculado, distribuir usando largest remainder
-                        votos_array = np.array([votos_partido[p] for p in partidos_base])
+                        votos_array = np.array([votos_partido.get(p, 0) for p in partidos_base])
                         mr_dist = LR_ties(votos_array, mr_seats)
                         mr_aligned = {partidos_base[i]: int(mr_dist[i]) for i in range(len(partidos_base))}
                 
@@ -1175,86 +1341,146 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
             elif mr_seats == 0:
                 # Plan A explícito
                 if print_debug:
-                    print(f"[DEBUG] Plan A explícito (mr_seats=0)")
+                    _maybe_log(f"Plan A explícito (mr_seats=0)", 'debug', print_debug)
                 m = max_seats
                 S = max_seats
                 mr_aligned = {p: 0 for p in partidos_base}
             elif rp_seats is not None:
                 # Plan vigente: MR libre + RP fijo (caso especial)
                 if print_debug:
-                    print(f"[DEBUG] Plan vigente detectado: MR libre + RP fijo = {rp_seats}")
+                    _maybe_log(f"Plan vigente detectado: MR libre + RP fijo = {rp_seats}", 'debug', print_debug)
                 total_mr = sum(mr_aligned.values())
                 m = rp_seats  # Usar RP fijo, no calculado
                 S = max_seats
             else:
                 # Sistema vigente tradicional (usar MR calculado)
-                if print_debug:
-                    print(f"[DEBUG] Sistema vigente tradicional")
-                total_mr = sum(mr_aligned.values())
-                m = max_seats - total_mr
-                S = max_seats
-        
-        if print_debug:
-            print(f"[DEBUG] Sistema: {sistema_tipo}, m: {m}, S: {S}")
-            print(f"[DEBUG] MR por partido: {mr_aligned}")
-        
-        # Convertir a arrays numpy
-        x = np.array([votos_partido[p] for p in partidos_base], dtype=float)
-        ssd = np.array([mr_aligned[p] for p in partidos_base], dtype=int)
-        
-        # Aplicar algoritmo mejorado
-        resultado = asignadip_v2(
-            x=x, ssd=ssd, indep=indep, nulos=0, no_reg=0,
-            m=m, S=S, threshold=umbral, max_seats=max_seats, max_pp=0.08,
-            apply_caps=True, quota_method=quota_method, divisor_method=divisor_method,
-            seed=seed, print_debug=print_debug
-        )
-        
-        # Convertir resultado a formato esperado
-        seats = resultado['seats']
-        votes = resultado['votes']
-        ok_3pct = resultado['meta']['ok_3pct']
-        
-        # Crear diccionarios por partido
-        mr_dict = {partidos_base[i]: int(seats[0, i]) for i in range(len(partidos_base))}
-        rp_dict = {partidos_base[i]: int(seats[1, i]) for i in range(len(partidos_base))}
-        tot_dict = {partidos_base[i]: int(seats[2, i]) for i in range(len(partidos_base))}
-        ok_dict = {partidos_base[i]: bool(ok_3pct[i]) for i in range(len(partidos_base))}
-        votos_ok = {p: votos_partido[p] if ok_dict[p] else 0 for p in partidos_base}
-        
-        # Aplicar tope por partido si se especifica
-        if max_seats_per_party and max_seats_per_party > 0:
-            for p in tot_dict:
-                if tot_dict[p] > max_seats_per_party:
-                    exceso = tot_dict[p] - max_seats_per_party
-                    tot_dict[p] = max_seats_per_party
-                    rp_dict[p] = max(0, max_seats_per_party - mr_dict[p])
-        
-        # Aplicar límite de sobrerrepresentación si se especifica
-        if sobrerrepresentacion and sobrerrepresentacion > 0:
-            if print_debug:
-                print(f"[DEBUG] Aplicando límite de sobrerrepresentación: {sobrerrepresentacion}%")
-                print(f"[DEBUG] Escaños antes de sobrerrepresentación: {tot_dict}")
+                # Nada especial que hacer aquí; se usa mr_aligned calculado
+                pass
             
-            # Calcular votos válidos (los que cumplen el umbral)
+            # Preparar datos y llamar a asignadip_v2 para obtener mr/rp/totales
+            # Asegurar valor por defecto de sobrerrepresentacion (en %)
+            # Defensive: asegurar que 'm' (RP seats) y 'S' (total seats) estén definidos
+            # en todos los caminos de control. Evita UnboundLocalError y calcula
+            # RP cuando sólo se proporciona mr_seats.
+            if ('m' not in locals()) or (m is None):
+                try:
+                    if mr_seats is not None and rp_seats is None and max_seats is not None:
+                        # Si el caller dio mr_seats pero no rp_seats, RP = max_seats - mr_seats
+                        m = int(max_seats) - int(mr_seats)
+                    elif rp_seats is not None:
+                        m = int(rp_seats)
+                    elif 'mr_aligned' in locals() and max_seats is not None:
+                        # Calcular RP como diferencia entre total y MR calculado
+                        m = int(max_seats) - int(sum(int(v) for v in mr_aligned.values()))
+                    else:
+                        # Fallback conservador: asignar todos los escaños a RP
+                        m = int(max_seats) if max_seats is not None else 0
+                except Exception:
+                    m = int(max_seats) if max_seats is not None else 0
+
+            if ('S' not in locals()) or (S is None):
+                S = int(max_seats) if max_seats is not None else None
+
+            # Asegurar m no negativo
+            try:
+                m = max(0, int(m))
+            except Exception:
+                m = 0
+            if sobrerrepresentacion is None:
+                sobrerrepresentacion = 8.0
+
+            # Determinar qué partidos pasan el umbral sobre votos válidos
+            total_votos_validos = sum(votos_partido.values())
+            if total_votos_validos > 0:
+                ok_dict = {p: (votos_partido.get(p, 0) / total_votos_validos) >= umbral for p in partidos_base}
+            else:
+                ok_dict = {p: False for p in partidos_base}
+
+            # votos_ok: votos contables para RP (0 si no pasan umbral)
+            votos_ok = {p: int(votos_partido.get(p, 0)) if ok_dict.get(p, False) else 0 for p in partidos_base}
+
+            # Preparar arrays para asignadip_v2
+            x_array = np.array([votos_partido.get(p, 0) for p in partidos_base], dtype=float)
+            ssd_array = np.array([mr_aligned.get(p, 0) for p in partidos_base], dtype=int)
+
+            # Llamar al motor de asignación (asignadip_v2)
+            try:
+                # Debug: verificar tipos/valores antes de llamar a asignadip_v2
+                if print_debug:
+                    try:
+                        _maybe_log(f"partidos_base sample: {partidos_base[:10]}", 'debug', print_debug)
+                        _maybe_log(f"mr_aligned sample: {{k: mr_aligned[k] for k in list(mr_aligned.keys())[:10]}}", 'debug', print_debug)
+                        _maybe_log(f"x_array dtype={x_array.dtype}, sample={x_array[:10]}", 'debug', print_debug)
+                        _maybe_log(f"ssd_array dtype={ssd_array.dtype}, sample={ssd_array[:10]}", 'debug', print_debug)
+                    except Exception as _e:
+                        _maybe_log(f"error printing debug samples: {_e}", 'warn', print_debug)
+
+                resultado = asignadip_v2(
+                    x=x_array,
+                    ssd=ssd_array,
+                    indep=int(indep) if indep is not None else 0,
+                    nulos=0,
+                    no_reg=0,
+                    m=int(m) if m is not None else 0,
+                    S=int(S) if S is not None else None,
+                    threshold=umbral,
+                    max_seats=int(max_seats) if max_seats is not None else 300,
+                    max_pp=(sobrerrepresentacion / 100.0) if sobrerrepresentacion is not None else 0.08,
+                    apply_caps=True,
+                    quota_method=quota_method,
+                    divisor_method=divisor_method,
+                    seed=seed,
+                    print_debug=print_debug
+                )
+            except Exception as e:
+                # En caso de fallo, retornar estado conservador
+                if print_debug:
+                    _maybe_log(f"asignadip_v2 falló: {e}", 'error', print_debug)
+                    import traceback
+                    traceback.print_exc()
+                resultado = {
+                    'votes': None,
+                    'seats': np.zeros((3, len(partidos_base)), dtype=int),
+                    'meta': {}
+                }
+
+            # Extraer MR/RP/Totales del resultado
+            seats = resultado.get('seats')
+            if seats is None:
+                seats = np.zeros((3, len(partidos_base)), dtype=int)
+
+            mr_row = seats[0] if seats.shape[0] > 0 else np.zeros(len(partidos_base), dtype=int)
+            rp_row = seats[1] if seats.shape[0] > 1 else np.zeros(len(partidos_base), dtype=int)
+            tot_row = seats[2] if seats.shape[0] > 2 else np.zeros(len(partidos_base), dtype=int)
+
+            mr_dict = {partidos_base[i]: int(mr_row[i]) for i in range(len(partidos_base))}
+            rp_dict = {partidos_base[i]: int(rp_row[i]) for i in range(len(partidos_base))}
+            tot_dict = {partidos_base[i]: int(tot_row[i]) for i in range(len(partidos_base))}
+
+            if print_debug:
+                _maybe_log(f"mr: {mr_dict}", 'debug', print_debug)
+                _maybe_log(f"rp: {rp_dict}", 'debug', print_debug)
+                _maybe_log(f"tot: {tot_dict}", 'debug', print_debug)
+
+            # Ahora continuar con la aplicación de límites de sobrerrepresentación
             total_votos_validos = sum(votos_ok.values())
             if total_votos_validos > 0:
                 # Convertir a arrays para apply_overrep_cap
                 # Crear arrays en el mismo orden que partidos_base
                 seats_array = np.array([tot_dict[p] for p in partidos_base])
                 votes_array = np.array([votos_ok[p] for p in partidos_base])
-                
+
                 # Calcular vote_share_valid 
                 vote_share_valid = votes_array / total_votos_validos
-                
+
                 # Aplicar límite (convertir de porcentaje a fracción)
                 over_cap = sobrerrepresentacion / 100.0
-                
+
                 if print_debug:
-                    print(f"[DEBUG] over_cap = {over_cap} ({sobrerrepresentacion}%)")
-                    print(f"[DEBUG] total_escanos = {max_seats}")
-                    print(f"[DEBUG] vote_share_valid = {vote_share_valid}")
-                
+                    _maybe_log(f"over_cap = {over_cap} ({sobrerrepresentacion}%)", 'debug', print_debug)
+                    _maybe_log(f"total_escanos = {max_seats}", 'debug', print_debug)
+                    _maybe_log(f"vote_share_valid = {vote_share_valid}", 'debug', print_debug)
+
                 # Aplicar límite de sobrerrepresentación
                 seats_ajustados = apply_overrep_cap(
                     seats=seats_array,
@@ -1262,23 +1488,107 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     S=max_seats,
                     over_cap=over_cap
                 )
-                
+
                 # Convertir de vuelta a diccionario
                 tot_dict_ajustado = {partidos_base[i]: int(seats_ajustados[i]) for i in range(len(partidos_base))}
-                
+
                 # Verificar si hubo cambios y aplicarlos
                 if tot_dict_ajustado != tot_dict:
                     for p in partidos_base:
                         if tot_dict_ajustado[p] != tot_dict[p]:
                             if print_debug:
-                                print(f"[DEBUG] {p}: {tot_dict[p]} -> {tot_dict_ajustado[p]} escaños (límite sobrerrepresentación)")
+                                _maybe_log(f"{p}: {tot_dict[p]} -> {tot_dict_ajustado[p]} escaños (límite sobrerrepresentación)", 'debug', print_debug)
                             tot_dict[p] = tot_dict_ajustado[p]
                             # Recalcular RP = total - MR
                             rp_dict[p] = max(0, tot_dict[p] - mr_dict[p])
-                
+
                 if print_debug:
-                    print(f"[DEBUG] Escaños después de sobrerrepresentación: {tot_dict}")
+                    _maybe_log(f"Escaños después de sobrerrepresentación: {tot_dict}", 'debug', print_debug)
         
+        # Si existe `scaled` pero por alguna razón no se construyó `scaled_info`,
+        # crear un scaled_info mínimo y persistir el CSV si es posible. Esto
+        # cubre rutas en las que el escalado falló parcialmente después de
+        # generar `scaled` pero antes de poblar la metadata.
+        try:
+            if 'scaled' in locals() and (('scaled_info' not in locals()) or scaled_info is None):
+                try:
+                    use_persist = os.environ.get('SCALED_SIGLADO_PERSIST', '1')
+                    use_persist = str(use_persist).strip() not in ('0', 'false', 'False', '')
+                    from datetime import datetime
+                    import uuid
+                    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    scaled_csv_path = None
+                    if use_persist:
+                        out_dir = 'outputs'
+                        os.makedirs(out_dir, exist_ok=True)
+                        filename = f'scaled_siglado.{ts}.{uuid.uuid4().hex[:8]}.csv'
+                        out_path = os.path.join(out_dir, filename)
+                        scaled.to_csv(out_path, index=False)
+                        scaled_csv_path = out_path
+                except Exception as _e:
+                    scaled_csv_path = None
+
+                try:
+                    by_party = scaled.groupby('sigla').size().to_dict() if 'sigla' in scaled.columns else {}
+                    by_entidad = scaled.groupby('ENTIDAD').size().to_dict() if 'ENTIDAD' in scaled.columns else {}
+                    virtual_count = int(scaled['virtual'].sum()) if 'virtual' in scaled.columns else 0
+                except Exception:
+                    by_party = {}
+                    by_entidad = {}
+                    virtual_count = 0
+
+                scaled_info = {
+                    'total_base': int(scaled.shape[0]) if hasattr(scaled, 'shape') else None,
+                    'total_target': None,
+                    'by_party': by_party,
+                    'by_entidad': by_entidad,
+                    'virtual_count': int(virtual_count),
+                    'scaled_csv_path': scaled_csv_path,
+                    'scaled_csv': None if scaled_csv_path is not None else (scaled.to_csv(index=False) if hasattr(scaled, 'to_csv') else None),
+                    'provenance': {
+                        'method': 'scale_siglado',
+                        'seed': int(seed or 123) if 'seed' in locals() else None,
+                        'strata': 'ENTIDAD'
+                    }
+                }
+        except Exception:
+            # Si cualquier cosa falla aquí, no queremos romper el retorno principal
+            pass
+
+        # Asegurar que 'resultado' exista (en ramas MR-only no se llamó a asignadip_v2)
+        if 'resultado' not in locals():
+            # resultado mínimo para permitir devolver meta y scaled_info
+            resultado = {'meta': {}}
+
+        # Si existió scaled_info (por escalado MR), añadirlo a la metadata para trazabilidad
+        meta_out = resultado['meta'].copy() if isinstance(resultado.get('meta'), dict) else {}
+
+        # Asegurar que los diccionarios de salida existan (caso MR-only u otras ramas)
+        if 'mr_dict' not in locals():
+            try:
+                mr_dict = {p: int(mr_aligned.get(p, 0)) for p in partidos_base}
+            except Exception:
+                mr_dict = {p: 0 for p in partidos_base}
+        if 'rp_dict' not in locals():
+            rp_dict = {p: 0 for p in partidos_base}
+        if 'tot_dict' not in locals():
+            try:
+                tot_dict = {p: int(mr_dict.get(p, 0) + rp_dict.get(p, 0)) for p in partidos_base}
+            except Exception:
+                tot_dict = {p: 0 for p in partidos_base}
+        # Asegurar valores por defecto para ok/votos si no fueron calculados
+        if 'ok_dict' not in locals():
+            ok_dict = {p: False for p in partidos_base}
+        if 'votos_partido' not in locals():
+            votos_partido = {p: 0 for p in partidos_base}
+        if 'votos_ok' not in locals():
+            votos_ok = {p: 0 for p in partidos_base}
+        try:
+            if 'scaled_info' in locals() and scaled_info is not None:
+                meta_out['scaled_info'] = scaled_info
+        except Exception:
+            pass
+
         return {
             'mr': mr_dict,
             'rp': rp_dict,
@@ -1286,11 +1596,11 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
             'ok': ok_dict,
             'votos': votos_partido,
             'votos_ok': votos_ok,
-            'meta': resultado['meta']
+            'meta': meta_out
         }
         
     except Exception as e:
-        print(f"[ERROR] procesar_diputados_v2: {e}")
+        _maybe_log(f"procesar_diputados_v2: {e}", 'error', print_debug)
         if print_debug:
             import traceback
             traceback.print_exc()
@@ -1324,7 +1634,7 @@ def export_scenarios(path_parquet: str, siglado_path: str, scenarios: list, out_
     with pd.ExcelWriter(out_path) as writer:
         for name, params in scenarios:
             if print_debug:
-                print('ejecutando', name, params)
+                _maybe_log(f"ejecutando {name} {params}", 'info', print_debug)
             # copy params to avoid mutation
             p = dict(params)
             usar_pm = p.pop('usar_pm', False)
@@ -1364,7 +1674,7 @@ def export_scenarios(path_parquet: str, siglado_path: str, scenarios: list, out_
                     df['pm'] = df['partido'].map(lambda x: pm_assigned.get(x, 0))
                 except Exception as e:
                     if print_debug:
-                        print('Error simulando PM:', e)
+                        _maybe_log(f"Error simulando PM: {e}", 'error', print_debug)
                     df['pm'] = 0
             else:
                 df['pm'] = 0
@@ -1373,5 +1683,5 @@ def export_scenarios(path_parquet: str, siglado_path: str, scenarios: list, out_
             safe_name = (name or 'sheet')[:31]
             df.to_excel(writer, sheet_name=safe_name, index=False)
 
-    print('Exportado a', out_path)
+    _maybe_log(f"Exportado a {out_path}", 'info', False)
     return out_path

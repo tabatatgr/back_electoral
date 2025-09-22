@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import pandas as pd
@@ -6,6 +6,7 @@ import sys
 import os
 import json
 from typing import Dict, Any, Optional
+from pydantic import BaseModel
 from datetime import datetime
 
 # Agregar el directorio actual al path para importaciones
@@ -167,7 +168,7 @@ def transformar_resultado_a_formato_frontend(resultado_dict: Dict, plan: str) ->
         
         print(f"[DEBUG] KPIs calculados: {kpis}")
         
-        return {
+        out = {
             "plan": plan,
             "resultados": resultados,
             "kpis": kpis,
@@ -175,6 +176,18 @@ def transformar_resultado_a_formato_frontend(resultado_dict: Dict, plan: str) ->
             "timestamp": datetime.now().isoformat(),
             "cache_buster": datetime.now().timestamp()
         }
+
+        # Incluir metadatos de escalado si existen (trazabilidad)
+        try:
+            meta = resultado_dict.get('meta', {}) if isinstance(resultado_dict, dict) else {}
+            if meta and isinstance(meta, dict) and 'scaled_info' in meta:
+                out['meta'] = {
+                    'scaled_info': meta.get('scaled_info')
+                }
+        except Exception:
+            pass
+
+        return out
         
     except Exception as e:
         print(f"[ERROR] Error transformando resultado: {e}")
@@ -610,6 +623,7 @@ async def options_procesar_diputados():
 @app.post("/procesar/diputados")
 async def procesar_diputados(
     anio: int,
+    request: Request = None,
     plan: str = "vigente",
     escanos_totales: Optional[int] = None,
     sistema: Optional[str] = None,
@@ -648,6 +662,34 @@ async def procesar_diputados(
     - **porcentajes_partidos**: JSON con % de votos por partido {"MORENA":42.5, "PAN":20.7, ...}
     """
     try:
+        # Intentar leer body JSON si fue enviado (si el cliente envía JSON en el body
+        # preferimos esos valores sobre los query params). Usamos Request para
+        # acceder al body de forma segura.
+        body_obj = None
+        if request is not None:
+            try:
+                body_obj = await request.json()
+            except Exception:
+                body_obj = None
+
+        # Preferir valores enviados en el body si existen
+        if isinstance(body_obj, dict):
+            anio = body_obj.get('anio', anio)
+            plan = body_obj.get('plan', plan)
+            escanos_totales = body_obj.get('escanos_totales', escanos_totales)
+            sistema = body_obj.get('sistema', sistema)
+            umbral = body_obj.get('umbral', umbral)
+            mr_seats = body_obj.get('mr_seats', mr_seats)
+            rp_seats = body_obj.get('rp_seats', rp_seats)
+            max_seats_per_party = body_obj.get('max_seats_per_party', max_seats_per_party)
+            sobrerrepresentacion = body_obj.get('sobrerrepresentacion', sobrerrepresentacion)
+            reparto_mode = body_obj.get('reparto_mode', reparto_mode)
+            reparto_method = body_obj.get('reparto_method', reparto_method)
+            usar_coaliciones = body_obj.get('usar_coaliciones', usar_coaliciones)
+            votos_custom = body_obj.get('votos_custom', votos_custom)
+            partidos_fijos = body_obj.get('partidos_fijos', partidos_fijos)
+            overrides_pool = body_obj.get('overrides_pool', overrides_pool)
+            porcentajes_partidos = body_obj.get('porcentajes_partidos', porcentajes_partidos)
         print(f"[DEBUG] Iniciando /procesar/diputados con:")
         print(f"[DEBUG] - anio: {anio}")
         print(f"[DEBUG] - plan: {plan}")
@@ -1144,6 +1186,13 @@ async def obtener_seat_chart(
         
         # Formatear para seat-chart usando los resultados actualizados
         seat_chart_data = formato_seat_chart(resultado)
+        # Pasar metadatos si existen para que el frontend pueda mostrar trazabilidad
+        try:
+            if isinstance(resultado, dict) and 'meta' in resultado and isinstance(resultado['meta'], dict):
+                seat_chart_data.setdefault('metadata', {})
+                seat_chart_data['metadata']['scaled_info'] = resultado['meta'].get('scaled_info')
+        except Exception:
+            pass
         
         # Retornar con headers anti-caché
         return JSONResponse(
@@ -1183,3 +1232,49 @@ def normalizar_plan(plan: str) -> str:
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)
+
+
+@app.get("/scaled-siglado/{anio}")
+async def obtener_scaled_siglado(anio: int, plan: str = "personalizado"):
+    """
+    Endpoint de auditoría: devuelve el CSV generado por el escalado del siglado
+    si el procesamiento incluyó 'scaled_info' en meta.
+    """
+    try:
+        # Llamar al endpoint de procesamiento para generar metadata (si no está en cache)
+        response = await procesar_diputados(anio=anio, plan=plan)
+        if hasattr(response, 'body'):
+            import json
+            resultado = json.loads(response.body.decode())
+        else:
+            resultado = response
+
+        meta = resultado.get('meta', {}) if isinstance(resultado, dict) else {}
+        scaled_info = meta.get('scaled_info') if isinstance(meta, dict) else None
+        if not scaled_info:
+            raise HTTPException(status_code=404, detail="No hay scaled_siglado disponible para este año/plan")
+
+        # Preferir archivo persistido si existe
+        path = scaled_info.get('scaled_csv_path')
+        if path:
+            import os
+            if os.path.exists(path):
+                try:
+                    with open(path, 'r', encoding='utf-8') as fh:
+                        csv_text = fh.read()
+                    return JSONResponse(content={"scaled_csv": csv_text, 'path': path})
+                except Exception as e:
+                    # Fall back to inline CSV if lectura falla
+                    print(f"Error leyendo scaled CSV desde {path}: {e}")
+
+        # Fallback: buscar scaled_csv inline
+        csv_text = scaled_info.get('scaled_csv')
+        if csv_text:
+            return JSONResponse(content={"scaled_csv": csv_text})
+
+        raise HTTPException(status_code=404, detail="No hay scaled_siglado disponible (ni archivo ni inline)")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error obteniendo scaled_siglado: {str(e)}")
