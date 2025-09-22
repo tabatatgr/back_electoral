@@ -653,7 +653,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                           partidos_base: Optional[List[str]] = None,
                           anio: int = 2024, 
                           path_siglado: Optional[str] = None,
-                          max_seats: int = 300, 
+                          max_seats: Optional[int] = None, 
                           sistema: str = 'mixto',
                           mr_seats: Optional[int] = None, 
                           rp_seats: Optional[int] = None,
@@ -671,6 +671,13 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
     Procesador principal de diputados versión 2
     """
     try:
+        # Seguridad: evitar comportamiento silencioso con un default no explícito.
+        # Requerimos que el caller provea `max_seats` (magnitud total). Si no se
+        # proporciona, lanzamos un error claro para evitar que se use un valor
+        # por defecto inesperado.
+        if max_seats is None:
+            raise ValueError("max_seats (magnitud total) no fue provisto. Pase 'escanos_totales' desde el frontend o proporcione 'max_seats' explícitamente al invocar procesar_diputados_v2.")
+
         if not path_parquet:
             raise ValueError("Debe proporcionar path_parquet")
         

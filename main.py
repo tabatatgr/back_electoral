@@ -818,20 +818,34 @@ async def procesar_diputados(
             else:
                 # FALLBACK: Usuario no especificó magnitud total
                 print(f"[DEBUG] No se especificó magnitud, usando parámetros individuales o defaults")
+                # Respetar explícitamente los valores individuales si están presentes.
                 if sistema_final == "mr":
-                    # Para MR puro, usar mr_seats como magnitud total
-                    mr_seats_final = mr_seats if mr_seats is not None else 300
-                    rp_seats_final = 0
-                    max_seats = mr_seats_final
+                    # Para MR puro, usar mr_seats como magnitud total si se proporcionó,
+                    # si no, mantener el comportamiento por defecto histórico (usar 300 puede ser sorprendente),
+                    # mejor usar el número de distritos calculado a partir del siglado si está disponible;
+                    # aquí usamos mr_seats si existe, si no dejamos max_seats sin cambios para que el wrapper asigne por defecto.
+                    if mr_seats is not None:
+                        mr_seats_final = mr_seats
+                        rp_seats_final = 0
+                        max_seats = mr_seats_final
+                    else:
+                        # No se proporcionó mr_seats: dejar que la lógica superior/wrappers decida la magnitud
+                        mr_seats_final = None
+                        rp_seats_final = 0
                 elif sistema_final == "rp":
-                    # Para RP puro, usar rp_seats como magnitud total
-                    mr_seats_final = 0
-                    rp_seats_final = rp_seats if rp_seats is not None else 300
-                    max_seats = rp_seats_final
+                    if rp_seats is not None:
+                        mr_seats_final = 0
+                        rp_seats_final = rp_seats
+                        max_seats = rp_seats_final
+                    else:
+                        mr_seats_final = 0
+                        rp_seats_final = None
                 else:  # mixto
-                    mr_seats_final = mr_seats if mr_seats is not None else 300
-                    rp_seats_final = rp_seats if rp_seats is not None else 200
-                    max_seats = mr_seats_final + rp_seats_final
+                    # Para mixto, respetar desagregados si se proporcionan; si no, dejar que defaults en wrappers manejen S
+                    mr_seats_final = mr_seats if mr_seats is not None else None
+                    rp_seats_final = rp_seats if rp_seats is not None else None
+                    if mr_seats_final is not None and rp_seats_final is not None:
+                        max_seats = mr_seats_final + rp_seats_final
             
             umbral_final = umbral if umbral is not None else 0.03
             max_seats_per_party_final = max_seats_per_party
