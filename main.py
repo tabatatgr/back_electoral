@@ -870,6 +870,15 @@ async def procesar_diputados(
                         # Reemplazar el path_datos por el parquet temporal para forzar
                         # a `procesar_diputados_v2` a recalcular MR a partir de estos votos
                         path_datos = tmp_name
+                        # IMPORTANT: si estamos en la ruta del endpoint (no en script), también
+                        # asignar parquet_replacement para que la variable usada más abajo
+                        # por el endpoint apunte al parquet temporal.
+                        try:
+                            parquet_replacement = tmp_name
+                        except Exception:
+                            # En entornos donde parquet_replacement no está definido o es inmutable,
+                            # simplemente ignoramos y confiamos en path_datos
+                            pass
                     except Exception as e:
                         print(f"[WARN] No se pudo generar parquet temporal redistribuido: {e}")
                         # Caer hacia atrás a usar solo porcentajes_filtrados para redistribución
