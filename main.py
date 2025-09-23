@@ -752,6 +752,14 @@ async def procesar_diputados(
         votos_redistribuidos = None
         # Si generamos un parquet temporal con votos redistribuidos, lo almacenamos aquí
         parquet_replacement = None
+        # DEBUG CRÍTICO: loguear las keys que llegaron para redistribución (facilita ver en producción)
+        keys_present = {
+            'votos_custom': bool(votos_custom),
+            'partidos_fijos': bool(partidos_fijos),
+            'overrides_pool': bool(overrides_pool),
+            'porcentajes_partidos': bool(porcentajes_partidos)
+        }
+        print(f"[DEBUG-REDISTRIB] keys_present: {keys_present}")
         if votos_custom or partidos_fijos or overrides_pool or porcentajes_partidos:
             print(f"[DEBUG] Redistribución de votos solicitada:")
             print(f"[DEBUG] - votos_custom: {votos_custom}")
