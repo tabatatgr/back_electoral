@@ -614,14 +614,14 @@ async def procesar_senado(
         try:
             trace = {}
             # parquet temporal generado en este request (si existe)
-            if 'parquet_replacement' in locals() and parquet_replacement:
-                trace['tmp_parquet'] = parquet_replacement
+            if locals().get('parquet_replacement'):
+                trace['tmp_parquet'] = locals().get('parquet_replacement')
             else:
                 trace['tmp_parquet'] = None
 
             # porcentajes / votos redistribuidos que se usaron (si existen)
             try:
-                trace['votos_redistribuidos'] = votos_redistribuidos if 'votos_redistribuidos' in locals() else None
+                trace['votos_redistribuidos'] = locals().get('votos_redistribuidos')
             except Exception:
                 trace['votos_redistribuidos'] = None
 
@@ -1104,15 +1104,50 @@ async def procesar_diputados(
         
         # Transformar al formato esperado por el frontend con colores
         resultado_formateado = transformar_resultado_a_formato_frontend(resultado, plan)
-        
+
+        # Intentar añadir trazas de redistribución (tmp_parquet, votos_redistribuidos, scaled_info)
+        try:
+            trace = {}
+            if 'parquet_replacement' in locals() and parquet_replacement:
+                trace['tmp_parquet'] = parquet_replacement
+            else:
+                trace['tmp_parquet'] = None
+
+            try:
+                trace['votos_redistribuidos'] = votos_redistribuidos if 'votos_redistribuidos' in locals() else None
+            except Exception:
+                trace['votos_redistribuidos'] = None
+
+            try:
+                meta_in = resultado.get('meta', {}) if isinstance(resultado, dict) else {}
+                if meta_in and isinstance(meta_in, dict) and 'scaled_info' in meta_in:
+                    trace['scaled_info'] = meta_in.get('scaled_info')
+            except Exception:
+                pass
+
+            if trace:
+                if 'meta' not in resultado_formateado:
+                    resultado_formateado['meta'] = {}
+                resultado_formateado['meta']['trace'] = trace
+        except Exception as _e:
+            print(f"[WARN] No se pudo añadir trace meta en diputados: {_e}")
+
+        # Preparar headers; añadir X-Redistrib-Trace para diagnóstico en production si existe parquet
+        headers = {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+        try:
+            if 'parquet_replacement' in locals() and parquet_replacement:
+                headers['X-Redistrib-Trace'] = os.path.basename(parquet_replacement)
+        except Exception:
+            pass
+
         # Retornar con headers anti-caché para evitar problemas de actualización
         return JSONResponse(
             content=resultado_formateado,
-            headers={
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Pragma": "no-cache",
-                "Expires": "0"
-            }
+            headers=headers
         )
         
     except Exception as e:
