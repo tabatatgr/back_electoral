@@ -633,6 +633,12 @@ async def procesar_senado(
             except Exception:
                 pass
 
+            # Añadir telemetría raw_body_parsed si existe (por compatibilidad con diputados)
+            try:
+                trace['raw_body_parsed'] = bool(locals().get('raw_body_parsed', False))
+            except Exception:
+                trace['raw_body_parsed'] = False
+
             if trace:
                 if 'meta' not in resultado_formateado:
                     resultado_formateado['meta'] = {}
@@ -716,11 +722,54 @@ async def procesar_diputados(
         # preferimos esos valores sobre los query params). Usamos Request para
         # acceder al body de forma segura.
         body_obj = None
+        # Telemetría: si usamos el parsing heurístico desde raw body
+        raw_body_parsed = False
         if request is not None:
+            # Primero intentamos el parseo normal de JSON
             try:
                 body_obj = await request.json()
             except Exception:
                 body_obj = None
+            # Si no obtuvimos un dict, intentar un parsing tolerante desde el body raw
+            if not isinstance(body_obj, dict):
+                try:
+                    raw_bytes = await request.body()
+                    if raw_bytes:
+                        try:
+                            raw_text = raw_bytes.decode('utf-8')
+                        except Exception:
+                            raw_text = raw_bytes.decode('utf-8', errors='replace')
+
+                        raw_text_stripped = raw_text.strip()
+                        # Intentar cargar si parece JSON (comienza con { o [)
+                        if raw_text_stripped and raw_text_stripped[0] in ('{', '['):
+                            try:
+                                parsed = json.loads(raw_text_stripped)
+                                body_obj = parsed
+                                raw_body_parsed = True
+                                print(f"[WARN] Parsed raw body as JSON despite Content-Type: {request.headers.get('content-type')}")
+                            except Exception:
+                                # No es JSON válido, mantener None
+                                body_obj = body_obj or None
+                        else:
+                            # Si no es JSON completo, pero es un string conteniendo un objecto JSON
+                            # (por ejemplo el cliente envía directamente el JSON como text/plain),
+                            # intentamos localizar un primer objeto JSON usando heurística sencilla.
+                            try:
+                                # heurística: buscar la primera ocurrencia de '{' y la última '}'
+                                start = raw_text.find('{')
+                                end = raw_text.rfind('}')
+                                if start != -1 and end != -1 and end > start:
+                                    fragment = raw_text[start:end+1]
+                                    parsed = json.loads(fragment)
+                                    body_obj = parsed
+                                    raw_body_parsed = True
+                                    print(f"[WARN] Heuristically parsed JSON fragment from raw body (Content-Type={request.headers.get('content-type')})")
+                            except Exception:
+                                body_obj = body_obj or None
+                except Exception:
+                    # Si falla leer body raw, simplemente seguimos con body_obj tal cual
+                    body_obj = body_obj or None
 
         # Preferir valores enviados en el body si existen
         if isinstance(body_obj, dict):
@@ -770,6 +819,26 @@ async def procesar_diputados(
             'porcentajes_partidos': bool(porcentajes_partidos)
         }
         print(f"[DEBUG-REDISTRIB] keys_present: {keys_present}")
+        # Si ninguna key relevante llegó, imprimimos un diagnóstico ligero
+        if not any(keys_present.values()):
+            try:
+                body_summary = None
+                if isinstance(body_obj, dict):
+                    # mostrar solo las primeras 20 keys para no saturar logs
+                    keys = list(body_obj.keys())[:20]
+                    body_summary = f"dict with keys={keys} (total {len(body_obj)})"
+                else:
+                    body_summary = repr(body_obj)[:200]
+
+                content_type = None
+                try:
+                    content_type = request.headers.get('content-type')
+                except Exception:
+                    content_type = '<unknown>'
+
+                print(f"[DEBUG-REDISTRIB] No redistrib keys present. body_summary={body_summary}, Content-Type={content_type}")
+            except Exception as e:
+                print(f"[DEBUG-REDISTRIB] Error inspeccionando body para diagnóstico: {e}")
         if votos_custom or partidos_fijos or overrides_pool or porcentajes_partidos:
             print(f"[DEBUG] Redistribución de votos solicitada:")
             print(f"[DEBUG] - votos_custom: {votos_custom}")
@@ -1142,6 +1211,12 @@ async def procesar_diputados(
                     trace['scaled_info'] = meta_in.get('scaled_info')
             except Exception:
                 pass
+
+            # Añadir telemetría raw_body_parsed si existe
+            try:
+                trace['raw_body_parsed'] = bool(locals().get('raw_body_parsed', False))
+            except Exception:
+                trace['raw_body_parsed'] = False
 
             if trace:
                 if 'meta' not in resultado_formateado:
