@@ -740,6 +740,16 @@ async def procesar_diputados(
             partidos_fijos = body_obj.get('partidos_fijos', partidos_fijos)
             overrides_pool = body_obj.get('overrides_pool', overrides_pool)
             porcentajes_partidos = body_obj.get('porcentajes_partidos', porcentajes_partidos)
+            # Soporte para payloads 'desnudos' como {"PRD":90, "PAN":5, ...}
+            # Detectar si el body contiene solo claves de partidos en mayúsculas y valores numéricos
+            try:
+                potential_parties = {k:v for k,v in body_obj.items() if isinstance(k, str) and k.isupper() and isinstance(v, (int,float))}
+                # Si hay al menos 2 claves que lucen como partidos y no vienen ya en porcentajes_partidos
+                if potential_parties and not porcentajes_partidos:
+                    print(f"[DEBUG] Detectado payload desnudo de partidos, mapeando a porcentajes_partidos: {list(potential_parties.keys())}")
+                    porcentajes_partidos = potential_parties
+            except Exception:
+                pass
         print(f"[DEBUG] Iniciando /procesar/diputados con:")
         print(f"[DEBUG] - anio: {anio}")
         print(f"[DEBUG] - plan: {plan}")

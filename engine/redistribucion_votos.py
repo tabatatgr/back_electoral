@@ -196,6 +196,25 @@ def simular_escenario_electoral(path_parquet: str,
     """
     # Cargar datos
     df = pd.read_parquet(path_parquet)
+    # Normalizar formato de input: la función espera un DataFrame en formato "largo"
+    # con columnas 'PARTIDO' y 'VOTOS_CALCULADOS'. Algunos parquets (como los
+    # de computos_*.parquet) vienen en formato "ancho" donde cada partido es
+    # una columna. Detectamos ese caso y convertimos automáticamente a formato
+    # largo para mantener compatibilidad.
+    try:
+        if 'PARTIDO' not in df.columns or 'VOTOS_CALCULADOS' not in df.columns:
+            # Detectar columnas de id/estructura (si existen)
+            id_cols = [c for c in ['ENTIDAD', 'DISTRITO', 'TOTAL_BOLETAS', 'CI'] if c in df.columns]
+            # Las columnas restantes se consideran partidos (valores numéricos)
+            party_cols = [c for c in df.columns if c not in id_cols]
+            # Evitar convertir si ya parece estar en largo (por ejemplo, tiene PARTIDO)
+            if party_cols:
+                df = df.melt(id_vars=id_cols, value_vars=party_cols, var_name='PARTIDO', value_name='VOTOS_CALCULADOS')
+                # Convertir tipos y rellenar nulos en votos
+                df['VOTOS_CALCULADOS'] = df['VOTOS_CALCULADOS'].fillna(0)
+                print(f"[DEBUG] Converted wide-format parquet to long-format: id_cols={id_cols}, parties={len(party_cols)}")
+    except Exception as _e:
+        print(f"[WARN] No se pudo normalizar formato de parquet a largo: {_e}")
     
     # Extraer porcentajes actuales
     porcentajes_actuales = extraer_porcentajes_actuales(df)
