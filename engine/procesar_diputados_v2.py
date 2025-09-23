@@ -1247,6 +1247,69 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
             mr_aligned = {p: 0 for p in partidos_base}  # FORZAR MR=0 para Plan A
             if print_debug:
                 _maybe_log(f"Plan A detectado: forzando MR=0 para todos los partidos", 'debug', print_debug)
+            # Preparar datos y llamar a asignadip_v2 igual que en la rama mixto,
+            # para generar rp/tot y poblar resultado cuando el sistema es RP puro.
+            # Determinar qué partidos pasan el umbral sobre votos válidos
+            total_votos_validos = sum(votos_partido.values())
+            if total_votos_validos > 0:
+                ok_dict = {p: (votos_partido.get(p, 0) / total_votos_validos) >= umbral for p in partidos_base}
+            else:
+                ok_dict = {p: False for p in partidos_base}
+
+            # votos_ok: votos contables para RP (0 si no pasan umbral)
+            votos_ok = {p: int(votos_partido.get(p, 0)) if ok_dict.get(p, False) else 0 for p in partidos_base}
+
+            # Preparar arrays para asignadip_v2
+            x_array = np.array([votos_partido.get(p, 0) for p in partidos_base], dtype=float)
+            ssd_array = np.array([mr_aligned.get(p, 0) for p in partidos_base], dtype=int)
+
+            try:
+                if print_debug:
+                    try:
+                        _maybe_log(f"[RP] partidos_base sample: {partidos_base[:10]}", 'debug', print_debug)
+                        _maybe_log(f"[RP] x_array dtype={x_array.dtype}, sample={x_array[:10]}", 'debug', print_debug)
+                        _maybe_log(f"[RP] ssd_array dtype={ssd_array.dtype}, sample={ssd_array[:10]}", 'debug', print_debug)
+                    except Exception:
+                        pass
+
+                resultado = asignadip_v2(
+                    x=x_array,
+                    ssd=ssd_array,
+                    indep=int(indep) if indep is not None else 0,
+                    nulos=0,
+                    no_reg=0,
+                    m=int(m) if m is not None else 0,
+                    S=int(S) if S is not None else None,
+                    threshold=umbral,
+                    max_seats=int(max_seats) if max_seats is not None else 300,
+                    max_pp=(sobrerrepresentacion / 100.0) if sobrerrepresentacion is not None else 0.08,
+                    apply_caps=True,
+                    quota_method=quota_method,
+                    divisor_method=divisor_method,
+                    seed=seed,
+                    print_debug=print_debug
+                )
+            except Exception as e:
+                if print_debug:
+                    _maybe_log(f"asignadip_v2 falló en RP: {e}", 'error', print_debug)
+                resultado = {
+                    'votes': None,
+                    'seats': np.zeros((3, len(partidos_base)), dtype=int),
+                    'meta': {}
+                }
+
+            # Extraer MR/RP/Totales del resultado y poblar diccionarios
+            seats = resultado.get('seats')
+            if seats is None:
+                seats = np.zeros((3, len(partidos_base)), dtype=int)
+
+            mr_row = seats[0] if seats.shape[0] > 0 else np.zeros(len(partidos_base), dtype=int)
+            rp_row = seats[1] if seats.shape[0] > 1 else np.zeros(len(partidos_base), dtype=int)
+            tot_row = seats[2] if seats.shape[0] > 2 else np.zeros(len(partidos_base), dtype=int)
+
+            mr_dict = {partidos_base[i]: int(mr_row[i]) for i in range(len(partidos_base))}
+            rp_dict = {partidos_base[i]: int(rp_row[i]) for i in range(len(partidos_base))}
+            tot_dict = {partidos_base[i]: int(tot_row[i]) for i in range(len(partidos_base))}
         else:  # sistema_tipo == 'mixto'
             if mr_seats is not None and rp_seats is not None:
                 # Plan C o similar: parámetros explícitos para MR y RP
