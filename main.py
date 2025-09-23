@@ -610,7 +610,36 @@ async def procesar_senado(
         
         # Transformar al formato esperado por el frontend con colores
         resultado_formateado = transformar_resultado_a_formato_frontend(resultado, plan)
-        
+        # Añadir trazas de diagnóstico sobre la redistribución (si existen)
+        try:
+            trace = {}
+            # parquet temporal generado en este request (si existe)
+            if 'parquet_replacement' in locals() and parquet_replacement:
+                trace['tmp_parquet'] = parquet_replacement
+            else:
+                trace['tmp_parquet'] = None
+
+            # porcentajes / votos redistribuidos que se usaron (si existen)
+            try:
+                trace['votos_redistribuidos'] = votos_redistribuidos if 'votos_redistribuidos' in locals() else None
+            except Exception:
+                trace['votos_redistribuidos'] = None
+
+            # Agregar scaled_info si está en la meta del resultado original
+            try:
+                meta_in = resultado.get('meta', {}) if isinstance(resultado, dict) else {}
+                if meta_in and isinstance(meta_in, dict) and 'scaled_info' in meta_in:
+                    trace['scaled_info'] = meta_in.get('scaled_info')
+            except Exception:
+                pass
+
+            if trace:
+                if 'meta' not in resultado_formateado:
+                    resultado_formateado['meta'] = {}
+                resultado_formateado['meta']['trace'] = trace
+        except Exception as _e:
+            print(f"[WARN] No se pudo añadir trace meta: {_e}")
+
         # Retornar con headers anti-caché para evitar problemas de actualización
         return JSONResponse(
             content=resultado_formateado,
