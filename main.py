@@ -167,6 +167,27 @@ def transformar_resultado_a_formato_frontend(resultado_dict: Dict, plan: str) ->
         }
         
         print(f"[DEBUG] KPIs calculados: {kpis}")
+
+        # Campos adicionales de diagnóstico para ayudar al frontend a reproducir/visualizar
+        try:
+            # diferencias por partido en puntos porcentuales (votos% - escaños%)
+            diffs = []
+            sum_v = sum(votos_list) or 1
+            sum_s = sum(escanos_list) or 1
+            for a, b in zip(votos_list, escanos_list):
+                diffs.append(round(100 * (a / sum_v) - 100 * (b / sum_s), 6))
+
+            # Añadir campos de diagnóstico (no deben romper al frontend que ya espera 'kpis')
+            kpis["_debug"] = {
+                "n_parties": len(resultados),
+                "diffs_percentage_points": diffs,
+                "gallagher_raw": kpis.get("gallagher"),
+                # una representación en 'porcentaje' alternativa por si el frontend espera otra escala
+                "gallagher_pct": round(kpis.get("gallagher", 0) * 100, 6)
+            }
+            print(f"[DEBUG] KPIs debug fields: {kpis['_debug']}")
+        except Exception:
+            pass
         
         out = {
             "plan": plan,
@@ -697,9 +718,11 @@ async def procesar_diputados(
         print(f"[DEBUG] - sistema: {sistema}")
         print(f"[DEBUG] - mr_seats: {mr_seats}")
         print(f"[DEBUG] - rp_seats: {rp_seats}")
-        
+
         # NUEVO: Procesar parámetros de redistribución de votos
         votos_redistribuidos = None
+        # Si generamos un parquet temporal con votos redistribuidos, lo almacenamos aquí
+        parquet_replacement = None
         if votos_custom or partidos_fijos or overrides_pool or porcentajes_partidos:
             print(f"[DEBUG] Redistribución de votos solicitada:")
             print(f"[DEBUG] - votos_custom: {votos_custom}")
@@ -708,26 +731,89 @@ async def procesar_diputados(
             print(f"[DEBUG] - porcentajes_partidos: {porcentajes_partidos}")
             
             try:
-                # Parsear JSON strings
-                votos_custom_dict = json.loads(votos_custom) if votos_custom else {}
-                partidos_fijos_dict = json.loads(partidos_fijos) if partidos_fijos else {}
-                overrides_pool_dict = json.loads(overrides_pool) if overrides_pool else {}
-                porcentajes_dict = json.loads(porcentajes_partidos) if porcentajes_partidos else {}
+                # Parsear JSON strings o aceptar dicts ya parseados (frontend puede enviar objeto JSON)
+                def _ensure_dict(val):
+                    if not val:
+                        return {}
+                    if isinstance(val, dict):
+                        return val
+                    if isinstance(val, str):
+                        try:
+                            return json.loads(val)
+                        except Exception as e:
+                            raise ValueError(f"No se pudo parsear JSON: {e}")
+                    raise ValueError(f"Tipo de dato no soportado para JSON: {type(val)}")
+
+                votos_custom_dict = _ensure_dict(votos_custom)
+                partidos_fijos_dict = _ensure_dict(partidos_fijos)
+                overrides_pool_dict = _ensure_dict(overrides_pool)
+                porcentajes_dict = _ensure_dict(porcentajes_partidos)
                 
-                # Normalizar porcentajes a 100% si están presentes
+                # Normalizar porcentajes a 100% si están presentes.
+                # Nuevo comportamiento: permitir "overrides" parciales (ej: PRD=90)
+                # - Si la suma de porcentajes especificados es > 100 => escalar esos especificados para sumar 100
+                # - Si la suma es < 100 => distribuir el remanente (100 - suma) entre los partidos NO especificados
+                #   proporcionalmente a sus votos reales en el archivo del año.
+                # - Si por alguna razón no se puede leer el archivo de votos, hacemos la normalización clásica (escala total).
                 if porcentajes_dict:
                     total_porcentajes = sum(porcentajes_dict.values())
                     print(f"[DEBUG] Suma de porcentajes recibidos: {total_porcentajes}")
-                    
+
                     if total_porcentajes > 0 and abs(total_porcentajes - 100) > 0.01:
-                        print(f"[DEBUG] Normalizando porcentajes de {total_porcentajes} a 100%")
-                        factor_normalizacion = 100.0 / total_porcentajes
-                        porcentajes_dict = {
-                            partido: porcentaje * factor_normalizacion 
-                            for partido, porcentaje in porcentajes_dict.items()
-                        }
+                        try:
+                            # Intentamos aplicar normalización parcial soportando overrides
+                            path_datos_tmp = f"data/computos_diputados_{anio}.parquet"
+                            if os.path.exists(path_datos_tmp):
+                                df_base = pd.read_parquet(path_datos_tmp)
+                                columnas_excluir = ['ENTIDAD', 'DISTRITO', 'TOTAL_BOLETAS', 'CI']
+                                partidos_en_archivo = [col for col in df_base.columns if col not in columnas_excluir and df_base[col].sum() > 0]
+
+                                # Separar especificados (overrides) de no especificados
+                                specified = {p: v for p, v in porcentajes_dict.items() if p in partidos_en_archivo}
+                                unspecified = [p for p in partidos_en_archivo if p not in specified]
+
+                                fixed_sum = sum(specified.values())
+                                print(f"[DEBUG] Porcentajes especificados (fijos): {specified}, suma={fixed_sum}")
+
+                                if fixed_sum >= 100.0:
+                                    # Escalar los especificados para sumar 100 (no hay remanente)
+                                    factor = 100.0 / (fixed_sum or 1.0)
+                                    porcentajes_dict = {p: v * factor for p, v in specified.items()}
+                                    print(f"[DEBUG] Se escaló especificados a 100% con factor {factor}")
+                                else:
+                                    # Distribuir el remanente entre los no especificados
+                                    remaining = 100.0 - fixed_sum
+                                    if unspecified:
+                                        votos_unspec = df_base[unspecified].sum()
+                                        total_votes_unspec = votos_unspec.sum()
+                                        if total_votes_unspec > 0:
+                                            distributed = {p: (votos_unspec[p] / total_votes_unspec) * remaining for p in unspecified}
+                                        else:
+                                            # Si no hay información, repartir equitativamente
+                                            distributed = {p: remaining / len(unspecified) for p in unspecified}
+
+                                        # Combinar especificados + distribuidos
+                                        porcentajes_dict = {**specified, **distributed}
+                                        print(f"[DEBUG] Remanente {remaining} distribuido proporcionalmente entre no-especificados")
+                                    else:
+                                        # No hay no-especificados: escalar especificados para sumar 100
+                                        factor = 100.0 / (fixed_sum or 1.0)
+                                        porcentajes_dict = {p: v * factor for p, v in specified.items()}
+                                        print(f"[DEBUG] No hubo partidos para distribuir remanente; se escaló especificados con factor {factor}")
+                            else:
+                                # Fallback: archivo no existe, aplicar la normalización clásica
+                                factor_normalizacion = 100.0 / total_porcentajes
+                                porcentajes_dict = {partido: porcentaje * factor_normalizacion for partido, porcentaje in porcentajes_dict.items()}
+                                print(f"[WARN] No se pudo leer {path_datos_tmp}; aplicada normalización clásica con factor {factor_normalizacion}")
+
+                        except Exception as e:
+                            # En caso de cualquier error, usar la normalización simple (comportamiento antiguo)
+                            print(f"[WARN] Error normalizando porcentajes parcialmente: {e}; aplicando escala simple")
+                            factor_normalizacion = 100.0 / total_porcentajes
+                            porcentajes_dict = {partido: porcentaje * factor_normalizacion for partido, porcentaje in porcentajes_dict.items()}
+
                         nueva_suma = sum(porcentajes_dict.values())
-                        print(f"[DEBUG] Porcentajes normalizados. Nueva suma: {nueva_suma}")
+                        print(f"[DEBUG] Porcentajes tras normalización/parcial: {nueva_suma}")
                 
                 # Determinar archivo de datos
                 path_datos = f"data/computos_diputados_{anio}.parquet"
@@ -737,17 +823,17 @@ async def procesar_diputados(
                     df_temp = pd.read_parquet(path_datos)
                     columnas_excluir = ['ENTIDAD', 'DISTRITO', 'TOTAL_BOLETAS', 'CI']
                     partidos_validos = [col for col in df_temp.columns if col not in columnas_excluir and df_temp[col].sum() > 0]
-                    
+
                     # Filtrar porcentajes para solo incluir partidos válidos del año
                     porcentajes_filtrados = {
                         partido: porcentaje 
                         for partido, porcentaje in porcentajes_dict.items() 
                         if partido in partidos_validos
                     }
-                    
+
                     print(f"[DEBUG] Partidos válidos para {anio}: {partidos_validos}")
                     print(f"[DEBUG] Porcentajes filtrados: {porcentajes_filtrados}")
-                    
+
                     # Re-normalizar después del filtrado
                     if porcentajes_filtrados:
                         total_filtrado = sum(porcentajes_filtrados.values())
@@ -758,8 +844,36 @@ async def procesar_diputados(
                                 for partido, porcentaje in porcentajes_filtrados.items()
                             }
                             print(f"[DEBUG] Porcentajes re-normalizados: {porcentajes_filtrados}")
-                    
-                    votos_redistribuidos = porcentajes_filtrados
+
+                    # Para asegurar un recálculo completo (incluyendo MR por distrito),
+                    # generamos un parquet temporal con votos redistribuidos por distrito
+                    # usando la función existente `simular_escenario_electoral` que devuelve
+                    # (df_redistribuido, porcentajes_finales).
+                    try:
+                        df_redistribuido, porcentajes_finales = simular_escenario_electoral(
+                            path_datos,
+                            porcentajes_objetivo=porcentajes_filtrados,
+                            partidos_fijos={},
+                            overrides_pool={},
+                            mantener_geografia=True
+                        )
+                        # Persistir parquet temporal en outputs/ para ser consumido por el procesador
+                        import tempfile
+                        import uuid
+                        tmp_name = f"outputs/tmp_redistrib_{uuid.uuid4().hex}.parquet"
+                        # Asegurarse de que la carpeta exista
+                        os.makedirs(os.path.dirname(tmp_name), exist_ok=True)
+                        df_redistribuido.to_parquet(tmp_name, index=False)
+                        print(f"[DEBUG] Parquet temporal con votos redistribuidos creado: {tmp_name}")
+
+                        votos_redistribuidos = porcentajes_finales
+                        # Reemplazar el path_datos por el parquet temporal para forzar
+                        # a `procesar_diputados_v2` a recalcular MR a partir de estos votos
+                        path_datos = tmp_name
+                    except Exception as e:
+                        print(f"[WARN] No se pudo generar parquet temporal redistribuido: {e}")
+                        # Caer hacia atrás a usar solo porcentajes_filtrados para redistribución
+                        votos_redistribuidos = porcentajes_filtrados
                 elif votos_custom_dict:
                     # Usar porcentajes directos proporcionados (funcionalidad anterior)
                     print(f"[DEBUG] Usando porcentajes directos: {votos_custom_dict}")
@@ -915,9 +1029,9 @@ async def procesar_diputados(
             raise HTTPException(status_code=400, detail="Plan no válido. Use 'vigente', 'plan_a', 'plan_c' o 'personalizado'")
         
         print(f"[DEBUG] Plan {plan_normalizado}: max_seats={max_seats}, mr={mr_seats_final}, rp={rp_seats_final}, umbral={umbral_final}")
-            
-        # Construir paths
-        path_parquet = f"data/computos_diputados_{anio}.parquet"
+
+        # Construir paths (si hay un parquet temporal generado por redistribución, usarlo)
+        path_parquet = parquet_replacement if parquet_replacement else f"data/computos_diputados_{anio}.parquet"
         path_siglado = f"data/siglado-diputados-{anio}.csv"
         
         # Verificar que existen los archivos

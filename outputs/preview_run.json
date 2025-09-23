@@ -1,0 +1,113 @@
+{
+  "params": {
+    "file": ".\\scripts\\example_perc.json",
+    "anio": 2024,
+    "max_seats": 128,
+    "sistema": "rp",
+    "umbral": 3.0,
+    "out": "outputs/preview_run.json"
+  },
+  "summary": {
+    "keys": [
+      "mr",
+      "rp",
+      "tot",
+      "ok",
+      "votos",
+      "votos_ok",
+      "meta"
+    ],
+    "sum_votos": 57155253,
+    "sum_tot_seats": 128,
+    "meta_keys": [
+      "VTE",
+      "VVE",
+      "ok_3pct",
+      "params"
+    ]
+  },
+  "result_meta": {
+    "VTE": 57155253,
+    "VVE": 57155253,
+    "ok_3pct": "[ True  True  True  True  True  True  True]",
+    "params": {
+      "m": 128,
+      "threshold": 0.03,
+      "max_pp": 0.08,
+      "max_seats": 128,
+      "S": 128,
+      "seed": null,
+      "apply_caps": true
+    }
+  },
+  "result_full": {
+    "mr": {
+      "PAN": 0,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 0
+    },
+    "rp": {
+      "PAN": 39,
+      "PRI": 13,
+      "PRD": 6,
+      "PVEM": 6,
+      "PT": 6,
+      "MC": 13,
+      "MORENA": 45
+    },
+    "tot": {
+      "PAN": 39,
+      "PRI": 13,
+      "PRD": 6,
+      "PVEM": 6,
+      "PT": 6,
+      "MC": 13,
+      "MORENA": 45
+    },
+    "ok": {
+      "PAN": true,
+      "PRI": true,
+      "PRD": true,
+      "PVEM": true,
+      "PT": true,
+      "MC": true,
+      "MORENA": true
+    },
+    "votos": {
+      "PAN": 17146577,
+      "PRI": 5715525,
+      "PRD": 2857762,
+      "PVEM": 2857762,
+      "PT": 2857762,
+      "MC": 5715525,
+      "MORENA": 20004340
+    },
+    "votos_ok": {
+      "PAN": 17146577,
+      "PRI": 5715525,
+      "PRD": 2857762,
+      "PVEM": 2857762,
+      "PT": 2857762,
+      "MC": 5715525,
+      "MORENA": 20004340
+    },
+    "meta": {
+      "VTE": 57155253,
+      "VVE": 57155253,
+      "ok_3pct": "[ True  True  True  True  True  True  True]",
+      "params": {
+        "m": 128,
+        "threshold": 0.03,
+        "max_pp": 0.08,
+        "max_seats": 128,
+        "S": 128,
+        "seed": null,
+        "apply_caps": true
+      }
+    }
+  }
+}

@@ -1,0 +1,206 @@
+{
+  "params": {
+    "file": ".\\scripts\\example_perc.json",
+    "anio": 2024,
+    "max_seats": 128,
+    "sistema": "mixto",
+    "umbral": 3.0,
+    "out": "outputs/preview_run_mixto.json"
+  },
+  "summary": {
+    "keys": [
+      "mr",
+      "rp",
+      "tot",
+      "ok",
+      "votos",
+      "votos_ok",
+      "meta"
+    ],
+    "sum_votos": 57155253,
+    "sum_tot_seats": 128,
+    "meta_keys": [
+      "VTE",
+      "VVE",
+      "ok_3pct",
+      "params",
+      "scaled_info"
+    ]
+  },
+  "result_meta": {
+    "VTE": 57155253,
+    "VVE": 57155253,
+    "ok_3pct": "[ True  True  True  True  True  True  True]",
+    "params": {
+      "m": 96,
+      "threshold": 0.03,
+      "max_pp": 0.08,
+      "max_seats": 128,
+      "S": 128,
+      "seed": null,
+      "apply_caps": true
+    },
+    "scaled_info": {
+      "total_base": 300,
+      "total_target": 32,
+      "by_party": {
+        "PAN": 2,
+        "PRI": 1,
+        "PRD": 0,
+        "PVEM": 1,
+        "PT": 0,
+        "MC": 1,
+        "MORENA": 27
+      },
+      "by_entidad": {
+        "BAJA CALIFORNIA": 1,
+        "CHIAPAS": 1,
+        "CHIHUAHUA": 1,
+        "CIUDAD DE MEXICO": 3,
+        "COAHUILA": 1,
+        "GUANAJUATO": 1,
+        "GUERRERO": 1,
+        "HIDALGO": 1,
+        "JALISCO": 2,
+        "MEXICO": 5,
+        "MICHOACAN": 1,
+        "MORELOS": 1,
+        "NUEVO LEON": 1,
+        "OAXACA": 1,
+        "PUEBLA": 2,
+        "QUERETARO": 1,
+        "SAN LUIS POTOSI": 1,
+        "SINALOA": 1,
+        "SONORA": 1,
+        "TABASCO": 1,
+        "TAMAULIPAS": 1,
+        "VERACRUZ": 2,
+        "YUCATAN": 1
+      },
+      "virtual_count": 0,
+      "scaled_csv_path": "outputs\\scaled_siglado.20250922_190321.1b92b9ca.csv",
+      "scaled_csv": null,
+      "provenance": {
+        "method": "scale_siglado",
+        "seed": 123,
+        "strata": "ENTIDAD"
+      }
+    }
+  },
+  "result_full": {
+    "mr": {
+      "PAN": 2,
+      "PRI": 1,
+      "PRD": 0,
+      "PVEM": 1,
+      "PT": 0,
+      "MC": 1,
+      "MORENA": 27
+    },
+    "rp": {
+      "PAN": 31,
+      "PRI": 11,
+      "PRD": 5,
+      "PVEM": 5,
+      "PT": 5,
+      "MC": 11,
+      "MORENA": 28
+    },
+    "tot": {
+      "PAN": 33,
+      "PRI": 12,
+      "PRD": 5,
+      "PVEM": 6,
+      "PT": 5,
+      "MC": 12,
+      "MORENA": 55
+    },
+    "ok": {
+      "PAN": true,
+      "PRI": true,
+      "PRD": true,
+      "PVEM": true,
+      "PT": true,
+      "MC": true,
+      "MORENA": true
+    },
+    "votos": {
+      "PAN": 17146577,
+      "PRI": 5715525,
+      "PRD": 2857762,
+      "PVEM": 2857762,
+      "PT": 2857762,
+      "MC": 5715525,
+      "MORENA": 20004340
+    },
+    "votos_ok": {
+      "PAN": 17146577,
+      "PRI": 5715525,
+      "PRD": 2857762,
+      "PVEM": 2857762,
+      "PT": 2857762,
+      "MC": 5715525,
+      "MORENA": 20004340
+    },
+    "meta": {
+      "VTE": 57155253,
+      "VVE": 57155253,
+      "ok_3pct": "[ True  True  True  True  True  True  True]",
+      "params": {
+        "m": 96,
+        "threshold": 0.03,
+        "max_pp": 0.08,
+        "max_seats": 128,
+        "S": 128,
+        "seed": null,
+        "apply_caps": true
+      },
+      "scaled_info": {
+        "total_base": 300,
+        "total_target": 32,
+        "by_party": {
+          "PAN": 2,
+          "PRI": 1,
+          "PRD": 0,
+          "PVEM": 1,
+          "PT": 0,
+          "MC": 1,
+          "MORENA": 27
+        },
+        "by_entidad": {
+          "BAJA CALIFORNIA": 1,
+          "CHIAPAS": 1,
+          "CHIHUAHUA": 1,
+          "CIUDAD DE MEXICO": 3,
+          "COAHUILA": 1,
+          "GUANAJUATO": 1,
+          "GUERRERO": 1,
+          "HIDALGO": 1,
+          "JALISCO": 2,
+          "MEXICO": 5,
+          "MICHOACAN": 1,
+          "MORELOS": 1,
+          "NUEVO LEON": 1,
+          "OAXACA": 1,
+          "PUEBLA": 2,
+          "QUERETARO": 1,
+          "SAN LUIS POTOSI": 1,
+          "SINALOA": 1,
+          "SONORA": 1,
+          "TABASCO": 1,
+          "TAMAULIPAS": 1,
+          "VERACRUZ": 2,
+          "YUCATAN": 1
+        },
+        "virtual_count": 0,
+        "scaled_csv_path": "outputs\\scaled_siglado.20250922_190321.1b92b9ca.csv",
+        "scaled_csv": null,
+        "provenance": {
+          "method": "scale_siglado",
+          "seed": 123,
+          "strata": "ENTIDAD"
+        }
+      }
+    }
+  }
+}
