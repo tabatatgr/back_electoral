@@ -1046,7 +1046,23 @@ async def procesar_diputados(
                         tmp_name = f"outputs/tmp_redistrib_{uuid.uuid4().hex}.parquet"
                         # Asegurarse de que la carpeta exista
                         os.makedirs(os.path.dirname(tmp_name), exist_ok=True)
-                        df_redistribuido.to_parquet(tmp_name, index=False)
+                        # Si la función devolvió un DataFrame en formato 'largo' (PARTIDO, VOTOS_CALCULADOS)
+                        # convertimos a formato ancho (cada partido como columna) porque
+                        # el procesador `procesar_diputados_v2` espera columnas por partido.
+                        try:
+                            tmp_to_save = df_redistribuido
+                            if 'PARTIDO' in df_redistribuido.columns and 'VOTOS_CALCULADOS' in df_redistribuido.columns:
+                                id_cols = [c for c in ['ENTIDAD', 'DISTRITO', 'TOTAL_BOLETAS', 'CI'] if c in df_redistribuido.columns]
+                                df_wide = df_redistribuido.pivot_table(index=id_cols, columns='PARTIDO', values='VOTOS_CALCULADOS', aggfunc='sum').reset_index()
+                                # quitar nombre del eje de columnas que crea pivot_table
+                                df_wide.columns.name = None
+                                tmp_to_save = df_wide
+                                print(f"[DEBUG] Converted df_redistribuido to wide-format for parquet (id_cols={id_cols})")
+
+                        except Exception as e:
+                            print(f"[WARN] No se pudo pivotar df_redistribuido a formato ancho: {e}; se guardará tal cual")
+
+                        tmp_to_save.to_parquet(tmp_name, index=False)
                         print(f"[DEBUG] Parquet temporal con votos redistribuidos creado: {tmp_name}")
 
                         votos_redistribuidos = porcentajes_finales
