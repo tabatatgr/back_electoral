@@ -866,6 +866,24 @@ async def procesar_diputados(
                     porcentajes_partidos = potential_parties
             except Exception:
                 pass
+            # Si no hay body útil pero el frontend pudo haber incluido porcentajes en la query string
+            # (algunos clientes mal configurados envían PRD=90 como query param), intentar detectarlo.
+            try:
+                if not porcentajes_partidos and request is not None:
+                    qp = {k: v for k, v in request.query_params.items()} if hasattr(request, 'query_params') else {}
+                    potential_qp = {}
+                    for k, v in qp.items():
+                        try:
+                            if isinstance(k, str) and k.isupper() and (isinstance(v, str) and v.replace('.', '', 1).isdigit()):
+                                potential_qp[k] = float(v)
+                        except Exception:
+                            continue
+                    if potential_qp:
+                        porcentajes_partidos = potential_qp
+                        raw_body_parsed = True
+                        print(f"[WARN] Detected party percentages in query params, mapping to porcentajes_partidos: {list(potential_qp.keys())}")
+            except Exception:
+                pass
         print(f"[DEBUG] Iniciando /procesar/diputados con:")
         print(f"[DEBUG] - anio: {anio}")
         print(f"[DEBUG] - plan: {plan}")
