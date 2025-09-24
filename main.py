@@ -728,6 +728,15 @@ async def procesar_diputados(
             # Primero intentamos el parseo normal de JSON
             try:
                 body_obj = await request.json()
+                # Si logramos parsear JSON pero el Content-Type no es application/json,
+                # marcar telemetría para identificar clientes que envían headers incorrectos.
+                try:
+                    content_type_tmp = request.headers.get('content-type', '') or ''
+                except Exception:
+                    content_type_tmp = ''
+                if isinstance(body_obj, dict) and 'application/json' not in content_type_tmp.lower():
+                    raw_body_parsed = True
+                    print(f"[WARN] Parsed JSON from body despite Content-Type={content_type_tmp}; marking raw_body_parsed=True")
             except Exception:
                 body_obj = None
             # Si no obtuvimos un dict, intentar un parsing tolerante desde el body raw
@@ -749,24 +758,82 @@ async def procesar_diputados(
                                 raw_body_parsed = True
                                 print(f"[WARN] Parsed raw body as JSON despite Content-Type: {request.headers.get('content-type')}")
                             except Exception:
-                                # No es JSON válido, mantener None
+                                # No es JSON válido, mantener None y caer a heurísticas
                                 body_obj = body_obj or None
                         else:
-                            # Si no es JSON completo, pero es un string conteniendo un objecto JSON
-                            # (por ejemplo el cliente envía directamente el JSON como text/plain),
-                            # intentamos localizar un primer objeto JSON usando heurística sencilla.
+                            # Si no es JSON completo, intentar otros parseos tolerantes.
+                            # 1) Intentar parseo como x-www-form-urlencoded (key1=val1&key2=val2)
                             try:
-                                # heurística: buscar la primera ocurrencia de '{' y la última '}'
-                                start = raw_text.find('{')
-                                end = raw_text.rfind('}')
-                                if start != -1 and end != -1 and end > start:
-                                    fragment = raw_text[start:end+1]
-                                    parsed = json.loads(fragment)
-                                    body_obj = parsed
-                                    raw_body_parsed = True
-                                    print(f"[WARN] Heuristically parsed JSON fragment from raw body (Content-Type={request.headers.get('content-type')})")
+                                from urllib.parse import parse_qs, unquote_plus
+                                parsed_qs = parse_qs(raw_text, keep_blank_values=True)
+                                # Si parse_qs devuelve keys relevantes, convertir a dict simple
+                                if parsed_qs and len(parsed_qs) > 0:
+                                    # simplificar valores de listas a scalars cuando aplica
+                                    simple = {k: v[0] if isinstance(v, list) and len(v) == 1 else v for k, v in parsed_qs.items()}
+                                    # Detectar si alguno de los valores es JSON (percent-encoded)
+                                    decoded = {}
+                                    potential_json_found = False
+                                    for k, v in simple.items():
+                                        if isinstance(v, str):
+                                            v_str = v.strip()
+                                            # Si parece JSON percent-encoded, intentar decodificar y cargar
+                                            if (v_str.startswith('%7B') or v_str.startswith('%5B')) or ('%7B' in v_str or '%5B' in v_str):
+                                                try:
+                                                    candidate = unquote_plus(v_str)
+                                                    parsed_inner = json.loads(candidate)
+                                                    decoded[k] = parsed_inner
+                                                    potential_json_found = True
+                                                    continue
+                                                except Exception:
+                                                    pass
+                                            # mantener raw string si no es JSON
+                                            decoded[k] = v
+                                        else:
+                                            decoded[k] = v
+
+                                    # Si detectamos keys directas como porcentajes (ej: PRD=90), considerarlo JSON-desnudo
+                                    potential_parties_qs = {k: float(v) for k, v in decoded.items() if isinstance(k, str) and k.isupper() and isinstance(v, (str, float, int)) and str(v).replace('.', '', 1).isdigit()}
+                                    if potential_parties_qs and not porcentajes_partidos:
+                                        # mapear y marcar
+                                        porcentajes_partidos = {k: float(v) for k, v in potential_parties_qs.items()}
+                                        body_obj = porcentajes_partidos
+                                        raw_body_parsed = True
+                                        print(f"[WARN] Parsed URL-encoded form as porcentajes_partidos (Content-Type={request.headers.get('content-type')})")
+                                    elif potential_json_found and not isinstance(body_obj, dict):
+                                        # si encontramos JSON percent-encoded dentro de alguno de los campos, priorizamos
+                                        # seleccionar el primer valor parseable
+                                        for val in decoded.values():
+                                            if isinstance(val, (dict, list)):
+                                                body_obj = val
+                                                raw_body_parsed = True
+                                                print(f"[WARN] Extracted JSON from percent-encoded form field (Content-Type={request.headers.get('content-type')})")
+                                                break
+                                    else:
+                                        # heurística clásica: buscar primer bloque JSON en el texto
+                                        try:
+                                            start = raw_text.find('{')
+                                            end = raw_text.rfind('}')
+                                            if start != -1 and end != -1 and end > start:
+                                                fragment = raw_text[start:end+1]
+                                                parsed = json.loads(fragment)
+                                                body_obj = parsed
+                                                raw_body_parsed = True
+                                                print(f"[WARN] Heuristically parsed JSON fragment from raw body (Content-Type={request.headers.get('content-type')})")
+                                        except Exception:
+                                            body_obj = body_obj or None
                             except Exception:
-                                body_obj = body_obj or None
+                                # Si falla parse_qs o cualquier heuristic, intentar heurística clásica
+                                try:
+                                    start = raw_text.find('{')
+                                    end = raw_text.rfind('}')
+                                    if start != -1 and end != -1 and end > start:
+                                        fragment = raw_text[start:end+1]
+                                        parsed = json.loads(fragment)
+                                        body_obj = parsed
+                                        raw_body_parsed = True
+                                        print(f"[WARN] Heuristically parsed JSON fragment from raw body (Content-Type={request.headers.get('content-type')})")
+                                except Exception:
+                                    body_obj = body_obj or None
                 except Exception:
                     # Si falla leer body raw, simplemente seguimos con body_obj tal cual
                     body_obj = body_obj or None
