@@ -1327,19 +1327,64 @@ async def procesar_diputados(
         )
         
     except Exception as e:
+        # Mejor manejo de excepciones: anexar siempre un resumen del error a meta.trace
+        from fastapi import HTTPException as _HTTPException
+        import traceback
+        traceback_str = traceback.format_exc()
+
+        # Si ya es un HTTPException, intentar anexar resumen de la excepción al resultado formateado
+        if isinstance(e, _HTTPException):
+            # Construir trace si es posible
+            try:
+                msg = e.detail if getattr(e, 'detail', None) else '<empty>'
+                trace_block = {}
+                tb_lines = [ln for ln in traceback_str.splitlines() if ln.strip()][:10]
+                trace_block['error'] = {
+                    'type': 'HTTPException',
+                    'message': str(msg),
+                    'status_code': getattr(e, 'status_code', None),
+                    'trace_sample': tb_lines[-5:]
+                }
+                # Si tenemos resultado_formateado, inyectarlo allí; si no, construir un payload mínimo
+                if 'resultado_formateado' in locals() and isinstance(resultado_formateado, dict):
+                    resultado_formateado.setdefault('meta', {}).setdefault('trace', {}).update(trace_block)
+                    content_payload = resultado_formateado
+                else:
+                    content_payload = {'detail': str(msg), 'meta': {'trace': trace_block}}
+            except Exception as _inner:
+                print(f"[WARN] No se pudo anexar HTTPException al trace: {_inner}")
+                content_payload = {'detail': str(getattr(e, 'detail', repr(e)))}
+
+            print(f"[ERROR] HTTPException interceptada desde /procesar/diputados: {getattr(e, 'detail', repr(e))}")
+            # Devolver JSONResponse con el mismo status code y payload enriquecido
+            return JSONResponse(status_code=getattr(e, 'status_code', 500), content=content_payload)
+
+        # Para cualquier otra excepción, registrar y anexar resumen en meta.trace
         error_msg = str(e)
         error_type = type(e).__name__
         print(f"[ERROR] Error en /procesar/diputados: {error_msg}")
         print(f"[ERROR] Tipo de error: {error_type}")
-        import traceback
-        traceback_str = traceback.format_exc()
         print(f"[ERROR] Traceback completo: {traceback_str}")
-        
-        # Crear mensaje de error más informativo
-        detail_msg = f"Error procesando diputados: {error_type} - {error_msg}"
-        if not error_msg.strip():
-            detail_msg = f"Error procesando diputados: {error_type} - Error silencioso en el procesamiento"
-        
+
+        # Intentar enriquecer meta.trace con información resumida del error para diagnóstico
+        try:
+            if 'resultado_formateado' in locals() and isinstance(resultado_formateado, dict):
+                tr = resultado_formateado.setdefault('meta', {}).setdefault('trace', {})
+                # Limitar traceback a 10 líneas y tomar las últimas 5 para contexto
+                tb_lines = [ln for ln in traceback_str.splitlines() if ln.strip()][:10]
+                tr['error'] = {
+                    'type': error_type,
+                    'message': (error_msg or '<empty>').strip(),
+                    'trace_sample': tb_lines[-5:]
+                }
+        except Exception as _inner:
+            print(f"[WARN] No se pudo anexar error al trace: {_inner}")
+
+        # Crear mensaje de error más informativo para el cliente
+        safe_msg = error_msg.strip() or '<no message>'
+        detail_msg = f"Error procesando diputados: {error_type} - {safe_msg}"
+
+        # Para facilitar debugging en frontend/ops devolvemos un mensaje consistente
         raise HTTPException(status_code=500, detail=detail_msg)
 
 @app.get("/años-disponibles")
