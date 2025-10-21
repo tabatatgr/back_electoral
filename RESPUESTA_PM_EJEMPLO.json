@@ -1,0 +1,90 @@
+{
+  "plan": "personalizado",
+  "resultados": [
+    {
+      "partido": "MORENA",
+      "votos": 22905421,
+      "mr": 107,
+      "pm": 15,
+      "rp": 0,
+      "total": 122,
+      "porcentaje_votos": 38.5,
+      "porcentaje_escanos": 40.67
+    },
+    {
+      "partido": "PAN",
+      "votos": 14328493,
+      "mr": 22,
+      "pm": 35,
+      "rp": 0,
+      "total": 57,
+      "porcentaje_votos": 24.1,
+      "porcentaje_escanos": 19.0
+    },
+    {
+      "partido": "PVEM",
+      "votos": 8931245,
+      "mr": 39,
+      "pm": 9,
+      "rp": 0,
+      "total": 48,
+      "porcentaje_votos": 15.0,
+      "porcentaje_escanos": 16.0
+    },
+    {
+      "partido": "PT",
+      "votos": 6542891,
+      "mr": 26,
+      "pm": 5,
+      "rp": 0,
+      "total": 31,
+      "porcentaje_votos": 11.0,
+      "porcentaje_escanos": 10.33
+    },
+    {
+      "partido": "PRI",
+      "votos": 3891234,
+      "mr": 6,
+      "pm": 19,
+      "rp": 0,
+      "total": 25,
+      "porcentaje_votos": 6.5,
+      "porcentaje_escanos": 8.33
+    },
+    {
+      "partido": "MC",
+      "votos": 2456789,
+      "mr": 0,
+      "pm": 17,
+      "rp": 0,
+      "total": 17,
+      "porcentaje_votos": 4.1,
+      "porcentaje_escanos": 5.67
+    }
+  ],
+  "kpis": {
+    "total_votos": 59455073,
+    "total_escanos": 300,
+    "gallagher": 4.23,
+    "mae_votos_vs_escanos": 2.1,
+    "ratio_promedio": 1.05,
+    "desviacion_proporcionalidad": 1.8,
+    "partidos_con_escanos": 6
+  },
+  "seat_chart": [
+    {
+      "party": "MORENA",
+      "seats": 122,
+      "color": "#A0522D",
+      "percent": 40.67,
+      "votes": 22905421
+    },
+    {
+      "party": "PAN",
+      "seats": 57,
+      "color": "#0066CC",
+      "percent": 19.0,
+      "votes": 14328493
+    }
+  ]
+}
