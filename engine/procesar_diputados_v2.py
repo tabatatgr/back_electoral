@@ -521,7 +521,7 @@ def aplicar_topes_nacionales(s_mr: np.ndarray, s_rp: np.ndarray, v_nacional: np.
 def _simulate_pm_by_runnerup(recomposed_df: pd.DataFrame, pm_seats: int, partidos: list) -> dict:
     """Simula asignación PM repartiendo a los partidos que fueron segundos por distrito.
 
-    Devuelve un dict partido->escaños PM (conteo de apariciones entre segundos lugares, hasta pm_seats por moda).
+    Devuelve un dict partido->escaños PM distribuyendo pm_seats proporcionalmente a las apariciones como segundo.
     """
     from collections import Counter
     segundos = []
@@ -533,8 +533,37 @@ def _simulate_pm_by_runnerup(recomposed_df: pd.DataFrame, pm_seats: int, partido
 
     c = Counter(segundos)
     pm_dict = {p: 0 for p in partidos}
-    for p, _ in c.most_common()[:pm_seats]:
-        pm_dict[p] = c[p]
+    
+    # Distribuir pm_seats proporcionalmente a las apariciones como segundo
+    if not segundos or pm_seats == 0:
+        return pm_dict
+    
+    # Obtener todos los segundos lugares ordenados por frecuencia
+    total_segundos = sum(c.values())
+    escanos_asignados = 0
+    
+    # Método proporcional: asignar escaños PM según proporción de segundos lugares
+    partidos_ordenados = c.most_common()
+    for i, (partido, conteo) in enumerate(partidos_ordenados):
+        if escanos_asignados >= pm_seats:
+            break
+        # Calcular proporción y asignar
+        proporcion = conteo / total_segundos
+        escanos_partido = int(proporcion * pm_seats)
+        # Asegurar que no excedamos pm_seats
+        escanos_partido = min(escanos_partido, pm_seats - escanos_asignados)
+        if escanos_partido > 0:
+            pm_dict[partido] = escanos_partido
+            escanos_asignados += escanos_partido
+    
+    # Asignar escaños restantes uno por uno a los partidos con más segundos lugares
+    if escanos_asignados < pm_seats:
+        for partido, _ in partidos_ordenados:
+            if escanos_asignados >= pm_seats:
+                break
+            pm_dict[partido] += 1
+            escanos_asignados += 1
+    
     return pm_dict
 
     
@@ -698,6 +727,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                           sistema: str = 'mixto',
                           mr_seats: Optional[int] = None, 
                           rp_seats: Optional[int] = None,
+                          pm_seats: Optional[int] = None,  # Primera minoría
                           regla_electoral: Optional[str] = None,
                           quota_method: str = 'hare',
                           divisor_method: str = 'dhondt',
@@ -1657,6 +1687,80 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
             votos_partido = {p: 0 for p in partidos_base}
         if 'votos_ok' not in locals():
             votos_ok = {p: 0 for p in partidos_base}
+        
+        # ===============================================
+        # PRIMERA MINORÍA (PM): Calcular y ajustar MR
+        # ===============================================
+        pm_dict = {p: 0 for p in partidos_base}  # Default: sin PM
+        
+        if pm_seats is not None and pm_seats > 0:
+            if print_debug:
+                _maybe_log(f"[PM] Calculando primera minoría: {pm_seats} escaños", 'debug', print_debug)
+            
+            try:
+                # Llamar a la función que simula PM por runnerup
+                pm_dict = _simulate_pm_by_runnerup(
+                    recomposed_df=recomposed,  # Usar 'recomposed' que es la variable correcta
+                    pm_seats=pm_seats,
+                    partidos=partidos_base
+                )
+                
+                if print_debug:
+                    _maybe_log(f"[PM] Escaños PM calculados: {pm_dict}", 'debug', print_debug)
+                    _maybe_log(f"[PM] Total PM: {sum(pm_dict.values())}", 'debug', print_debug)
+                
+                # PM se añade al resultado final
+                # El total debe ser: escaños originales (que ya incluyen todo el MR) - PM + PM = igual
+                # Pero queremos que MR efectivo sea menor para que el total final sea correcto
+                # La solución correcta es: tot = mr_original + pm + rp
+                # donde mr_original ya es el MR completo
+                # PERO necesitamos que tot_final = max_seats
+                
+                # Solución: ajustar proporcionalmente TODO el MR para dejar espacio a PM
+                total_mr_original = sum(mr_dict.values())
+                if total_mr_original > 0:
+                    # Reducir MR proporcionalmente para hacer espacio a PM
+                    total_pm = sum(pm_dict.values())
+                    mr_objetivo = max(0, total_mr_original - total_pm)
+                    
+                    # Calcular factor de reducción
+                    factor = mr_objetivo / total_mr_original if total_mr_original > 0 else 0
+                    
+                    # Aplicar reducción proporcional a todos los partidos
+                    mr_dict_ajustado = {}
+                    for partido in partidos_base:
+                        mr_original = mr_dict.get(partido, 0)
+                        mr_dict_ajustado[partido] = int(mr_original * factor)
+                    
+                    # Ajustar residuos para llegar exactamente a mr_objetivo
+                    total_ajustado = sum(mr_dict_ajustado.values())
+                    diferencia = mr_objetivo - total_ajustado
+                    if diferencia != 0:
+                        # Distribuir diferencia a los partidos más grandes
+                        partidos_ordenados = sorted(mr_dict_ajustado.items(), key=lambda x: x[1], reverse=True)
+                        for i in range(abs(int(diferencia))):
+                            if i < len(partidos_ordenados):
+                                partido = partidos_ordenados[i][0]
+                                mr_dict_ajustado[partido] += 1 if diferencia > 0 else -1
+                    
+                    mr_dict = mr_dict_ajustado
+                    
+                    if print_debug:
+                        _maybe_log(f"[PM] MR ajustado de {total_mr_original} a {sum(mr_dict.values())} para hacer espacio a {total_pm} PM", 'debug', print_debug)
+                
+                # ACTUALIZAR TOT: incluir PM en el total
+                tot_dict = {p: int(mr_dict.get(p, 0) + pm_dict.get(p, 0) + rp_dict.get(p, 0)) for p in partidos_base}
+                
+                if print_debug:
+                    _maybe_log(f"[PM] Totales actualizados con PM: {tot_dict}", 'debug', print_debug)
+                    _maybe_log(f"[PM] Suma total: {sum(tot_dict.values())}", 'debug', print_debug)
+                    
+            except Exception as e:
+                if print_debug:
+                    _maybe_log(f"[PM] Error calculando PM: {e}", 'error', print_debug)
+                # En caso de error, mantener pm_dict vacío
+                pm_dict = {p: 0 for p in partidos_base}
+        
         try:
             if 'scaled_info' in locals() and scaled_info is not None:
                 meta_out['scaled_info'] = scaled_info
@@ -1665,6 +1769,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
 
         return {
             'mr': mr_dict,
+            'pm': pm_dict,  # Nueva clave para PM
             'rp': rp_dict,
             'tot': tot_dict,
             'ok': ok_dict,
@@ -1683,6 +1788,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
         partidos = partidos_base if partidos_base else []
         return {
             'mr': {p: 0 for p in partidos},
+            'pm': {p: 0 for p in partidos},  # Incluir PM en caso de error
             'rp': {p: 0 for p in partidos},
             'tot': {p: 0 for p in partidos},
             'ok': {p: False for p in partidos},

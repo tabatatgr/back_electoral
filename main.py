@@ -122,6 +122,7 @@ def transformar_resultado_a_formato_frontend(resultado_dict: Dict, plan: str) ->
                 "partido": partido,
                 "votos": votos,
                 "mr": resultado_dict.get('mr', {}).get(partido, 0),
+                "pm": resultado_dict.get('pm', {}).get(partido, 0),  # Primera minoría
                 "rp": resultado_dict.get('rp', {}).get(partido, 0), 
                 "total": escanos,
                 "porcentaje_votos": round((votos / total_votos) * 100, 2) if total_votos > 0 else 0,
@@ -685,6 +686,7 @@ async def procesar_diputados(
     sistema: Optional[str] = None,
     umbral: Optional[float] = None,
     mr_seats: Optional[int] = None,
+    pm_seats: Optional[int] = None,  # ← NUEVO: Escaños de primera minoría
     rp_seats: Optional[int] = None,
     max_seats_per_party: Optional[int] = None,
     sobrerrepresentacion: Optional[float] = None,
@@ -705,6 +707,7 @@ async def procesar_diputados(
     - **sistema**: Sistema electoral para plan personalizado
     - **umbral**: Umbral electoral
     - **mr_seats**: Escaños de mayoría relativa
+    - **pm_seats**: Escaños de primera minoría (opcional, sale de mr_seats)
     - **rp_seats**: Escaños de representación proporcional
     - **max_seats_per_party**: Máximo de escaños por partido
     - **sobrerrepresentacion**: Límite de sobrerrepresentación como porcentaje (ej: 10.8)
@@ -1130,9 +1133,10 @@ async def procesar_diputados(
         
         # Configurar parámetros específicos según el plan (solo los básicos)
         if plan_normalizado == "vigente":
-            # VIGENTE: 500 total, 200 RP fijos, umbral 3%, tope 300
+            # VIGENTE: 500 total, 200 RP fijos, umbral 3%, tope 300, SIN PM
             max_seats = 500
             mr_seats_final = None  # NO forzar MR, usar cálculo real del siglado
+            pm_seats_final = 0     # SIN primera minoría en vigente
             rp_seats_final = 200   # SÍ forzar 200 RP como en la realidad
             umbral_final = 0.03
             max_seats_per_party_final = 300
@@ -1141,12 +1145,13 @@ async def procesar_diputados(
             sistema_final = "mixto"
             
         elif plan_normalizado == "plan_a":
-            # PLAN A: 300 total (0 MR + 300 RP), umbral 3%, sin tope
+            # PLAN A: 300 total (0 MR + 300 RP), umbral 3%, sin tope, SIN PM
             # Ignorar cualquier escanos_totales enviado desde el frontend: plan_a es RP puro 300
             if escanos_totales is not None:
                 print(f"[DEBUG] plan_a recibido escanos_totales={escanos_totales} pero será IGNORADO (plan_a fuerza 300)")
             max_seats = 300
             mr_seats_final = 0
+            pm_seats_final = 0  # SIN PM en plan A (es RP puro)
             rp_seats_final = 300
             umbral_final = 0.03
             max_seats_per_party_final = None
@@ -1155,12 +1160,13 @@ async def procesar_diputados(
             sistema_final = "rp"  # Solo RP
             
         elif plan_normalizado == "plan_c":
-            # PLAN C: 300 total (300 MR + 0 RP), sin umbral, sin tope
+            # PLAN C: 300 total (300 MR + 0 RP), sin umbral, sin tope, SIN PM
             # Ignorar cualquier escanos_totales enviado desde el frontend: plan_c es MR puro 300
             if escanos_totales is not None:
                 print(f"[DEBUG] plan_c recibido escanos_totales={escanos_totales} pero será IGNORADO (plan_c fuerza 300)")
             max_seats = 300
             mr_seats_final = 300
+            pm_seats_final = 0  # SIN PM en plan C (solo MR)
             rp_seats_final = 0
             umbral_final = 0.0
             max_seats_per_party_final = None
@@ -1182,12 +1188,12 @@ async def procesar_diputados(
                 
                 # Distribuir según el sistema elegido
                 if sistema_final == "mr":
-                    # MR PURO: TODOS los escaños van a MR
+                    # MR PURO: TODOS los escaños van a MR (puede incluir PM si se especifica)
                     mr_seats_final = max_seats
                     rp_seats_final = 0
                     print(f"[DEBUG] Sistema MR puro: {mr_seats_final} MR + {rp_seats_final} RP = {max_seats}")
                 elif sistema_final == "rp":
-                    # RP PURO: TODOS los escaños van a RP
+                    # RP PURO: TODOS los escaños van a RP (sin PM)
                     mr_seats_final = 0
                     rp_seats_final = max_seats
                     print(f"[DEBUG] Sistema RP puro: {mr_seats_final} MR + {rp_seats_final} RP = {max_seats}")
@@ -1203,6 +1209,23 @@ async def procesar_diputados(
                         mr_seats_final = int(max_seats * 0.6)
                         rp_seats_final = max_seats - mr_seats_final
                         print(f"[DEBUG] Sistema mixto automático (60/40): {mr_seats_final} MR + {rp_seats_final} RP = {max_seats}")
+                
+                # CONFIGURAR PRIMERA MINORÍA (PM)
+                # PM "sale" de MR, no suma al total
+                pm_escanos = pm_seats if pm_seats is not None else 0
+                if pm_escanos > 0:
+                    # Validar que PM no sea mayor que MR
+                    if mr_seats_final is not None and pm_escanos > mr_seats_final:
+                        raise HTTPException(
+                            status_code=400, 
+                            detail=f"PM ({pm_escanos}) no puede ser mayor que MR ({mr_seats_final})"
+                        )
+                    pm_seats_final = pm_escanos
+                    print(f"[DEBUG] PM activado: {pm_seats_final} escaños de primera minoría (salen de MR)")
+                else:
+                    pm_seats_final = 0
+                    print(f"[DEBUG] PM desactivado (pm_seats=0 o None)")
+                    
             else:
                 # FALLBACK: Usuario no especificó magnitud total
                 print(f"[DEBUG] No se especificó magnitud, usando parámetros individuales o defaults")
@@ -1229,11 +1252,24 @@ async def procesar_diputados(
                         mr_seats_final = 0
                         rp_seats_final = None
                 else:  # mixto
-                    # Para mixto, respetar desagregados si se proporcionan; si no, dejar que defaults en wrappers manejen S
+                    # Para mixto, respetar desagregados si se proporcionan; si no, dejar que defaults en wrappers manejen
                     mr_seats_final = mr_seats if mr_seats is not None else None
                     rp_seats_final = rp_seats if rp_seats is not None else None
                     if mr_seats_final is not None and rp_seats_final is not None:
                         max_seats = mr_seats_final + rp_seats_final
+                
+                # CONFIGURAR PM también en fallback
+                pm_escanos = pm_seats if pm_seats is not None else 0
+                if pm_escanos > 0:
+                    if mr_seats_final is not None and pm_escanos > mr_seats_final:
+                        raise HTTPException(
+                            status_code=400, 
+                            detail=f"PM ({pm_escanos}) no puede ser mayor que MR ({mr_seats_final})"
+                        )
+                    pm_seats_final = pm_escanos
+                    print(f"[DEBUG] PM activado (fallback): {pm_seats_final} escaños")
+                else:
+                    pm_seats_final = 0
             
             umbral_final = umbral if umbral is not None else 0.03
             max_seats_per_party_final = max_seats_per_party
@@ -1274,6 +1310,7 @@ async def procesar_diputados(
             sistema=sistema_final,
             mr_seats=mr_seats_final,
             rp_seats=rp_seats_final,
+            pm_seats=pm_seats_final,  # Primera minoría
             umbral=umbral_final,
             max_seats_per_party=max_seats_per_party_final,
             sobrerrepresentacion=sobrerrepresentacion,
