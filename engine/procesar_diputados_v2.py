@@ -360,6 +360,7 @@ def LR_ties(v_abs: np.ndarray, n: int, q: Optional[float] = None, seed: Optional
 
 def aplicar_topes_nacionales(s_mr: np.ndarray, s_rp: np.ndarray, v_nacional: np.ndarray, 
                            S: int, max_pp: float = 0.08, max_seats: int = 300, 
+                           max_seats_per_party: Optional[int] = None,
                            iter_max: int = 16) -> Dict[str, np.ndarray]:
     """
     Aplica topes constitucionales de forma iterativa
@@ -370,7 +371,8 @@ def aplicar_topes_nacionales(s_mr: np.ndarray, s_rp: np.ndarray, v_nacional: np.
     - v_nacional: proporción de votos nacionales (solo partidos >=3%)
     - S: total de escaños en la cámara
     - max_pp: máximo de sobrerrepresentación (+8 puntos porcentuales)
-    - max_seats: tope absoluto de escaños (300)
+    - max_seats: tope absoluto de escaños por defecto (300)
+    - max_seats_per_party: tope absoluto de escaños por partido (si se especifica, anula max_seats)
     - iter_max: máximo de iteraciones
     
     Retorna:
@@ -391,10 +393,14 @@ def aplicar_topes_nacionales(s_mr: np.ndarray, s_rp: np.ndarray, v_nacional: np.
     cap_dist = np.floor((v_nacional + max_pp) * S).astype(int)
     cap_dist[~ok] = s_mr[~ok]  # Partidos <3%: límite = MR únicamente
     
-    # Límites finales (máximo entre MR y cap_dist, pero <= 300)
+    # Determinar tope absoluto a aplicar
+    # Si se especifica max_seats_per_party, se usa ese; si no, se usa max_seats (300 por defecto)
+    tope_absoluto = max_seats_per_party if max_seats_per_party is not None else max_seats
+    
+    # Límites finales (máximo entre MR y cap_dist, pero <= tope_absoluto)
     lim_dist = np.maximum(s_mr, cap_dist)
-    lim_300 = np.full(N, max_seats, dtype=int)
-    lim_max = np.minimum(lim_dist, lim_300)
+    lim_tope = np.full(N, tope_absoluto, dtype=int)
+    lim_max = np.minimum(lim_dist, lim_tope)
     
     s_tot = s_mr + s_rp
     
@@ -540,6 +546,7 @@ def asignadip_v2(x: np.ndarray, ssd: np.ndarray,
                  m: int = 200, S: Optional[int] = None,
                  threshold: float = 0.03,
                  max_seats: int = 300, max_pp: float = 0.08,
+                 max_seats_per_party: Optional[int] = None,
                  apply_caps: bool = True,
                  quota_method: Optional[str] = None,
                  divisor_method: Optional[str] = None,
@@ -557,8 +564,9 @@ def asignadip_v2(x: np.ndarray, ssd: np.ndarray,
     - m: escaños de RP a asignar
     - S: total de escaños (si None, se calcula como sum(ssd) + m)
     - threshold: umbral de 3% sobre VVE
-    - max_seats: tope de 300 escaños por partido
+    - max_seats: tope de 300 escaños por partido (por defecto)
     - max_pp: sobrerrepresentación máxima (+8 pp)
+    - max_seats_per_party: tope absoluto de escaños por partido (anula max_seats si se especifica)
     - apply_caps: aplicar topes constitucionales
     - seed: semilla para desempates
     - print_debug: imprimir información de depuración
@@ -613,7 +621,8 @@ def asignadip_v2(x: np.ndarray, ssd: np.ndarray,
     if apply_caps:
         resultado_topes = aplicar_topes_nacionales(
             s_mr=ssd, s_rp=s_rp_init, v_nacional=v_nacional,
-            S=S, max_pp=max_pp, max_seats=max_seats
+            S=S, max_pp=max_pp, max_seats=max_seats,
+            max_seats_per_party=max_seats_per_party
         )
         s_tot = resultado_topes['s_tot']
         s_rp_final = resultado_topes['s_rp']
@@ -1283,6 +1292,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     threshold=umbral,
                     max_seats=int(max_seats) if max_seats is not None else 300,
                     max_pp=(sobrerrepresentacion / 100.0) if sobrerrepresentacion is not None else 0.08,
+                    max_seats_per_party=int(max_seats_per_party) if max_seats_per_party is not None else None,
                     apply_caps=True,
                     quota_method=quota_method,
                     divisor_method=divisor_method,
@@ -1489,6 +1499,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     threshold=umbral,
                     max_seats=int(max_seats) if max_seats is not None else 300,
                     max_pp=(sobrerrepresentacion / 100.0) if sobrerrepresentacion is not None else 0.08,
+                    max_seats_per_party=int(max_seats_per_party) if max_seats_per_party is not None else None,
                     apply_caps=True,
                     quota_method=quota_method,
                     divisor_method=divisor_method,
