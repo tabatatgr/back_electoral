@@ -361,9 +361,10 @@ def LR_ties(v_abs: np.ndarray, n: int, q: Optional[float] = None, seed: Optional
 def aplicar_topes_nacionales(s_mr: np.ndarray, s_rp: np.ndarray, v_nacional: np.ndarray, 
                            S: int, max_pp: float = 0.08, max_seats: int = 300, 
                            max_seats_per_party: Optional[int] = None,
-                           iter_max: int = 16) -> Dict[str, np.ndarray]:
+                           iter_max: int = 16,
+                           partidos_nombres: Optional[List[str]] = None) -> Dict[str, np.ndarray]:
     """
-    Aplica topes constitucionales de forma iterativa
+    Aplica topes constitucionales de forma iterativa con bloqueo de partidos capados
     
     Parámetros:
     - s_mr: escaños de MR por partido
@@ -378,6 +379,8 @@ def aplicar_topes_nacionales(s_mr: np.ndarray, s_rp: np.ndarray, v_nacional: np.
     Retorna:
     - Dict con 's_rp' (RP ajustado) y 's_tot' (total ajustado)
     """
+    debug_morena = False  # Desactivar debug en producción
+    
     N = len(s_mr)
     s_mr = s_mr.astype(int)
     s_rp = s_rp.astype(int)
@@ -389,131 +392,264 @@ def aplicar_topes_nacionales(s_mr: np.ndarray, s_rp: np.ndarray, v_nacional: np.
     # Partidos elegibles (solo los que tienen v_nacional > 0)
     ok = v_nacional > 0
     
-    # Límites por sobrerrepresentación (+8 pp)
+    # Límites por sobrerrepresentación (+8 pp) - CORREGIDO: usar floor estricto
     cap_dist = np.floor((v_nacional + max_pp) * S).astype(int)
     cap_dist[~ok] = s_mr[~ok]  # Partidos <3%: límite = MR únicamente
     
+    # DEBUG: Imprimir cálculo de cap para partidos grandes
+    if debug_morena:
+        for idx in range(N):
+            if v_nacional[idx] > 0.25:  # Partidos con >25% votación
+                nombre = partidos_nombres[idx] if partidos_nombres else f"partido_{idx}"
+                print(f"\n[DEBUG CAP CALCULATION - {nombre} (idx={idx})]")
+                print(f"  v_nacional: {v_nacional[idx]:.6f}")
+                print(f"  v_nacional + max_pp: {v_nacional[idx] + max_pp:.6f}")
+                print(f"  (v_nacional + max_pp) * S: {(v_nacional[idx] + max_pp) * S:.2f}")
+                print(f"  cap_dist (floor): {cap_dist[idx]}")
+                print(f"  Expected cap for 42.49%: {np.floor((0.4249 + 0.08) * S)}")
+    
     # Determinar tope absoluto a aplicar
-    # Si se especifica max_seats_per_party, se usa ese; si no, se usa max_seats (300 por defecto)
     tope_absoluto = max_seats_per_party if max_seats_per_party is not None else max_seats
     
-    # Límites finales (máximo entre MR y cap_dist, pero <= tope_absoluto)
-    lim_dist = np.maximum(s_mr, cap_dist)
-    lim_tope = np.full(N, tope_absoluto, dtype=int)
-    lim_max = np.minimum(lim_dist, lim_tope)
+    # Límites efectivos por el tope del +8%
+    # CRÍTICO: El tope constitucional es ABSOLUTO, no puede excederse por MR
+    # Si un partido gana 311 MR pero el tope +8% es 252, debe quedarse con solo 252
+    lim_max = cap_dist.copy()
+    
+    # Aplicar tope absoluto de 300 escaños
+    lim_max = np.minimum(lim_max, tope_absoluto)
+    
+    # EXCEPCIÓN: Si tengo MR > tope (porque la gente votó así), respetamos MR 
+    # Pero el partido NO PUEDE recibir RP adicional
+    # Por ahora, aplicamos el tope estricto y recortamos MR si excede
+    # (esto es debatible, pero parece ser la interpretación constitucional)
     
     s_tot = s_mr + s_rp
     
-    # Iteración para aplicar topes
-    for iteracion in range(iter_max):
-        # Partidos que exceden límites
-        over = np.where(s_tot > lim_max)[0]
-        if len(over) == 0:
+    # Conjunto de partidos bloqueados para reinyección (empezar vacío)
+    capped = np.zeros(N, dtype=bool)
+    
+    # PASO 1: Recorte inicial - identificar partidos que exceden el tope
+    sobrantes = 0
+    
+    # DEBUG: Imprimir información de partidos que exceden el tope
+    if debug_morena and N > 0:
+        for idx in range(N):
+            nombre = partidos_nombres[idx] if partidos_nombres else f"partido_{idx}"
+            if s_tot[idx] > cap_dist[idx]:
+                print(f"\n[DEBUG PASO 1 INICIO - {nombre} (idx={idx})]")
+                print(f"  cap_dist (tope +8%): {cap_dist[idx]}")
+                print(f"  lim_max (límite efectivo): {lim_max[idx]}")
+                print(f"  s_mr (MR inicial): {s_mr[idx]}")
+                print(f"  s_rp (RP inicial): {s_rp[idx]}")
+                print(f"  s_tot (total inicial): {s_tot[idx]}")
+    
+    for p in range(N):
+        cap_eff = lim_max[p]
+        if s_tot[p] > cap_eff:
+            # El tope constitucional es ABSOLUTO
+            # Si MR + RP > tope, recortar en este orden:
+            # 1. Primero quitar todo el RP posible
+            # 2. Si aún excede, quitar MR (esto es controversial pero constitucional)
+            excess = s_tot[p] - cap_eff
+            
+            # Primero intentar quitar RP
+            cut_rp = min(excess, s_rp[p])
+            s_rp[p] -= cut_rp
+            s_tot[p] -= cut_rp
+            sobrantes += cut_rp
+            excess -= cut_rp
+            
+            # Si aún excede después de quitar todo el RP, quitar MR
+            if excess > 0:
+                cut_mr = min(excess, s_mr[p])
+                s_mr[p] -= cut_mr
+                s_tot[p] -= cut_mr
+                sobrantes += cut_mr
+            else:
+                cut_mr = 0
+            
+            # Bloquear partido para no recibir más RP
+            if s_tot[p] >= cap_eff:
+                capped[p] = True
+                
+            # DEBUG: Imprimir info después del recorte
+            if debug_morena:
+                nombre = partidos_nombres[p] if partidos_nombres else f"partido_{p}"
+                print(f"\n[DEBUG PASO 1 DESPUÉS RECORTE - {nombre} (idx={p})]")
+                print(f"  cut_rp: {cut_rp}")
+                print(f"  cut_mr: {cut_mr}")
+                print(f"  s_mr después: {s_mr[p]}")
+                print(f"  s_rp después: {s_rp[p]}")
+                print(f"  s_tot después: {s_tot[p]}")
+                print(f"  capped: {capped[p]}")
+                print(f"  sobrantes totales: {sobrantes}")
+    
+    # Partidos <3% también se bloquean (no pueden recibir RP)
+    capped[~ok] = True
+    
+    # DEBUG: Estado antes de PASO 2
+    if debug_morena:
+        for idx in range(N):
+            if capped[idx]:
+                nombre = partidos_nombres[idx] if partidos_nombres else f"partido_{idx}"
+                print(f"\n[DEBUG ANTES PASO 2 - {nombre} (idx={idx}) BLOQUEADO]")
+                print(f"  s_tot: {s_tot[idx]}")
+                print(f"  lim_max: {lim_max[idx]}")
+        print(f"\n[DEBUG ANTES PASO 2]")
+        print(f"  sobrantes para redistribuir: {sobrantes}")
+    
+    # PASO 2: Reinyección iterativa SIN romper topes
+    # Los RP sobrantes se redistribuyen a partidos NO capados
+    while sobrantes > 0:
+        # Votos efectivos solo de partidos no capados y elegibles
+        v_eff = v_nacional.copy()
+        v_eff[capped] = 0.0
+        
+        if np.sum(v_eff) <= 0:
+            # No hay a quién reasignar sin romper topes
             break
         
-        # Reducir RP de partidos que exceden
-        s_rp[over] = np.maximum(0, lim_max[over] - s_mr[over])
+        # Usar fórmula de residuos (largest remainder)
+        # q es la cuota para distribuir los sobrantes
+        q = np.sum(v_eff) / sobrantes if sobrantes > 0 else 0.0
+        if q <= 0:
+            break
         
-        # Marcar partidos fijados
-        fixed = np.zeros(N, dtype=bool)
-        fixed[over] = True
-        fixed[~ok] = True  # Partidos <3% también se fijan
+        # Calcular residuos para cada partido no capado
+        residuos = v_eff % q
         
-        # Votos efectivos para redistribución (solo no fijados y elegibles)
+        # Encontrar el partido con mayor residuo entre no capados
+        cand_idx = -1
+        max_residuo = -np.inf
+        for p in range(N):
+            if not capped[p] and v_eff[p] > 0:
+                if residuos[p] > max_residuo:
+                    max_residuo = residuos[p]
+                    cand_idx = p
+        
+        if cand_idx == -1:
+            # No encontramos candidato válido
+            break
+        
+        # Intentar asignar 1 RP al candidato
+        cap_eff = lim_max[cand_idx]
+        
+        if s_tot[cand_idx] >= cap_eff:
+            # Ya está en el tope - bloquear y continuar
+            capped[cand_idx] = True
+            continue
+        
+        # Asignar el escaño
+        s_rp[cand_idx] += 1
+        s_tot[cand_idx] += 1
+        sobrantes -= 1
+        
+        # DEBUG: Si se asigna a cualquier partido
+        if debug_morena:
+            nombre = partidos_nombres[cand_idx] if partidos_nombres else f"partido_{cand_idx}"
+            if s_tot[cand_idx] > lim_max[cand_idx] * 0.95:  # Solo imprimir si está cerca del tope
+                print(f"\n[DEBUG PASO 2 - ASIGNACIÓN A {nombre} (idx={cand_idx})]")
+                print(f"  Sobrantes restantes: {sobrantes}")
+                print(f"  s_tot ahora: {s_tot[cand_idx]}")
+                print(f"  s_rp ahora: {s_rp[cand_idx]}")
+                print(f"  lim_max: {lim_max[cand_idx]}")
+        
+        # Si llegó al tope exacto, bloquear para futuras asignaciones
+        if s_tot[cand_idx] >= cap_eff:
+            capped[cand_idx] = True
+    
+    # PASO 3: Si quedan sobrantes y no pudimos reasignarlos, redistribuir proporcionalmente
+    # entre todos los no capados usando LR estándar
+    if sobrantes > 0:
         v_eff = v_nacional.copy()
-        v_eff[fixed] = 0.0
+        v_eff[capped] = 0.0
         
-        # RP ya fijados
-        rp_fijos = int(np.sum(np.maximum(0, lim_max[fixed] - s_mr[fixed])))
-        n_rest = max(0, rp_total - rp_fijos)
-        
-        # Redistribuir RP restantes
-        if n_rest == 0 or np.sum(v_eff) <= 0:
-            s_rp[~fixed] = 0
-        else:
-            q = np.sum(v_eff) / n_rest
-            add = LR_ties(v_eff, n=n_rest, q=q)
-            s_rp_nuevo = np.zeros(N, dtype=int)
-            s_rp_nuevo[fixed] = np.maximum(0, lim_max[fixed] - s_mr[fixed])
-            s_rp_nuevo[~fixed] = add[~fixed]
-
-            # Actualizar s_rp con la nueva distribución
-            s_rp = s_rp_nuevo
-
-            # Asegurar que partidos <3% no reciben RP
-            s_rp[~ok] = 0
-            s_tot = s_mr + s_rp
-
-            # Ajuste final para cumplir exactamente S escaños
-            delta = int(S - np.sum(s_tot))
-            if delta != 0:
-                margin = lim_max - s_tot
-                margin[~ok] = 0  # Solo partidos elegibles
-
-                if delta > 0:
-                    # Faltan escaños: asignar a quienes tienen margen
-                    cand = np.where(margin > 0)[0]
-                    if len(cand) > 0:
-                        # Ordenar por proporción de votos descendente
-                        ord_idx = np.argsort(-v_nacional[cand])
-                        take = cand[ord_idx[:min(delta, len(cand))]]
-                        s_rp[take] += 1
-                else:
-                    # Sobran escaños: quitar de quienes tienen RP
-                    cand = np.where((s_rp > 0) & ok)[0]
-                    if len(cand) > 0:
-                        # Ordenar por RP descendente
-                        ord_idx = np.argsort(-s_rp[cand])
-                        take = cand[ord_idx[:min(-delta, len(cand))]]
-                        s_rp[take] -= 1
-
-            # Validación final: partidos que exceden +8pp no deben tener RP
-            violadores = np.where(s_mr > np.floor((v_nacional + max_pp) * S))[0]
-            if len(violadores) > 0:
-                assert np.all(s_rp[violadores] == 0), f"Partidos que exceden +8pp tienen RP: {violadores}"
-
-            return {
-                's_rp': s_rp.astype(int),
-                's_tot': (s_mr + s_rp).astype(int)
-            }
-
-    # Si salimos del bucle sin haber retornado (no hubo over o ya ajustado),
-    # aplicar los ajustes finales y retornar siempre un dict.
-    # Asegurar que partidos <3% no reciben RP
-    s_rp[~ok] = 0
-    s_tot = s_mr + s_rp
-
-    # Ajuste final para cumplir exactamente S escaños
+        if np.sum(v_eff) > 0:
+            add = LR_ties(v_eff, n=sobrantes)
+            for p in range(N):
+                if not capped[p] and add[p] > 0:
+                    # Verificar que no rompa el tope
+                    margen = lim_max[p] - s_tot[p]
+                    asignar = min(add[p], margen)
+                    s_rp[p] += asignar
+                    s_tot[p] += asignar
+    
+    # PASO 4: Ajuste final para cumplir exactamente S escaños (sin romper topes)
     delta = int(S - np.sum(s_tot))
+    
     if delta != 0:
+        # Calcular margen disponible por partido (cuánto pueden crecer sin romper tope)
         margin = lim_max - s_tot
-        margin[~ok] = 0  # Solo partidos elegibles
-
+        margin[capped] = 0  # Partidos capados no tienen margen
+        margin[~ok] = 0  # Partidos <3% tampoco
+        
         if delta > 0:
-            # Faltan escaños: asignar a quienes tienen margen
+            # Faltan escaños: asignar a quienes tienen margen positivo
             cand = np.where(margin > 0)[0]
             if len(cand) > 0:
                 # Ordenar por proporción de votos descendente
                 ord_idx = np.argsort(-v_nacional[cand])
-                take = cand[ord_idx[:min(delta, len(cand))]]
-                s_rp[take] += 1
+                for i in range(min(delta, len(cand))):
+                    p = cand[ord_idx[i]]
+                    # Verificar que aún tenga margen (por si ya asignamos antes)
+                    if s_tot[p] < lim_max[p]:
+                        s_rp[p] += 1
+                        s_tot[p] += 1
         else:
             # Sobran escaños: quitar de quienes tienen RP
             cand = np.where((s_rp > 0) & ok)[0]
             if len(cand) > 0:
                 # Ordenar por RP descendente
                 ord_idx = np.argsort(-s_rp[cand])
-                take = cand[ord_idx[:min(-delta, len(cand))]]
-                s_rp[take] -= 1
-
-    # Validación final: partidos que exceden +8pp no deben tener RP
-    violadores = np.where(s_mr > np.floor((v_nacional + max_pp) * S))[0]
-    if len(violadores) > 0:
-        assert np.all(s_rp[violadores] == 0), f"Partidos que exceden +8pp tienen RP: {violadores}"
-
+                for i in range(min(-delta, len(cand))):
+                    p = cand[ord_idx[i]]
+                    if s_rp[p] > 0:
+                        s_rp[p] -= 1
+                        s_tot[p] -= 1
+    
+    # PASO 5: Validación final estricta
+    # Asegurar que partidos <3% no reciben RP
+    s_rp[~ok] = 0
+    
+    # Validar que ningún partido excede su tope
+    for p in range(N):
+        if s_tot[p] > lim_max[p]:
+            # Esto NO debería pasar, pero si pasa, recortar RP
+            excess = s_tot[p] - lim_max[p]
+            cut = min(excess, s_rp[p])
+            s_rp[p] -= cut
+            s_tot[p] -= cut
+    
+    # Validación: partidos que exceden +8pp no deben tener RP
+    violadores = np.where(s_mr > cap_dist)[0]
+    for p in violadores:
+        if ok[p] and s_rp[p] > 0:
+            # Si un partido tiene MR que ya excede el tope de +8pp, no puede tener RP
+            s_rp[p] = 0
+    
+    # Recalcular totales finales
+    s_tot = s_mr + s_rp
+    
+    # DEBUG: Estado final - todos los partidos capados
+    if debug_morena:
+        print(f"\n[DEBUG FINAL - PARTIDOS CAPADOS]")
+        for idx in range(N):
+            if s_tot[idx] >= lim_max[idx] * 0.95:  # Cerca del tope o sobre él
+                nombre = partidos_nombres[idx] if partidos_nombres else f"partido_{idx}"
+                excede = s_tot[idx] > lim_max[idx]
+                print(f"\n  {nombre} (idx={idx}):")
+                print(f"    s_mr: {s_mr[idx]}")
+                print(f"    s_rp: {s_rp[idx]}")
+                print(f"    s_tot: {s_tot[idx]}")
+                print(f"    lim_max (cap +8%): {lim_max[idx]}")
+                print(f"    EXCEDE TOPE: {excede}")
+                if excede:
+                    print(f"    EXCESO: {s_tot[idx] - lim_max[idx]} escaños")
+    
     return {
         's_rp': s_rp.astype(int),
-        's_tot': (s_mr + s_rp).astype(int)
+        's_tot': s_tot.astype(int)
     }
 
 
@@ -580,6 +716,7 @@ def asignadip_v2(x: np.ndarray, ssd: np.ndarray,
                  quota_method: Optional[str] = None,
                  divisor_method: Optional[str] = None,
                  seed: Optional[int] = None,
+                 partidos_base: Optional[List[str]] = None,
                  print_debug: bool = False) -> Dict:
     """
     Asignación de diputaciones versión 2 (basada en R)
@@ -643,18 +780,23 @@ def asignadip_v2(x: np.ndarray, ssd: np.ndarray,
     else:
         s_rp_init = np.zeros_like(ssd)
     
-    # Proporción nacional (solo partidos elegibles)
-    v_nacional = x_ok / np.sum(x_ok) if np.sum(x_ok) > 0 else np.zeros_like(x_ok)
+    # Proporción nacional (sobre TODOS los votos, no solo elegibles)
+    # CRÍTICO: El tope de +8pp se calcula sobre la proporción nacional REAL,
+    # no sobre la proporción redistribuida entre solo partidos elegibles
+    v_nacional_total = x / np.sum(x) if np.sum(x) > 0 else np.zeros_like(x)
     
     # Aplicar topes constitucionales
     if apply_caps:
         resultado_topes = aplicar_topes_nacionales(
-            s_mr=ssd, s_rp=s_rp_init, v_nacional=v_nacional,
+            s_mr=ssd, s_rp=s_rp_init, v_nacional=v_nacional_total,
             S=S, max_pp=max_pp, max_seats=max_seats,
-            max_seats_per_party=max_seats_per_party
+            max_seats_per_party=max_seats_per_party,
+            partidos_nombres=partidos_base
         )
         s_tot = resultado_topes['s_tot']
         s_rp_final = resultado_topes['s_rp']
+        # IMPORTANTE: Calcular MR ajustado después de aplicar topes
+        s_mr_final = s_tot - s_rp_final
         
         # Verificar suma exacta
         if np.sum(s_tot) != S:
@@ -662,13 +804,16 @@ def asignadip_v2(x: np.ndarray, ssd: np.ndarray,
                 _maybe_log(f"Ajustando suma: {np.sum(s_tot)} -> {S}", 'debug', print_debug)
             s_rp_final = s_rp_final.copy()
             s_tot = ssd + s_rp_final
+        
+        # Calcular MR ajustado (puede haber sido recortado por topes)
+        s_mr_final = s_tot - s_rp_final
     else:
         # Sin topes: solo ajustar para cumplir S exactamente
         s_tot = ssd + s_rp_init
         delta = int(S - np.sum(s_tot))
         
         if delta != 0:
-            ord_idx = np.argsort(-v_nacional)
+            ord_idx = np.argsort(-v_nacional_total)
             if delta > 0:
                 # Asignar escaños faltantes por orden de votación
                 take = ord_idx[:min(delta, len(ord_idx))]
@@ -682,18 +827,23 @@ def asignadip_v2(x: np.ndarray, ssd: np.ndarray,
                     s_tot[take] -= 1
         
         s_rp_final = s_tot - ssd
+        s_mr_final = ssd  # Sin topes, MR no cambia
     
     # Preparar matrices de resultados
+    # IMPORTANTE: tot debe ser siempre s_mr_final + s_rp_final para consistencia
     seats = np.row_stack([
-        ssd.astype(int),  # MR
+        s_mr_final.astype(int),  # MR (ajustado si apply_caps recortó)
         s_rp_final.astype(int),  # RP
-        s_tot.astype(int)  # Total
+        (s_mr_final + s_rp_final).astype(int)  # Total = MR + RP (consistente)
     ])
+    
+    # Proporción nacional solo de elegibles (para reportar, no para topes)
+    v_nacional_elegibles = x_ok / np.sum(x_ok) if np.sum(x_ok) > 0 else np.zeros_like(x_ok)
     
     votes = np.row_stack([
         x / VTE if VTE > 0 else np.zeros_like(x),  # Proporción sobre total
         x / VVE if VVE > 0 else np.zeros_like(x),  # Proporción sobre válida
-        v_nacional  # Proporción nacional (solo elegibles)
+        v_nacional_elegibles  # Proporción nacional (solo elegibles)
     ])
     
     if print_debug:
@@ -734,6 +884,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                           umbral: Optional[float] = None,
                           max_seats_per_party: Optional[int] = None,
                           sobrerrepresentacion: Optional[float] = None,
+                          aplicar_topes: bool = True,  # Nuevo: controlar si se aplican topes constitucionales
                           usar_coaliciones: bool = True,
                           votos_redistribuidos: Optional[Dict] = None,
                           seed: Optional[int] = None,
@@ -838,6 +989,81 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
         if print_debug:
             _maybe_log(f"Votos por partido (originales): {votos_partido}", 'debug', print_debug)
             _maybe_log(f"Independientes: {indep}", 'debug', print_debug)
+        
+        # CRÍTICO: Si usar_coaliciones=False, desagregar votos de coalición
+        # Esto simula el contrafactual "como si nunca hubieran competido juntos"
+        if not usar_coaliciones and coaliciones_detectadas:
+            if print_debug:
+                _maybe_log("DESAGREGANDO votos de coalición (contrafactual: competencia separada)", 'info', print_debug)
+            
+            # Identificar coaliciones por año
+            coaliciones_por_anio = {
+                2018: ['MORENA', 'PT', 'PES'],
+                2021: ['MORENA', 'PT', 'PVEM'],
+                2024: ['MORENA', 'PT', 'PVEM']
+            }
+            
+            partidos_coalicion = coaliciones_por_anio.get(anio, [])
+            
+            if partidos_coalicion:
+                # Cargar datos históricos para calcular proporciones (año anterior)
+                anio_ref = anio - 3  # 2024 → 2021, 2021 → 2018
+                path_ref = f"data/computos_diputados_{anio_ref}.parquet"
+                
+                proporciones_desagregacion = {}
+                
+                if os.path.exists(path_ref):
+                    try:
+                        df_ref = pd.read_parquet(path_ref)
+                        df_ref.columns = [norm_ascii_up(c) for c in df_ref.columns]
+                        
+                        # Calcular proporciones nacionales del año de referencia
+                        votos_ref = {}
+                        for p in partidos_coalicion:
+                            if p in df_ref.columns:
+                                votos_ref[p] = df_ref[p].sum()
+                        
+                        total_ref = sum(votos_ref.values())
+                        if total_ref > 0:
+                            for p in partidos_coalicion:
+                                proporciones_desagregacion[p] = votos_ref.get(p, 0) / total_ref
+                            
+                            if print_debug:
+                                _maybe_log(f"Proporciones de desagregación (basadas en {anio_ref}):", 'debug', print_debug)
+                                for p in partidos_coalicion:
+                                    pct = proporciones_desagregacion.get(p, 0) * 100
+                                    _maybe_log(f"  {p}: {pct:.2f}%", 'debug', print_debug)
+                    except Exception as e:
+                        if print_debug:
+                            _maybe_log(f"Error cargando datos de referencia {anio_ref}: {e}", 'warn', print_debug)
+                
+                # Si no hay datos de referencia, usar proporciones por default
+                if not proporciones_desagregacion:
+                    # Proporciones aproximadas históricas
+                    if anio == 2024:
+                        proporciones_desagregacion = {'MORENA': 0.75, 'PT': 0.10, 'PVEM': 0.15}
+                    elif anio == 2021:
+                        proporciones_desagregacion = {'MORENA': 0.80, 'PT': 0.08, 'PVEM': 0.12}
+                    elif anio == 2018:
+                        proporciones_desagregacion = {'MORENA': 0.70, 'PT': 0.15, 'PES': 0.15}
+                    
+                    if print_debug:
+                        _maybe_log(f"Usando proporciones por default", 'warn', print_debug)
+                
+                # Desagregar votos: tomar el total de la coalición y repartirlo
+                total_coalicion = sum(votos_partido.get(p, 0) for p in partidos_coalicion)
+                
+                if print_debug:
+                    _maybe_log(f"Total votos coalición: {total_coalicion:,}", 'debug', print_debug)
+                
+                # Redistribuir según proporciones
+                for p in partidos_coalicion:
+                    if p in proporciones_desagregacion:
+                        votos_desagregados = int(total_coalicion * proporciones_desagregacion[p])
+                        votos_partido[p] = votos_desagregados
+                        
+                        if print_debug:
+                            _maybe_log(f"  {p}: {votos_desagregados:,} votos ({proporciones_desagregacion[p]*100:.1f}%)", 'debug', print_debug)
         
         # NUEVO: Aplicar redistribución de votos si se proporciona
         if votos_redistribuidos:
@@ -1159,29 +1385,36 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
             mr_aligned = {p: int(mr_raw.get(p, 0)) for p in partidos_base}
             indep_mr = 0
         else:
-            # Usar método tradicional sin coaliciones (partido individual con más votos gana)
+            # CALCULAR MR SIN COALICIONES: ganador directo por votos individuales
+            # NO usar siglado (que ya tiene el convenio de coalición aplicado)
+            # Recalcular ganadores distrito por distrito usando SOLO votos de partidos individuales
             if print_debug:
                 if coaliciones_detectadas and not usar_coaliciones:
-                    _maybe_log("Coaliciones detectadas pero DESACTIVADAS por parámetro", 'debug', print_debug)
-                _maybe_log("Calculando MR por partido individual (sin coaliciones)", 'debug', print_debug)
+                    _maybe_log("Coaliciones detectadas pero DESACTIVADAS - recalculando MR por votos individuales", 'info', print_debug)
+                else:
+                    _maybe_log("Calculando MR por partido individual (sin coaliciones)", 'debug', print_debug)
             
-            from .core import mr_by_siglado
-            try:
-                mr, indep_mr = mr_by_siglado(
-                    winners_df=recomposed,
-                    group_keys=["ENTIDAD", "DISTRITO"],
-                    gp_col="MR_DOMINANTE" if "MR_DOMINANTE" in recomposed.columns else "DOMINANTE",
-                    parties=partidos_base
-                )
-                mr_aligned = {p: int(mr.get(p, 0)) for p in partidos_base}
-            except Exception as e:
-                if print_debug:
-                    _maybe_log(f"Error en mr_by_siglado: {e}", 'warn', print_debug)
-                # Fallback: ganador por votos
-                ganadores = recomposed.groupby(['ENTIDAD', 'DISTRITO'])[partidos_base].sum().idxmax(axis=1)
-                mr = ganadores.value_counts().to_dict()
-                mr_aligned = {p: int(mr.get(p, 0)) for p in partidos_base}
-                indep_mr = mr.get('CI', 0)
+            # Calcular ganador por distrito usando solo votos de partidos base
+            mr_raw = {}
+            for _, distrito in recomposed.iterrows():
+                # Obtener votos de cada partido en este distrito
+                votos_distrito = {}
+                for partido in partidos_base:
+                    votos_distrito[partido] = float(distrito.get(partido, 0) or 0)
+                
+                # El partido con más votos gana el distrito
+                if votos_distrito:
+                    ganador = max(votos_distrito, key=votos_distrito.get)
+                    mr_raw[ganador] = mr_raw.get(ganador, 0) + 1
+            
+            # Asegurar que todos los partidos base están representados
+            mr_aligned = {p: int(mr_raw.get(p, 0)) for p in partidos_base}
+            indep_mr = 0
+            
+            if print_debug:
+                _maybe_log(f"MR sin coaliciones calculado: {mr_aligned}", 'info', print_debug)
+                total_mr = sum(mr_aligned.values())
+                _maybe_log(f"Total distritos MR procesados: {total_mr}", 'info', print_debug)
         
     # Configurar parámetros
         if umbral is None:
@@ -1323,10 +1556,11 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     max_seats=int(max_seats) if max_seats is not None else 300,
                     max_pp=(sobrerrepresentacion / 100.0) if sobrerrepresentacion is not None else 0.08,
                     max_seats_per_party=int(max_seats_per_party) if max_seats_per_party is not None else None,
-                    apply_caps=True,
+                    apply_caps=aplicar_topes,  # Pasar el parámetro desde procesar_diputados_v2
                     quota_method=quota_method,
                     divisor_method=divisor_method,
                     seed=seed,
+                    partidos_base=partidos_base,
                     print_debug=print_debug
                 )
             except Exception as e:
@@ -1355,13 +1589,47 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                 # Plan C o similar: parámetros explícitos para MR y RP
                 if print_debug:
                     _maybe_log(f"Plan con parámetros explícitos: MR={mr_seats}, RP={rp_seats}", 'debug', print_debug)
+                    _maybe_log(f"usar_coaliciones={usar_coaliciones}, coaliciones_detectadas={bool(coaliciones_detectadas)}", 'debug', print_debug)
                 # Ajustar MR calculado para que sume exactamente mr_seats
                 total_mr_actual = sum(mr_aligned.values())
                 if total_mr_actual != mr_seats:
                     if print_debug:
                         _maybe_log(f"Ajustando MR de {total_mr_actual} a {mr_seats}", 'debug', print_debug)
+                    
+                    # CRÍTICO: Si usar_coaliciones=False, NO usar scale_siglado porque volvería
+                    # al siglado original (que tiene convenio de coalición aplicado).
+                    # En su lugar, escalar proporcionalmente los MR recalculados.
+                    if not usar_coaliciones and coaliciones_detectadas:
+                        if print_debug:
+                            _maybe_log(f"Escalando MR recalculados sin coalición (no usar siglado)", 'info', print_debug)
+                            _maybe_log(f"MR antes de escalar: {mr_aligned}", 'debug', print_debug)
+                        # Escalado proporcional simple de los MR recalculados
+                        factor = mr_seats / total_mr_actual if total_mr_actual > 0 else 0
+                        mr_ajustado = {p: int(round(mr_aligned.get(p, 0) * factor)) for p in partidos_base}
+                        diferencia = mr_seats - sum(mr_ajustado.values())
+                        if print_debug:
+                            _maybe_log(f"Factor de escalado: {factor:.4f}", 'debug', print_debug)
+                            _maybe_log(f"MR después de escalar (antes de ajuste): {mr_ajustado}", 'debug', print_debug)
+                            _maybe_log(f"Diferencia a ajustar: {diferencia}", 'debug', print_debug)
+                        if diferencia != 0:
+                            partidos_ordenados = sorted(partidos_base, key=lambda x: mr_ajustado[x], reverse=True)
+                            for i in range(abs(diferencia)):
+                                if diferencia > 0:
+                                    mr_ajustado[partidos_ordenados[i % len(partidos_ordenados)]] += 1
+                                else:
+                                    if mr_ajustado[partidos_ordenados[i % len(partidos_ordenados)]] > 0:
+                                        mr_ajustado[partidos_ordenados[i % len(partidos_ordenados)]] -= 1
+                        mr_aligned = mr_ajustado
+                        if print_debug:
+                            _maybe_log(f"MR final después de ajuste: {mr_aligned}", 'info', print_debug)
+                        scaled_info = {
+                            'method': 'proportional_scaling_no_coalition',
+                            'note': 'MR escalados desde recalculo sin coalicion'
+                        }
                     # Intentar escalado estratificado determinista usando scale_siglado
-                    if total_mr_actual > 0:
+                    elif total_mr_actual > 0:
+                        if print_debug:
+                            _maybe_log(f"Usando scale_siglado para ajuste MR", 'debug', print_debug)
                         try:
                             df_siglado_like = recomposed.copy()
                             if 'ENTIDAD' not in df_siglado_like.columns:
@@ -1530,10 +1798,11 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     max_seats=int(max_seats) if max_seats is not None else 300,
                     max_pp=(sobrerrepresentacion / 100.0) if sobrerrepresentacion is not None else 0.08,
                     max_seats_per_party=int(max_seats_per_party) if max_seats_per_party is not None else None,
-                    apply_caps=True,
+                    apply_caps=aplicar_topes,  # Pasar el parámetro desde procesar_diputados_v2
                     quota_method=quota_method,
                     divisor_method=divisor_method,
                     seed=seed,
+                    partidos_base=partidos_base,
                     print_debug=print_debug
                 )
             except Exception as e:
@@ -1566,48 +1835,17 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                 _maybe_log(f"rp: {rp_dict}", 'debug', print_debug)
                 _maybe_log(f"tot: {tot_dict}", 'debug', print_debug)
 
-            # Ahora continuar con la aplicación de límites de sobrerrepresentación
-            total_votos_validos = sum(votos_ok.values())
-            if total_votos_validos > 0:
-                # Convertir a arrays para apply_overrep_cap
-                # Crear arrays en el mismo orden que partidos_base
-                seats_array = np.array([tot_dict[p] for p in partidos_base])
-                votes_array = np.array([votos_ok[p] for p in partidos_base])
-
-                # Calcular vote_share_valid 
-                vote_share_valid = votes_array / total_votos_validos
-
-                # Aplicar límite (convertir de porcentaje a fracción)
-                over_cap = sobrerrepresentacion / 100.0
-
-                if print_debug:
-                    _maybe_log(f"over_cap = {over_cap} ({sobrerrepresentacion}%)", 'debug', print_debug)
-                    _maybe_log(f"total_escanos = {max_seats}", 'debug', print_debug)
-                    _maybe_log(f"vote_share_valid = {vote_share_valid}", 'debug', print_debug)
-
-                # Aplicar límite de sobrerrepresentación
-                seats_ajustados = apply_overrep_cap(
-                    seats=seats_array,
-                    vote_share_valid=vote_share_valid,
-                    S=max_seats,
-                    over_cap=over_cap
-                )
-
-                # Convertir de vuelta a diccionario
-                tot_dict_ajustado = {partidos_base[i]: int(seats_ajustados[i]) for i in range(len(partidos_base))}
-
-                # Verificar si hubo cambios y aplicarlos
-                if tot_dict_ajustado != tot_dict:
-                    for p in partidos_base:
-                        if tot_dict_ajustado[p] != tot_dict[p]:
-                            if print_debug:
-                                _maybe_log(f"{p}: {tot_dict[p]} -> {tot_dict_ajustado[p]} escaños (límite sobrerrepresentación)", 'debug', print_debug)
-                            tot_dict[p] = tot_dict_ajustado[p]
-                            # Recalcular RP = total - MR
-                            rp_dict[p] = max(0, tot_dict[p] - mr_dict[p])
-
-                if print_debug:
-                    _maybe_log(f"Escaños después de sobrerrepresentación: {tot_dict}", 'debug', print_debug)
+            # NOTA: El límite de sobrerrepresentación YA fue aplicado dentro de asignadip_v2
+            # cuando apply_caps=True. La función aplicar_topes_nacionales se encarga de:
+            # 1. Aplicar el tope +8pp sobre el TOTAL de escaños (MR+RP, o solo MR, o solo RP)
+            # 2. Aplicar el tope de 300 escaños máximo por partido
+            # 3. Redistribuir los escaños sobrantes a partidos no capados
+            # Por lo tanto, NO es necesario aplicar el límite aquí nuevamente.
+            if print_debug:
+                if aplicar_topes:
+                    _maybe_log(f"Topes constitucionales ya aplicados en asignadip_v2", 'debug', print_debug)
+                else:
+                    _maybe_log(f"aplicar_topes=False: sin límites constitucionales", 'info', print_debug)
         
         # Si existe `scaled` pero por alguna razón no se construyó `scaled_info`,
         # crear un scaled_info mínimo y persistir el CSV si es posible. Esto

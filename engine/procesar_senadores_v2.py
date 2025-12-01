@@ -603,19 +603,25 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
         
         # 1.5) NUEVO: Agregar coaliciones automáticamente basadas en el siglado
         coaliciones_agregadas = False
-        if path_siglado and usar_coaliciones:
+        coaliciones_en_siglado = None  # Variable para detectar si existen coaliciones
+        
+        if path_siglado:
             print(f"[DEBUG] Extrayendo coaliciones del siglado: {path_siglado}")
-            coaliciones = extraer_coaliciones_de_siglado(path_siglado)
-            if coaliciones:
-                print(f"[DEBUG] Coaliciones detectadas: {coaliciones}")
-                df_boletas = agregar_columnas_coalicion(df_boletas, coaliciones)
-                coaliciones_agregadas = True
-                print(f"[DEBUG] Dataset con coaliciones shape: {df_boletas.shape}")
+            coaliciones_en_siglado = extraer_coaliciones_de_siglado(path_siglado)
+            
+            if coaliciones_en_siglado:
+                print(f"[DEBUG] Coaliciones encontradas en siglado: {coaliciones_en_siglado}")
+                
+                if usar_coaliciones:
+                    print(f"[DEBUG] Agregando columnas de coalición al dataset")
+                    df_boletas = agregar_columnas_coalicion(df_boletas, coaliciones_en_siglado)
+                    coaliciones_agregadas = True
+                    print(f"[DEBUG] Dataset con coaliciones shape: {df_boletas.shape}")
+                else:
+                    print(f"[DEBUG] Coaliciones DESACTIVADAS por parámetro usar_coaliciones=False")
+                    print(f"[DEBUG] Se aplicará desagregación de votos para contrafactual")
             else:
                 print(f"[DEBUG] No se detectaron coaliciones en el siglado")
-        elif path_siglado and not usar_coaliciones:
-            print(f"[DEBUG] Coaliciones detectadas en siglado pero DESACTIVADAS por parámetro")
-            print(f"[DEBUG] Calculando por partido individual (sin coaliciones)")
         
         # 2) Recomposición usando el sistema existente (solo si no agregamos coaliciones)
         if coaliciones_agregadas:
@@ -744,6 +750,79 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
         # 6) Calcular RP nacional (solo si aplica)
         votos_nacionales = {p: int(recomposed[p].sum()) for p in partidos_base}
         print(f"[DEBUG] Votos nacionales: {votos_nacionales}")
+        
+        # 6.5) CRÍTICO: Si usar_coaliciones=False, desagregar votos de coalición
+        # Esto implementa el contrafactual: "como si nunca hubieran competido juntos"
+        coaliciones_detectadas = coaliciones_en_siglado is not None and len(coaliciones_en_siglado) > 0
+        
+        if not usar_coaliciones and coaliciones_detectadas:
+            print(f"[INFO] DESAGREGANDO votos de coalición (contrafactual: competencia separada)")
+            
+            # Identificar coaliciones por año (senado)
+            coaliciones_por_anio = {
+                2018: ['MORENA', 'PT', 'PES'],
+                2024: ['MORENA', 'PT', 'PVEM']
+            }
+            
+            partidos_coalicion = coaliciones_por_anio.get(anio, [])
+            
+            if partidos_coalicion and all(p in votos_nacionales for p in partidos_coalicion):
+                # Calcular total de votos de la coalición
+                total_coalicion = sum(votos_nacionales[p] for p in partidos_coalicion)
+                print(f"[DEBUG] Total votos coalición {partidos_coalicion}: {total_coalicion:,}")
+                
+                # Intentar cargar proporciones del año de referencia (año-3 o año-6)
+                proporciones = {}
+                anio_ref = anio - 6  # Para senado: 2024→2018
+                
+                path_ref = f"data/computos_senado_{anio_ref}.parquet"
+                if os.path.exists(path_ref):
+                    try:
+                        df_ref = pd.read_parquet(path_ref)
+                        print(f"[DEBUG] Cargando proporciones históricas desde {anio_ref}")
+                        
+                        # Calcular totales nacionales del año de referencia
+                        totales_ref = {}
+                        for p in partidos_coalicion:
+                            if p in df_ref.columns:
+                                totales_ref[p] = df_ref[p].sum()
+                        
+                        total_ref = sum(totales_ref.values())
+                        
+                        if total_ref > 0:
+                            # Calcular proporciones
+                            for p in partidos_coalicion:
+                                prop = totales_ref.get(p, 0) / total_ref
+                                proporciones[p] = prop
+                                print(f"[DEBUG]   {p}: {totales_ref.get(p, 0):,} votos ({prop*100:.2f}%)")
+                        else:
+                            print(f"[WARN] Total de referencia es 0, usando proporciones por defecto")
+                    except Exception as e:
+                        print(f"[WARN] Error cargando año de referencia {anio_ref}: {e}")
+                
+                # Proporciones por defecto si no hay datos históricos
+                if not proporciones:
+                    print(f"[DEBUG] Usando proporciones por defecto para {anio}")
+                    if anio == 2024:
+                        proporciones = {'MORENA': 0.75, 'PT': 0.10, 'PVEM': 0.15}
+                    elif anio == 2018:
+                        proporciones = {'MORENA': 0.70, 'PT': 0.15, 'PES': 0.15}
+                    else:
+                        # Distribuir equitativamente
+                        n_partidos = len(partidos_coalicion)
+                        proporciones = {p: 1.0/n_partidos for p in partidos_coalicion}
+                
+                # Redistribuir votos según proporciones
+                print(f"[DEBUG] Redistribuyendo {total_coalicion:,} votos según proporciones:")
+                for p in partidos_coalicion:
+                    votos_desagregados = int(total_coalicion * proporciones.get(p, 0))
+                    votos_originales = votos_nacionales[p]
+                    votos_nacionales[p] = votos_desagregados
+                    print(f"[DEBUG]   {p}: {votos_originales:,} -> {votos_desagregados:,} ({proporciones.get(p, 0)*100:.1f}%)")
+                
+                print(f"[DEBUG] Votos nacionales después de desagregación: {votos_nacionales}")
+            else:
+                print(f"[DEBUG] No se pudo identificar coalición para desagregar en {anio}")
         
         if escanos_rp > 0:
             rp_result = asigna_senado_RP(votos_nacionales, threshold=umbral, escanos_rp=escanos_rp)

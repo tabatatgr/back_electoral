@@ -1,0 +1,540 @@
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('AGUASCALIENTES', 1): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('AGUASCALIENTES', 2): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('BAJA CALIFORNIA', 8): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('BAJA CALIFORNIA SUR', 1): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('BAJA CALIFORNIA SUR', 2): {'PAN', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CAMPECHE', 2): {'MORENA', 'PRD', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CHIAPAS', 1): {'PRD', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CHIAPAS', 2): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CHIAPAS', 3): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CHIAPAS', 4): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CHIAPAS', 6): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CHIAPAS', 9): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CHIAPAS', 10): {'PRD', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CHIAPAS', 11): {'PRD', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CHIAPAS', 8): {'PRI', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CHIAPAS', 5): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CHIAPAS', 13): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CHIHUAHUA', 1): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CHIHUAHUA', 2): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CHIHUAHUA', 3): {'PRI', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CHIHUAHUA', 4): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CHIHUAHUA', 5): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CHIHUAHUA', 6): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CHIHUAHUA', 7): {'PAN', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CHIHUAHUA', 8): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CHIHUAHUA', 9): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 1): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 2): {'PRI', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 3): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 4): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 5): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 6): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 7): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 8): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 9): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 10): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 11): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 12): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 13): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 14): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 15): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 16): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 17): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 18): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 19): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 20): {'PRD', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 21): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('CIUDAD DE MEXICO', 22): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('COAHUILA', 1): {'PRI', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('COAHUILA', 2): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('COAHUILA', 3): {'PAN', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('COAHUILA', 4): {'PRI', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('COAHUILA', 5): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('COAHUILA', 6): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('COAHUILA', 7): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('COAHUILA', 8): {'PRD', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('COLIMA', 1): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('COLIMA', 2): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('DURANGO', 1): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('DURANGO', 2): {'PRI', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('DURANGO', 3): {'PRD', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('DURANGO', 4): {'PAN', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('GUANAJUATO', 1): {'PRI', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('GUANAJUATO', 2): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('GUANAJUATO', 3): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('GUANAJUATO', 7): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('GUANAJUATO', 5): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('GUANAJUATO', 8): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('GUANAJUATO', 9): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('GUANAJUATO', 10): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('GUANAJUATO', 12): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('GUANAJUATO', 13): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('GUANAJUATO', 14): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('GUANAJUATO', 15): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('GUERRERO', 1): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('GUERRERO', 2): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('GUERRERO', 3): {'PRD', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('GUERRERO', 4): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('GUERRERO', 5): {'PRD', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('GUERRERO', 6): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('GUERRERO', 7): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('GUERRERO', 8): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('HIDALGO', 2): {'PRD', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('JALISCO', 1): {'PAN', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('JALISCO', 2): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('JALISCO', 4): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('JALISCO', 6): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('JALISCO', 7): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('JALISCO', 8): {'PAN', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('JALISCO', 9): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('JALISCO', 10): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('JALISCO', 14): {'PRD', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('JALISCO', 12): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('JALISCO', 11): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('JALISCO', 13): {'PRI', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('JALISCO', 15): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('JALISCO', 16): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('JALISCO', 17): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('JALISCO', 18): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('JALISCO', 19): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('JALISCO', 20): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 1): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 2): {'PRD', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 3): {'PRI', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 4): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 5): {'PAN', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 6): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 7): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 8): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 9): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 10): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 12): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 14): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 15): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 16): {'PRI', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 18): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 19): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 20): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 21): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 22): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 23): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 24): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 26): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 27): {'PRI', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 28): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 30): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 34): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 35): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 36): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 37): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 38): {'PRD', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 39): {'PRI', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MEXICO', 40): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MICHOACAN', 3): {'PRD', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MICHOACAN', 4): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MICHOACAN', 5): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MICHOACAN', 6): {'PRI', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MICHOACAN', 7): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MICHOACAN', 8): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MICHOACAN', 9): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MICHOACAN', 10): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MICHOACAN', 11): {'PRD', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MORELOS', 1): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MORELOS', 2): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MORELOS', 3): {'PRD', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MORELOS', 4): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('MORELOS', 5): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('NAYARIT', 1): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('NAYARIT', 2): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('NAYARIT', 3): {'PAN', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('NUEVO LEON', 1): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('NUEVO LEON', 2): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('NUEVO LEON', 3): {'PAN', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('NUEVO LEON', 4): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('NUEVO LEON', 5): {'PRI', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('NUEVO LEON', 6): {'PAN', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('NUEVO LEON', 7): {'PRD', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('NUEVO LEON', 8): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('NUEVO LEON', 9): {'PRI', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('NUEVO LEON', 10): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('NUEVO LEON', 11): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('NUEVO LEON', 12): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('NUEVO LEON', 13): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('NUEVO LEON', 14): {'PAN', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('OAXACA', 1): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('OAXACA', 2): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('OAXACA', 3): {'PAN', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('OAXACA', 6): {'PRI', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('OAXACA', 7): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('OAXACA', 8): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('OAXACA', 9): {'PRD', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('PUEBLA', 1): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('PUEBLA', 2): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('PUEBLA', 3): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('PUEBLA', 4): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('PUEBLA', 5): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('PUEBLA', 6): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('PUEBLA', 7): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('PUEBLA', 8): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('PUEBLA', 9): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('PUEBLA', 11): {'PRI', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('PUEBLA', 12): {'PAN', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('PUEBLA', 10): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('PUEBLA', 13): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('PUEBLA', 14): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('PUEBLA', 15): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('PUEBLA', 16): {'PRD', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('QUERETARO', 1): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('QUERETARO', 2): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('QUERETARO', 5): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('QUERETARO', 6): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('QUINTANA ROO', 1): {'PRD', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('QUINTANA ROO', 2): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('QUINTANA ROO', 4): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('SAN LUIS POTOSI', 1): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('SAN LUIS POTOSI', 2): {'PRD', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('SAN LUIS POTOSI', 3): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('SAN LUIS POTOSI', 4): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('SAN LUIS POTOSI', 5): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('SAN LUIS POTOSI', 6): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('SAN LUIS POTOSI', 7): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('SINALOA', 1): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('SINALOA', 3): {'PRI', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('SINALOA', 4): {'PRD', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('SINALOA', 5): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('SINALOA', 7): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('SONORA', 1): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('SONORA', 2): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('SONORA', 3): {'PAN', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('SONORA', 4): {'PRD', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('SONORA', 5): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('SONORA', 6): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('SONORA', 7): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('TAMAULIPAS', 1): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('TAMAULIPAS', 2): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('TAMAULIPAS', 3): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('TAMAULIPAS', 4): {'PRD', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('TAMAULIPAS', 5): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('TAMAULIPAS', 6): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('TAMAULIPAS', 7): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('TAMAULIPAS', 8): {'PAN', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('TLAXCALA', 1): {'PAN', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('TLAXCALA', 2): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('TLAXCALA', 3): {'PRD', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('VERACRUZ', 1): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('VERACRUZ', 2): {'PRD', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('VERACRUZ', 3): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('VERACRUZ', 4): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('VERACRUZ', 5): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('VERACRUZ', 6): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('VERACRUZ', 7): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('VERACRUZ', 9): {'PRI', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('VERACRUZ', 10): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('VERACRUZ', 11): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('VERACRUZ', 12): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('VERACRUZ', 13): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('VERACRUZ', 14): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('VERACRUZ', 15): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('VERACRUZ', 16): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('VERACRUZ', 17): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('VERACRUZ', 18): {'PRD', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('VERACRUZ', 19): {'MORENA', 'PRD'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('YUCATAN', 1): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('YUCATAN', 2): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('YUCATAN', 3): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('YUCATAN', 4): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('YUCATAN', 5): {'PRI', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('YUCATAN', 6): {'MORENA', 'PAN'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('ZACATECAS', 1): {'MORENA', 'PRI'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('ZACATECAS', 2): {'PAN', 'PVEM'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('ZACATECAS', 3): {'PRD', 'PT'}; ignorando ppn_gp
+[WARNING] M·ltiples GRUPO_PARLAMENTARIO para ('ZACATECAS', 4): {'PRI', 'PT'}; ignorando ppn_gp
+[WARNING] Distrito AGUASCALIENTES-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito BAJA CALIFORNIA SUR-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CHIAPAS-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CHIHUAHUA-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito COAHUILA-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito COLIMA-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito DURANGO-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito GUANAJUATO-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito GUERRERO-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito JALISCO-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MORELOS-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito NAYARIT-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito NUEVO LEON-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito OAXACA-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito PUEBLA-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito QUERETARO-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito QUINTANA ROO-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito SAN LUIS POTOSI-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito SINALOA-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito SONORA-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito TAMAULIPAS-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito TLAXCALA-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito VERACRUZ-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito YUCATAN-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito ZACATECAS-1: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito AGUASCALIENTES-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito BAJA CALIFORNIA SUR-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CAMPECHE-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CHIAPAS-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CHIHUAHUA-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito COAHUILA-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito COLIMA-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito DURANGO-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito GUANAJUATO-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito GUERRERO-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito HIDALGO-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MORELOS-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito NAYARIT-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito NUEVO LEON-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito OAXACA-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito PUEBLA-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito QUERETARO-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito QUINTANA ROO-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito SAN LUIS POTOSI-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito SONORA-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito TAMAULIPAS-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito TLAXCALA-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito VERACRUZ-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito YUCATAN-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito ZACATECAS-2: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CHIAPAS-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CHIHUAHUA-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito COAHUILA-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito DURANGO-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito GUANAJUATO-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito GUERRERO-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MICHOACAN-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MORELOS-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito NAYARIT-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito NUEVO LEON-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito OAXACA-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito PUEBLA-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito SAN LUIS POTOSI-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito SINALOA-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito SONORA-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito TAMAULIPAS-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito TLAXCALA-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito VERACRUZ-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito YUCATAN-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito ZACATECAS-3: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CHIAPAS-4: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CHIHUAHUA-4: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-4: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito COAHUILA-4: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito DURANGO-4: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito GUERRERO-4: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito JALISCO-4: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-4: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MICHOACAN-4: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MORELOS-4: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito NUEVO LEON-4: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito PUEBLA-4: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito QUINTANA ROO-4: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito SAN LUIS POTOSI-4: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito SINALOA-4: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito SONORA-4: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito TAMAULIPAS-4: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito VERACRUZ-4: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito YUCATAN-4: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito ZACATECAS-4: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CHIAPAS-5: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CHIHUAHUA-5: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-5: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito COAHUILA-5: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito GUANAJUATO-5: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito GUERRERO-5: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-5: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MICHOACAN-5: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MORELOS-5: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito NUEVO LEON-5: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito PUEBLA-5: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito QUERETARO-5: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito SAN LUIS POTOSI-5: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito SINALOA-5: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito SONORA-5: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito TAMAULIPAS-5: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito VERACRUZ-5: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito YUCATAN-5: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CHIAPAS-6: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CHIHUAHUA-6: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-6: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito COAHUILA-6: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito GUERRERO-6: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito JALISCO-6: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-6: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MICHOACAN-6: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito NUEVO LEON-6: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito OAXACA-6: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito PUEBLA-6: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito QUERETARO-6: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito SAN LUIS POTOSI-6: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito SONORA-6: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito TAMAULIPAS-6: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito VERACRUZ-6: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito YUCATAN-6: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CHIHUAHUA-7: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-7: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito COAHUILA-7: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito GUANAJUATO-7: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito GUERRERO-7: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito JALISCO-7: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-7: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MICHOACAN-7: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito NUEVO LEON-7: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito OAXACA-7: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito PUEBLA-7: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito SAN LUIS POTOSI-7: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito SINALOA-7: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito SONORA-7: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito TAMAULIPAS-7: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito VERACRUZ-7: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito BAJA CALIFORNIA-8: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CHIAPAS-8: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CHIHUAHUA-8: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-8: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito COAHUILA-8: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito GUANAJUATO-8: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito GUERRERO-8: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito JALISCO-8: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-8: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MICHOACAN-8: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito NUEVO LEON-8: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito OAXACA-8: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito PUEBLA-8: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito TAMAULIPAS-8: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CHIAPAS-9: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CHIHUAHUA-9: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-9: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito GUANAJUATO-9: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito JALISCO-9: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-9: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MICHOACAN-9: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito NUEVO LEON-9: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito OAXACA-9: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito PUEBLA-9: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito VERACRUZ-9: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CHIAPAS-10: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-10: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito GUANAJUATO-10: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito JALISCO-10: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-10: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MICHOACAN-10: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito NUEVO LEON-10: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito PUEBLA-10: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito VERACRUZ-10: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CHIAPAS-11: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-11: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito JALISCO-11: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MICHOACAN-11: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito NUEVO LEON-11: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito PUEBLA-11: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito VERACRUZ-11: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-12: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito GUANAJUATO-12: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito JALISCO-12: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-12: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito NUEVO LEON-12: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito PUEBLA-12: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito VERACRUZ-12: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CHIAPAS-13: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-13: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito GUANAJUATO-13: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito JALISCO-13: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito NUEVO LEON-13: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito PUEBLA-13: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito VERACRUZ-13: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-14: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito GUANAJUATO-14: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito JALISCO-14: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-14: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito NUEVO LEON-14: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito PUEBLA-14: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito VERACRUZ-14: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-15: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito GUANAJUATO-15: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito JALISCO-15: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-15: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito PUEBLA-15: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito VERACRUZ-15: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-16: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito JALISCO-16: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-16: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito PUEBLA-16: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito VERACRUZ-16: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-17: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito JALISCO-17: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito VERACRUZ-17: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-18: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito JALISCO-18: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-18: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito VERACRUZ-18: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-19: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito JALISCO-19: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-19: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito VERACRUZ-19: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-20: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito JALISCO-20: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-20: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-21: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-21: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito CIUDAD DE MEXICO-22: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-22: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-23: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-24: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-26: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-27: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-28: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-30: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-34: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-35: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-36: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-37: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-38: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-39: coalici¾n detectada pero ppn_gp ausente
+[WARNING] Distrito MEXICO-40: coalici¾n detectada pero ppn_gp ausente
+================================================================================
+Traceback (most recent call last):
+TEST: LÝmite de sobrerrepresentaci¾n del 8% constitucional
+================================================================================
+
+Usando datos reales de 2024 con siglado
+MORENA obtuvo ~42.49% de votos nacionales
+LÝmite esperado: floor((0.4249 + 0.08) Î 500) = 252 esca±os
+
+
+================================================================================
+CASO 1: SISTEMA MR PURO (100% MR, 0% RP)
+================================================================================
+
+MORENA esca±os MR puro:
+  MR: 252
+  RP: 0
+  TOTAL: 252
+  File "C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\tmp_test_limite_8porciento_todos_sistemas.py", line 159, in <module>
+    exito = test_limite_sobrerrepresentacion()
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\tmp_test_limite_8porciento_todos_sistemas.py", line 66, in test_limite_sobrerrepresentacion
+    print(f"┐Respeta lÝmite de 252? {escanos_morena_mr <= 252} {'\u2713' if escanos_morena_mr <= 252 else '\u2717'}")
+  File "C:\Users\pablo\AppData\Local\Programs\Python\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2713' in position 29: character maps to <undefined>
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\tmp_test_limite_8porciento_todos_sistemas.py", line 162, in <module>
+    print(f"\n\u2717 ERROR durante la prueba: {e}")
+  File "C:\Users\pablo\AppData\Local\Programs\Python\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2717' in position 2: character maps to <undefined>

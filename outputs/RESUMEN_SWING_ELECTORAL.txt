@@ -1,0 +1,103 @@
+=================================================================
+    RESUMEN EJECUTIVO: SWING ELECTORAL 2021
+=================================================================
+
+DATOS PROCESADOS:
+- 8 estados con elecciones locales 2022-2023
+- 18,322 secciones mapeadas a 84 distritos federales
+- 43 distritos ajustados con swing (14.3% de 300)
+- 257 distritos mantienen votos originales
+
+ESTADOS ANALIZADOS:
+  AGS (2022): 3 distritos    |  COAH (2023): 7 distritos
+  DGO (2022): 4 distritos    |  HGO (2022):  7 distritos
+  MEX (2023): 0 ajustados*   |  OAX (2022): 10 distritos
+  QROO (2022): 4 distritos   |  TAMPS (2022): 8 distritos
+  
+  *México: Sin desglose individual en datos locales
+
+=================================================================
+IMPACTO EN ESCAÑOS - COMPARACIÓN 2021 vs 2021_CON_SWING
+=================================================================
+
+┌─────────────────────────────────────────────────────────────┐
+│ 400 ESCAÑOS | 50% MR - 50% RP                               │
+├─────────────────────────────────────────────────────────────┤
+│ Sin swing:  Coalición 209 (52.25%) | MORENA 184 (46.0%)    │
+│ Con swing:  Coalición 208 (52.0%)  | MORENA 184 (46.0%)    │
+│ ═══════════════════════════════════════════════════════════ │
+│ DIFERENCIA:    -1 escaño (-0.25pp) | Sin cambio            │
+│ MAYORÍA:       ✓ Simple (ambos)    | ✗ No alcanza          │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ 400 ESCAÑOS | 75% MR - 25% RP                               │
+├─────────────────────────────────────────────────────────────┤
+│ Sin swing:  Coalición 238 (59.5%)  | MORENA 173 (43.25%)   │
+│ Con swing:  Coalición 238 (59.5%)  | MORENA 171 (42.75%)   │
+│ ═══════════════════════════════════════════════════════════ │
+│ DIFERENCIA: Sin cambio coalición   | -2 escaños (-0.5pp)   │
+│ MAYORÍA:    ✓ Simple (ambos)       | ✗ No alcanza          │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ 500 ESCAÑOS | 50% MR - 50% RP                               │
+├─────────────────────────────────────────────────────────────┤
+│ Sin swing:  Coalición 261 (52.2%)  | MORENA 230 (46.0%)    │
+│ Con swing:  Coalición 261 (52.2%)  | MORENA 230 (46.0%)    │
+│ ═══════════════════════════════════════════════════════════ │
+│ DIFERENCIA: Sin cambios             | Sin cambios           │
+│ MAYORÍA:    ✓ Simple (ambos)       | ✗ No alcanza          │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ 500 ESCAÑOS | 75% MR - 25% RP                               │
+├─────────────────────────────────────────────────────────────┤
+│ Sin swing:  Coalición 258 (51.6%)  | MORENA 230 (46.0%)    │
+│ Con swing:  Coalición 258 (51.6%)  | MORENA 230 (46.0%)    │
+│ ═══════════════════════════════════════════════════════════ │
+│ DIFERENCIA: Sin cambios             | Sin cambios           │
+│ MAYORÍA:    ✓ Simple (ambos)       | ✗ No alcanza          │
+└─────────────────────────────────────────────────────────────┘
+
+=================================================================
+HALLAZGOS CLAVE
+=================================================================
+
+✓ La coalición MANTIENE mayoría simple en todos los escenarios
+✓ Cambios máximos de -2 escaños (solo 0.5 puntos porcentuales)
+✓ El swing promedio es ligeramente negativo en 8 estados
+✓ No hay cambios sustanciales en el balance de poder 2021
+
+CASOS ESPECIALES RESUELTOS:
+
+1. COAHUILA - Outlier PT +3,797%
+   Causa: Rotación de candidatos PT↔MORENA dentro de coalición
+   Solución: Usar swing de coalición (-11.1%) en lugar de individual
+   
+2. MÉXICO - Sin datos individuales (-100% en 4 partidos)
+   Causa: Elección local con coalición completa (sin desglose)
+   Solución: Mantener votos federales 2021 sin ajuste
+   
+3. QUINTANA ROO - Crecimiento validado (PVEM +198%, MC +183%)
+   Causa: Expansión real del partido en el estado
+   Solución: Aplicar con factor de confianza 0.7
+
+=================================================================
+CONCLUSIÓN
+=================================================================
+
+El swing electoral 2022-2023 NO modifica sustancialmente el 
+panorama de 2021. La coalición MORENA-PT-PVEM mantuvo su base
+electoral en los 8 estados analizados, con pequeños ajustes que
+no alteran el balance de mayorías.
+
+Los escenarios 2021_CON_SWING validan la robustez de los 
+resultados federales 2021 al contrastarlos con el desempeño 
+en elecciones locales subsecuentes.
+
+=================================================================
+Generado: 22 de octubre de 2025
+Archivo: outputs/escenarios_morena_20251022_171034.csv
+Total escenarios: 32 (24 base + 8 con swing)
+=================================================================
