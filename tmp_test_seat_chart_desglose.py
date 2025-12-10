@@ -9,40 +9,46 @@ BASE_URL = "http://localhost:8000"
 
 def test_seat_chart_desglose():
     """
-    Prueba que el endpoint /simulate devuelve seat_chart con desglose MR/PM/RP
+    Prueba que el endpoint /procesar/diputados devuelve seat_chart con desglose MR/PM/RP
     """
     print("=" * 80)
     print("TEST: Verificar desglose MR/PM/RP en seat_chart")
     print("=" * 80)
     print()
     
-    # Datos de prueba - simulación simple
-    payload = {
+    # Query params
+    params = {
         "anio": 2024,
-        "max_seats": 500,
+        "plan": "personalizado",
+        "sistema": "mixto",
+        "escanos_totales": 500,
         "mr_seats": 300,
         "rp_seats": 200,
         "umbral": 0.03,
         "sobrerrepresentacion": 8.0,
-        "aplicar_topes": True,
-        "usar_coaliciones": False,
-        "votos_redistribuidos": {
-            "MORENA": 24286412,
-            "PAN": 10049424,
-            "PRI": 6623752,
-            "PVEM": 4993902,
-            "PT": 3254709,
-            "MC": 6497404,
-            "PRD": 1449655
-        }
+        "usar_coaliciones": False
     }
     
-    print(f"Enviando POST a {BASE_URL}/simulate")
-    print(f"Payload: {json.dumps(payload, indent=2)}")
+    # Body con votos redistribuidos
+    payload = {
+        "MORENA": 24286412,
+        "PAN": 10049424,
+        "PRI": 6623752,
+        "PVEM": 4993902,
+        "PT": 3254709,
+        "MC": 6497404,
+        "PRD": 1449655
+    }
+    
+    print(f"Enviando POST a {BASE_URL}/procesar/diputados")
+    print(f"Params: {json.dumps(params, indent=2)}")
+    print(f"Body (votos_custom): {json.dumps(payload, indent=2)}")
     print()
     
     try:
-        response = requests.post(f"{BASE_URL}/simulate", json=payload, timeout=30)
+        # Votos custom se envía como JSON string en el parámetro votos_custom
+        params["votos_custom"] = json.dumps(payload)
+        response = requests.post(f"{BASE_URL}/procesar/diputados", params=params, timeout=30)
         
         print(f"Status Code: {response.status_code}")
         print()
