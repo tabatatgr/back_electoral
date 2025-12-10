@@ -130,14 +130,27 @@ def transformar_resultado_a_formato_frontend(resultado_dict: Dict, plan: str) ->
             }
             resultados.append(resultado_partido)
             
-            # Agregar al seat_chart
+            # Agregar al seat_chart con desglose MR/PM/RP
+            mr_escanos = resultado_dict.get('mr', {}).get(partido, 0)
+            pm_escanos = resultado_dict.get('pm', {}).get(partido, 0)
+            rp_escanos = resultado_dict.get('rp', {}).get(partido, 0)
+            
             seat_chart_item = {
                 "party": partido,
                 "seats": escanos,
                 "color": PARTY_COLORS.get(partido, "#888888"),
-                "percent": round((escanos / total_escanos) * 100, 2) if total_escanos > 0 else 0,
-                "votes": votos
+                "percent": round((votos / total_votos) * 100, 2) if total_votos > 0 else 0,  # % de votos
+                "votes": votos,
+                "mr": mr_escanos,  # Mayoría Relativa
+                "pm": pm_escanos,  # Primera Minoría / Plurinominal
+                "rp": rp_escanos   # Representación Proporcional
             }
+            
+            # Validación: MR + PM + RP debe ser igual a TOTAL
+            suma_verificacion = mr_escanos + pm_escanos + rp_escanos
+            if suma_verificacion != escanos:
+                print(f"[WARNING] {partido}: MR({mr_escanos}) + PM({pm_escanos}) + RP({rp_escanos}) = {suma_verificacion} != seats({escanos})")
+            
             seat_chart.append(seat_chart_item)
         
         print(f"[DEBUG] Seat chart construido: {len(seat_chart)} partidos")

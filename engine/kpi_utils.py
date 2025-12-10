@@ -102,13 +102,23 @@ def formato_seat_chart(resultados: Dict[str, Any]) -> Dict[str, Any]:
         for partido_data in datos:
             partido = partido_data.get('partido', '')  # minúscula
             escanos = partido_data.get('total', 0)     # usar 'total' en lugar de 'ESCANOS'
+            votos = partido_data.get('votos', 0)
+            
+            # Obtener desglose MR/PM/RP
+            mr_escanos = partido_data.get('mr', 0)
+            pm_escanos = partido_data.get('pm', 0)
+            rp_escanos = partido_data.get('rp', 0)
             
             if escanos > 0:
                 seats_data.append({
                     "party": partido,
                     "seats": int(escanos),
                     "color": colores_partidos.get(partido, "#808080"),
-                    "percentage": round(partido_data.get('porcentaje_escanos', 0), 1)  # minúscula
+                    "percent": round(partido_data.get('porcentaje_votos', 0), 2),  # % de votos
+                    "votes": int(votos),
+                    "mr": int(mr_escanos),  # Mayoría Relativa
+                    "pm": int(pm_escanos),  # Primera Minoría
+                    "rp": int(rp_escanos)   # Representación Proporcional
                 })
         
         # Ordenar por número de escaños (descendente)
