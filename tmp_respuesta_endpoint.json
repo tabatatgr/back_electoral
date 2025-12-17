@@ -1,0 +1,289 @@
+{
+  "plan": "personalizado",
+  "resultados": [
+    {
+      "partido": "PAN",
+      "votos": 10049424,
+      "mr": 25,
+      "pm": 0,
+      "rp": 40,
+      "total": 65,
+      "porcentaje_votos": 17.58,
+      "porcentaje_escanos": 16.25
+    },
+    {
+      "partido": "PRI",
+      "votos": 6623752,
+      "mr": 4,
+      "pm": 0,
+      "rp": 30,
+      "total": 34,
+      "porcentaje_votos": 11.59,
+      "porcentaje_escanos": 8.5
+    },
+    {
+      "partido": "PRD",
+      "votos": 1449655,
+      "mr": 0,
+      "pm": 0,
+      "rp": 10,
+      "total": 10,
+      "porcentaje_votos": 2.54,
+      "porcentaje_escanos": 2.5
+    },
+    {
+      "partido": "PVEM",
+      "votos": 4993902,
+      "mr": 4,
+      "pm": 0,
+      "rp": 29,
+      "total": 33,
+      "porcentaje_votos": 8.74,
+      "porcentaje_escanos": 8.25
+    },
+    {
+      "partido": "PT",
+      "votos": 3254709,
+      "mr": 0,
+      "pm": 0,
+      "rp": 24,
+      "total": 24,
+      "porcentaje_votos": 5.69,
+      "porcentaje_escanos": 6.0
+    },
+    {
+      "partido": "MC",
+      "votos": 6497404,
+      "mr": 6,
+      "pm": 0,
+      "rp": 27,
+      "total": 33,
+      "porcentaje_votos": 11.37,
+      "porcentaje_escanos": 8.25
+    },
+    {
+      "partido": "MORENA",
+      "votos": 24286412,
+      "mr": 161,
+      "pm": 0,
+      "rp": 40,
+      "total": 201,
+      "porcentaje_votos": 42.49,
+      "porcentaje_escanos": 50.25
+    }
+  ],
+  "kpis": {
+    "total_votos": 57155258,
+    "total_escanos": 400,
+    "gallagher": 6.3858802231652705,
+    "mae_votos_vs_escanos": 0.1801,
+    "ratio_promedio": 1.0,
+    "desviacion_proporcionalidad": 0.1801,
+    "partidos_con_escanos": 7,
+    "_debug": {
+      "n_parties": 7,
+      "diffs_percentage_points": [
+        1.332676,
+        3.089051,
+        0.036346,
+        0.487432,
+        -0.305495,
+        3.11799,
+        -7.758
+      ],
+      "gallagher_raw": 6.3858802231652705,
+      "gallagher_pct": 638.588022
+    }
+  },
+  "seat_chart": [
+    {
+      "party": "PAN",
+      "seats": 65,
+      "color": "#0055A5",
+      "percent": 17.58,
+      "votes": 10049424,
+      "mr": 25,
+      "pm": 0,
+      "rp": 40
+    },
+    {
+      "party": "PRI",
+      "seats": 34,
+      "color": "#0D7137",
+      "percent": 11.59,
+      "votes": 6623752,
+      "mr": 4,
+      "pm": 0,
+      "rp": 30
+    },
+    {
+      "party": "PRD",
+      "seats": 10,
+      "color": "#FFCC00",
+      "percent": 2.54,
+      "votes": 1449655,
+      "mr": 0,
+      "pm": 0,
+      "rp": 10
+    },
+    {
+      "party": "PVEM",
+      "seats": 33,
+      "color": "#1E9F00",
+      "percent": 8.74,
+      "votes": 4993902,
+      "mr": 4,
+      "pm": 0,
+      "rp": 29
+    },
+    {
+      "party": "PT",
+      "seats": 24,
+      "color": "#D52B1E",
+      "percent": 5.69,
+      "votes": 3254709,
+      "mr": 0,
+      "pm": 0,
+      "rp": 24
+    },
+    {
+      "party": "MC",
+      "seats": 33,
+      "color": "#F58025",
+      "percent": 11.37,
+      "votes": 6497404,
+      "mr": 6,
+      "pm": 0,
+      "rp": 27
+    },
+    {
+      "party": "MORENA",
+      "seats": 201,
+      "color": "#8B2231",
+      "percent": 42.49,
+      "votes": 24286412,
+      "mr": 161,
+      "pm": 0,
+      "rp": 40
+    }
+  ],
+  "timestamp": "2025-12-17T17:39:08.412589",
+  "cache_buster": 1766014748.412589,
+  "meta": {
+    "scaled_info": {
+      "total_base": 300,
+      "total_target": 200,
+      "by_party": {
+        "PAN": 25,
+        "PRI": 4,
+        "PRD": 0,
+        "PVEM": 4,
+        "PT": 0,
+        "MC": 6,
+        "MORENA": 161
+      },
+      "by_entidad": {
+        "AGUASCALIENTES": 2,
+        "BAJA CALIFORNIA": 5,
+        "BAJA CALIFORNIA SUR": 1,
+        "CAMPECHE": 2,
+        "CHIAPAS": 8,
+        "CHIHUAHUA": 6,
+        "CIUDAD DE MEXICO": 19,
+        "COAHUILA": 5,
+        "COLIMA": 1,
+        "DURANGO": 3,
+        "GUANAJUATO": 9,
+        "GUERRERO": 5,
+        "HIDALGO": 5,
+        "JALISCO": 13,
+        "MEXICO": 28,
+        "MICHOACAN": 7,
+        "MORELOS": 3,
+        "NAYARIT": 2,
+        "NUEVO LEON": 9,
+        "OAXACA": 6,
+        "PUEBLA": 11,
+        "QUERETARO": 4,
+        "QUINTANA ROO": 3,
+        "SAN LUIS POTOSI": 4,
+        "SINALOA": 4,
+        "SONORA": 4,
+        "TABASCO": 4,
+        "TAMAULIPAS": 6,
+        "TLAXCALA": 2,
+        "VERACRUZ": 12,
+        "YUCATAN": 4,
+        "ZACATECAS": 3
+      },
+      "virtual_count": 0,
+      "scaled_csv_path": "outputs\\scaled_siglado.20251217_173908.4ac973a6.csv",
+      "scaled_csv": null,
+      "provenance": {
+        "method": "scale_siglado",
+        "seed": 123,
+        "strata": "ENTIDAD"
+      }
+    },
+    "trace": {
+      "tmp_parquet": null,
+      "votos_redistribuidos": null,
+      "scaled_info": {
+        "total_base": 300,
+        "total_target": 200,
+        "by_party": {
+          "PAN": 25,
+          "PRI": 4,
+          "PRD": 0,
+          "PVEM": 4,
+          "PT": 0,
+          "MC": 6,
+          "MORENA": 161
+        },
+        "by_entidad": {
+          "AGUASCALIENTES": 2,
+          "BAJA CALIFORNIA": 5,
+          "BAJA CALIFORNIA SUR": 1,
+          "CAMPECHE": 2,
+          "CHIAPAS": 8,
+          "CHIHUAHUA": 6,
+          "CIUDAD DE MEXICO": 19,
+          "COAHUILA": 5,
+          "COLIMA": 1,
+          "DURANGO": 3,
+          "GUANAJUATO": 9,
+          "GUERRERO": 5,
+          "HIDALGO": 5,
+          "JALISCO": 13,
+          "MEXICO": 28,
+          "MICHOACAN": 7,
+          "MORELOS": 3,
+          "NAYARIT": 2,
+          "NUEVO LEON": 9,
+          "OAXACA": 6,
+          "PUEBLA": 11,
+          "QUERETARO": 4,
+          "QUINTANA ROO": 3,
+          "SAN LUIS POTOSI": 4,
+          "SINALOA": 4,
+          "SONORA": 4,
+          "TABASCO": 4,
+          "TAMAULIPAS": 6,
+          "TLAXCALA": 2,
+          "VERACRUZ": 12,
+          "YUCATAN": 4,
+          "ZACATECAS": 3
+        },
+        "virtual_count": 0,
+        "scaled_csv_path": "outputs\\scaled_siglado.20251217_173908.4ac973a6.csv",
+        "scaled_csv": null,
+        "provenance": {
+          "method": "scale_siglado",
+          "seed": 123,
+          "strata": "ENTIDAD"
+        }
+      },
+      "raw_body_parsed": false
+    }
+  }
+}

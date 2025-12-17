@@ -703,6 +703,7 @@ async def procesar_diputados(
     rp_seats: Optional[int] = None,
     max_seats_per_party: Optional[int] = None,
     sobrerrepresentacion: Optional[float] = None,
+    aplicar_topes: bool = True,  # ← NUEVO: Controlar si se aplican topes constitucionales
     reparto_mode: str = "divisor",
     reparto_method: str = "dhondt",
     usar_coaliciones: bool = True,
@@ -724,6 +725,7 @@ async def procesar_diputados(
     - **rp_seats**: Escaños de representación proporcional
     - **max_seats_per_party**: Máximo de escaños por partido
     - **sobrerrepresentacion**: Límite de sobrerrepresentación como porcentaje (ej: 10.8)
+    - **aplicar_topes**: Si se aplican topes constitucionales (True) o no (False). Default: True
     - **reparto_mode**: Modo de reparto ("cuota" o "divisor")
     - **reparto_method**: Método específico:
       - Si reparto_mode="cuota": "hare", "droop", "imperiali"
@@ -1304,6 +1306,8 @@ async def procesar_diputados(
             raise HTTPException(status_code=400, detail="Plan no válido. Use 'vigente', 'plan_a', 'plan_c' o 'personalizado'")
         
         print(f"[DEBUG] Plan {plan_normalizado}: max_seats={max_seats}, mr={mr_seats_final}, rp={rp_seats_final}, umbral={umbral_final}")
+        print(f"[DEBUG] LÍMITES: aplicar_topes={aplicar_topes}, sobrerrepresentacion={sobrerrepresentacion}, max_seats_per_party={max_seats_per_party}")
+        print(f"[DEBUG] TYPE: sobrerrepresentacion type={type(sobrerrepresentacion)}, value={repr(sobrerrepresentacion)}")
 
         # Construir paths (si hay un parquet temporal generado por redistribución, usarlo)
         path_parquet = parquet_replacement if parquet_replacement else f"data/computos_diputados_{anio}.parquet"
@@ -1327,6 +1331,7 @@ async def procesar_diputados(
             umbral=umbral_final,
             max_seats_per_party=max_seats_per_party_final,
             sobrerrepresentacion=sobrerrepresentacion,
+            aplicar_topes=aplicar_topes,  # ← NUEVO: Pasar el parámetro del frontend
             quota_method=quota_method_final,
             divisor_method=divisor_method_final,
             usar_coaliciones=usar_coaliciones,

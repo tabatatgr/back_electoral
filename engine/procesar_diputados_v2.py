@@ -359,7 +359,7 @@ def LR_ties(v_abs: np.ndarray, n: int, q: Optional[float] = None, seed: Optional
 # ====================== APLICACIÓN DE TOPES NACIONALES ======================
 
 def aplicar_topes_nacionales(s_mr: np.ndarray, s_rp: np.ndarray, v_nacional: np.ndarray, 
-                           S: int, max_pp: float = 0.08, max_seats: int = 300, 
+                           S: int, max_pp: Optional[float] = 0.08, max_seats: int = 300, 
                            max_seats_per_party: Optional[int] = None,
                            iter_max: int = 16,
                            partidos_nombres: Optional[List[str]] = None) -> Dict[str, np.ndarray]:
@@ -371,7 +371,7 @@ def aplicar_topes_nacionales(s_mr: np.ndarray, s_rp: np.ndarray, v_nacional: np.
     - s_rp: escaños de RP iniciales por partido  
     - v_nacional: proporción de votos nacionales (solo partidos >=3%)
     - S: total de escaños en la cámara
-    - max_pp: máximo de sobrerrepresentación (+8 puntos porcentuales)
+    - max_pp: máximo de sobrerrepresentación (+8 puntos porcentuales). Si es None, NO se aplica límite de %
     - max_seats: tope absoluto de escaños por defecto (300)
     - max_seats_per_party: tope absoluto de escaños por partido (si se especifica, anula max_seats)
     - iter_max: máximo de iteraciones
@@ -379,7 +379,14 @@ def aplicar_topes_nacionales(s_mr: np.ndarray, s_rp: np.ndarray, v_nacional: np.
     Retorna:
     - Dict con 's_rp' (RP ajustado) y 's_tot' (total ajustado)
     """
+    # DEBUG: activar diagnóstico automático si recibimos la lista de partidos
+    # y contiene 'MORENA' (útil para pruebas locales). Mantener False por defecto.
     debug_morena = False  # Desactivar debug en producción
+    try:
+        if partidos_nombres and any(str(n).upper() == 'MORENA' for n in partidos_nombres):
+            debug_morena = True
+    except Exception:
+        pass
     
     N = len(s_mr)
     s_mr = s_mr.astype(int)
@@ -392,12 +399,18 @@ def aplicar_topes_nacionales(s_mr: np.ndarray, s_rp: np.ndarray, v_nacional: np.
     # Partidos elegibles (solo los que tienen v_nacional > 0)
     ok = v_nacional > 0
     
-    # Límites por sobrerrepresentación (+8 pp) - CORREGIDO: usar floor estricto
-    cap_dist = np.floor((v_nacional + max_pp) * S).astype(int)
-    cap_dist[~ok] = s_mr[~ok]  # Partidos <3%: límite = MR únicamente
+    # Límites por sobrerrepresentación (+8 pp)
+    # IMPORTANTE: Si max_pp es None, NO aplicar límite de sobrerrepresentación
+    if max_pp is not None:
+        # Aplicar cláusula de sobrerrepresentación - CORREGIDO: usar floor estricto
+        cap_dist = np.floor((v_nacional + max_pp) * S).astype(int)
+        cap_dist[~ok] = s_mr[~ok]  # Partidos <3%: límite = MR únicamente
+    else:
+        # SIN límite de sobrerrepresentación: cap_dist = infinito (usar valor muy alto)
+        cap_dist = np.full(N, S, dtype=int)  # Límite = total de escaños (sin restricción %)
     
     # DEBUG: Imprimir cálculo de cap para partidos grandes
-    if debug_morena:
+    if debug_morena and max_pp is not None:
         for idx in range(N):
             if v_nacional[idx] > 0.25:  # Partidos con >25% votación
                 nombre = partidos_nombres[idx] if partidos_nombres else f"partido_{idx}"
@@ -409,15 +422,22 @@ def aplicar_topes_nacionales(s_mr: np.ndarray, s_rp: np.ndarray, v_nacional: np.
                 print(f"  Expected cap for 42.49%: {np.floor((0.4249 + 0.08) * S)}")
     
     # Determinar tope absoluto a aplicar
-    tope_absoluto = max_seats_per_party if max_seats_per_party is not None else max_seats
+    # IMPORTANTE: Si max_seats_per_party es None, NO aplicar tope absoluto
+    if max_seats_per_party is not None:
+        tope_absoluto = max_seats_per_party
+    else:
+        # NO aplicar tope absoluto: usar valor muy alto (igual al total de escaños S)
+        # Esto efectivamente desactiva el tope absoluto
+        tope_absoluto = S  
     
     # Límites efectivos por el tope del +8%
     # CRÍTICO: El tope constitucional es ABSOLUTO, no puede excederse por MR
     # Si un partido gana 311 MR pero el tope +8% es 252, debe quedarse con solo 252
     lim_max = cap_dist.copy()
     
-    # Aplicar tope absoluto de 300 escaños
-    lim_max = np.minimum(lim_max, tope_absoluto)
+    # Aplicar tope absoluto solo si está definido explícitamente
+    if max_seats_per_party is not None:
+        lim_max = np.minimum(lim_max, tope_absoluto)
     
     # EXCEPCIÓN: Si tengo MR > tope (porque la gente votó así), respetamos MR 
     # Pero el partido NO PUEDE recibir RP adicional
@@ -710,7 +730,7 @@ def asignadip_v2(x: np.ndarray, ssd: np.ndarray,
                  indep: int = 0, nulos: int = 0, no_reg: int = 0,
                  m: int = 200, S: Optional[int] = None,
                  threshold: float = 0.03,
-                 max_seats: int = 300, max_pp: float = 0.08,
+                 max_seats: int = 300, max_pp: Optional[float] = 0.08,
                  max_seats_per_party: Optional[int] = None,
                  apply_caps: bool = True,
                  quota_method: Optional[str] = None,
@@ -1544,6 +1564,25 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     except Exception:
                         pass
 
+                # IMPORTANTE: Preparar parámetros de límites de forma INDEPENDIENTE
+                # Los dos sistemas de límites son distintos y deben funcionar por separado:
+                # 1. max_seats_per_party: Tope ABSOLUTO de escaños (ej: max 300 escaños)
+                # 2. sobrerrepresentacion: Cláusula RELATIVA % (ej: max +8% sobre votos)
+                #
+                # Si aplicar_topes=False: Desactivar AMBOS límites
+                # Si aplicar_topes=True: Aplicar solo los que estén definidos (no usar defaults)
+                
+                if aplicar_topes:
+                    # Convertir sobrerrepresentacion a max_pp
+                    # Si sobrerrepresentacion=None, NO aplicar cláusula % (pasar None)
+                    max_pp_value = (sobrerrepresentacion / 100.0) if sobrerrepresentacion is not None else None
+                    # Si max_seats_per_party=None, NO aplicar tope absoluto
+                    max_seats_per_party_value = int(max_seats_per_party) if max_seats_per_party is not None else None
+                else:
+                    # aplicar_topes=False: Desactivar TODOS los límites
+                    max_pp_value = None
+                    max_seats_per_party_value = None
+                
                 resultado = asignadip_v2(
                     x=x_array,
                     ssd=ssd_array,
@@ -1554,9 +1593,9 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     S=int(S) if S is not None else None,
                     threshold=umbral,
                     max_seats=int(max_seats) if max_seats is not None else 300,
-                    max_pp=(sobrerrepresentacion / 100.0) if sobrerrepresentacion is not None else 0.08,
-                    max_seats_per_party=int(max_seats_per_party) if max_seats_per_party is not None else None,
-                    apply_caps=aplicar_topes,  # Pasar el parámetro desde procesar_diputados_v2
+                    max_pp=max_pp_value,  # None = NO aplicar cláusula de sobrerrepresentación
+                    max_seats_per_party=max_seats_per_party_value,  # None = NO aplicar tope absoluto
+                    apply_caps=aplicar_topes,  # Activar/desactivar sistema completo
                     quota_method=quota_method,
                     divisor_method=divisor_method,
                     seed=seed,
@@ -1757,8 +1796,10 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                 m = max(0, int(m))
             except Exception:
                 m = 0
-            if sobrerrepresentacion is None:
-                sobrerrepresentacion = 8.0
+            # NOTA: Ya NO forzamos sobrerrepresentacion=8.0 cuando es None
+            # Esto permite que los parámetros funcionen independientemente
+            # if sobrerrepresentacion is None:
+            #     sobrerrepresentacion = 8.0
 
             # Determinar qué partidos pasan el umbral sobre votos válidos
             total_votos_validos = sum(votos_partido.values())
@@ -1786,6 +1827,25 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     except Exception as _e:
                         _maybe_log(f"error printing debug samples: {_e}", 'warn', print_debug)
 
+                # IMPORTANTE: Preparar parámetros de límites de forma INDEPENDIENTE
+                # Los dos sistemas de límites son distintos y deben funcionar por separado:
+                # 1. max_seats_per_party: Tope ABSOLUTO de escaños (ej: max 300 escaños)
+                # 2. sobrerrepresentacion: Cláusula RELATIVA % (ej: max +8% sobre votos)
+                #
+                # Si aplicar_topes=False: Desactivar AMBOS límites
+                # Si aplicar_topes=True: Aplicar solo los que estén definidos (no usar defaults)
+                
+                if aplicar_topes:
+                    # Convertir sobrerrepresentacion a max_pp
+                    # Si sobrerrepresentacion=None, NO aplicar cláusula % (pasar None)
+                    max_pp_value = (sobrerrepresentacion / 100.0) if sobrerrepresentacion is not None else None
+                    # Si max_seats_per_party=None, NO aplicar tope absoluto
+                    max_seats_per_party_value = int(max_seats_per_party) if max_seats_per_party is not None else None
+                else:
+                    # aplicar_topes=False: Desactivar TODOS los límites
+                    max_pp_value = None
+                    max_seats_per_party_value = None
+                
                 resultado = asignadip_v2(
                     x=x_array,
                     ssd=ssd_array,
@@ -1796,9 +1856,9 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     S=int(S) if S is not None else None,
                     threshold=umbral,
                     max_seats=int(max_seats) if max_seats is not None else 300,
-                    max_pp=(sobrerrepresentacion / 100.0) if sobrerrepresentacion is not None else 0.08,
-                    max_seats_per_party=int(max_seats_per_party) if max_seats_per_party is not None else None,
-                    apply_caps=aplicar_topes,  # Pasar el parámetro desde procesar_diputados_v2
+                    max_pp=max_pp_value,  # None = NO aplicar cláusula de sobrerrepresentación
+                    max_seats_per_party=max_seats_per_party_value,  # None = NO aplicar tope absoluto
+                    apply_caps=aplicar_topes,  # Activar/desactivar sistema completo
                     quota_method=quota_method,
                     divisor_method=divisor_method,
                     seed=seed,
