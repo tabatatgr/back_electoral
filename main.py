@@ -677,6 +677,72 @@ async def procesar_senado(
         print(f"[ERROR] Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error procesando senado: {str(e)}")
 
+@app.get("/calcular-limites-pm")
+async def calcular_limites_pm(
+    sistema: str = "mixto",
+    escanos_totales: Optional[int] = None,
+    mr_seats: Optional[int] = None
+):
+    """
+    Calcula el límite máximo de Primera Minoría (PM) según el sistema y configuración
+    
+    - **sistema**: Sistema electoral ("mixto", "mr", "rp")
+    - **escanos_totales**: Número total de escaños
+    - **mr_seats**: Escaños de mayoría relativa (para sistema mixto)
+    
+    Returns:
+        - max_pm: Límite máximo de PM
+        - descripcion: Explicación del límite
+    """
+    try:
+        if sistema == "rp":
+            # RP puro: no puede haber PM (PM sale de MR)
+            return {
+                "max_pm": 0,
+                "descripcion": "Sistema RP puro no permite Primera Minoría",
+                "valido": False
+            }
+        
+        elif sistema == "mr":
+            # MR puro: PM puede ser hasta el tamaño total de la cámara
+            max_pm = escanos_totales if escanos_totales else 300  # Default 300
+            return {
+                "max_pm": max_pm,
+                "descripcion": f"Sistema MR puro: PM puede ser hasta {max_pm} (tamaño de cámara)",
+                "valido": True
+            }
+        
+        elif sistema == "mixto":
+            # Mixto: PM puede ser hasta el número de escaños MR
+            if mr_seats is not None:
+                max_pm = mr_seats
+                return {
+                    "max_pm": max_pm,
+                    "descripcion": f"Sistema mixto: PM puede ser hasta {max_pm} (escaños MR)",
+                    "valido": True
+                }
+            elif escanos_totales is not None:
+                # Si no se especificó mr_seats pero sí escanos_totales, usar 60% default
+                max_pm = int(escanos_totales * 0.6)
+                return {
+                    "max_pm": max_pm,
+                    "descripcion": f"Sistema mixto (60/40 default): PM puede ser hasta {max_pm}",
+                    "valido": True
+                }
+            else:
+                # Default: 300 escaños MR (sistema vigente)
+                return {
+                    "max_pm": 300,
+                    "descripcion": "Sistema mixto (default): PM puede ser hasta 300 escaños MR",
+                    "valido": True
+                }
+        
+        else:
+            raise HTTPException(status_code=400, detail="Sistema no válido")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error calculando límites PM: {str(e)}")
+
 @app.options("/procesar/diputados")
 async def options_procesar_diputados():
     """Manejo de CORS preflight para diputados"""
@@ -704,8 +770,8 @@ async def procesar_diputados(
     max_seats_per_party: Optional[int] = None,
     sobrerrepresentacion: Optional[float] = None,
     aplicar_topes: bool = True,  # ← NUEVO: Controlar si se aplican topes constitucionales
-    reparto_mode: str = "divisor",
-    reparto_method: str = "dhondt",
+    reparto_mode: str = "cuota",  # Default: cuota (Hare es el método oficial en México)
+    reparto_method: str = "hare",  # Default: Hare (método oficial IFE/INE)
     usar_coaliciones: bool = True,
     votos_custom: Optional[str] = None,  # JSON string con redistribución
     partidos_fijos: Optional[str] = None,  # JSON string con partidos fijos
@@ -1319,6 +1385,30 @@ async def procesar_diputados(
         if not os.path.exists(path_siglado):
             raise HTTPException(status_code=404, detail=f"Archivo siglado no encontrado: {path_siglado}")
             
+        # Seed fijo para reproducibilidad cuando no se aplican topes
+        # Esto garantiza que los resultados coincidan exactamente con los CSVs exportados
+        seed_value = 42 if not aplicar_topes else None
+        
+        # DEBUG: Log completo de parámetros antes de llamar al motor
+        print(f"[DEBUG] ========== PARÁMETROS PARA MOTOR ==========")
+        print(f"[DEBUG] path_parquet: {path_parquet}")
+        print(f"[DEBUG] anio: {anio}")
+        print(f"[DEBUG] max_seats: {max_seats}")
+        print(f"[DEBUG] sistema: {sistema_final}")
+        print(f"[DEBUG] mr_seats: {mr_seats_final}")
+        print(f"[DEBUG] rp_seats: {rp_seats_final}")
+        print(f"[DEBUG] pm_seats: {pm_seats_final}")
+        print(f"[DEBUG] umbral: {umbral_final}")
+        print(f"[DEBUG] max_seats_per_party: {max_seats_per_party_final}")
+        print(f"[DEBUG] sobrerrepresentacion: {sobrerrepresentacion}")
+        print(f"[DEBUG] aplicar_topes: {aplicar_topes}")
+        print(f"[DEBUG] quota_method: {quota_method_final}")
+        print(f"[DEBUG] divisor_method: {divisor_method_final}")
+        print(f"[DEBUG] usar_coaliciones: {usar_coaliciones}")
+        print(f"[DEBUG] votos_redistribuidos: {votos_redistribuidos}")
+        print(f"[DEBUG] seed: {seed_value}")
+        print(f"[DEBUG] =============================================")
+        
         resultado = procesar_diputados_v2(
             path_parquet=path_parquet,
             anio=anio,
@@ -1336,6 +1426,7 @@ async def procesar_diputados(
             divisor_method=divisor_method_final,
             usar_coaliciones=usar_coaliciones,
             votos_redistribuidos=votos_redistribuidos,
+            seed=seed_value,  # ← NUEVO: Seed fijo para reproducibilidad
             print_debug=True
         )
         
