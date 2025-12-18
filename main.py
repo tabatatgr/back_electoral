@@ -763,7 +763,7 @@ async def procesar_diputados(
     plan: str = "vigente",
     escanos_totales: Optional[int] = None,
     sistema: Optional[str] = None,
-    umbral: Optional[float] = None,
+    umbral: Optional[float] = 0.03,  # Default 3% (umbral oficial IFE/INE)
     mr_seats: Optional[int] = None,
     pm_seats: Optional[int] = None,  # ← NUEVO: Escaños de primera minoría
     rp_seats: Optional[int] = None,
