@@ -50,9 +50,12 @@ def calcular_ratios_proporcionalidad(resultados_list, total_votos, total_escanos
     Calcula métricas de proporcionalidad basadas en ratios escaños/votos
     
     Devuelve métricas más interpretables que el MAE tradicional:
-    - ratio_promedio: Promedio ponderado de ratios escaños/votos
-    - desviacion_estandar: Dispersión de los ratios
-    - coeficiente_variacion: Medida normalizada de desigualdad
+    - ratio_promedio: Promedio SIMPLE (no ponderado) de ratios escaños/votos de cada partido
+      * Valor perfecto = 1.0 (cada partido proporcional a sus votos)
+      * > 1.0 indica sobrerrepresentación promedio
+      * < 1.0 indica subrepresentación promedio
+    - desviacion_estandar: Dispersión de los ratios (qué tan dispersa es la desproporcionalidad)
+    - coeficiente_variacion: Medida normalizada de desigualdad (desv_std / promedio)
     """
     import numpy as np
     
@@ -60,27 +63,23 @@ def calcular_ratios_proporcionalidad(resultados_list, total_votos, total_escanos
         return {"ratio_promedio": 1.0, "desviacion_estandar": 0, "coeficiente_variacion": 0}
     
     ratios = []
-    pesos_votos = []
     
     for r in resultados_list:
         if r["porcentaje_votos"] > 0:
             # Ratio = % escaños / % votos (perfecto = 1.0)
             ratio = r["porcentaje_escanos"] / r["porcentaje_votos"]
             ratios.append(ratio)
-            pesos_votos.append(r["porcentaje_votos"])
     
     if not ratios:
         return {"ratio_promedio": 1.0, "desviacion_estandar": 0, "coeficiente_variacion": 0}
     
-    # Promedio ponderado por votos
+    # Promedio SIMPLE (no ponderado) - da el ratio promedio de cada partido
     ratios = np.array(ratios)
-    pesos = np.array(pesos_votos)
     
-    ratio_promedio = np.average(ratios, weights=pesos)
+    ratio_promedio = np.mean(ratios)
     
-    # Desviación estándar ponderada
-    varianza_ponderada = np.average((ratios - ratio_promedio)**2, weights=pesos)
-    desviacion_estandar = np.sqrt(varianza_ponderada)
+    # Desviación estándar simple
+    desviacion_estandar = np.std(ratios)
     
     # Coeficiente de variación (dispersión relativa)
     coeficiente_variacion = desviacion_estandar / ratio_promedio if ratio_promedio != 0 else 0
