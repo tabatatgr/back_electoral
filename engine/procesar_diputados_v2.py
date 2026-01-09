@@ -361,6 +361,7 @@ def LR_ties(v_abs: np.ndarray, n: int, q: Optional[float] = None, seed: Optional
 def aplicar_topes_nacionales(s_mr: np.ndarray, s_rp: np.ndarray, v_nacional: np.ndarray, 
                            S: int, max_pp: Optional[float] = 0.08, max_seats: int = 300, 
                            max_seats_per_party: Optional[int] = None,
+                           threshold: float = 0.03,  # Umbral de 3% para filtrar partidos
                            iter_max: int = 16,
                            partidos_nombres: Optional[List[str]] = None) -> Dict[str, np.ndarray]:
     """
@@ -374,6 +375,7 @@ def aplicar_topes_nacionales(s_mr: np.ndarray, s_rp: np.ndarray, v_nacional: np.
     - max_pp: máximo de sobrerrepresentación (+8 puntos porcentuales). Si es None, NO se aplica límite de %
     - max_seats: tope absoluto de escaños por defecto (300)
     - max_seats_per_party: tope absoluto de escaños por partido (si se especifica, anula max_seats)
+    - threshold: umbral de 3% sobre votos válidos (default 0.03)
     - iter_max: máximo de iteraciones
     
     Retorna:
@@ -396,8 +398,9 @@ def aplicar_topes_nacionales(s_mr: np.ndarray, s_rp: np.ndarray, v_nacional: np.
     if rp_total < 0:
         rp_total = 0
     
-    # Partidos elegibles (solo los que tienen v_nacional > 0)
-    ok = v_nacional > 0
+    # Partidos elegibles: deben pasar el umbral del 3% (threshold)
+    # CRÍTICO: usar threshold para determinar elegibilidad, no solo v_nacional > 0
+    ok = v_nacional >= threshold
     
     # Límites por sobrerrepresentación (+8 pp)
     # IMPORTANTE: Si max_pp es None, NO aplicar límite de sobrerrepresentación
@@ -722,6 +725,138 @@ def _simulate_pm_by_runnerup(recomposed_df: pd.DataFrame, pm_seats: int, partido
     
     return pm_dict
 
+
+def _aplicar_topes_a_pm(mr_dict: dict, pm_dict: dict, votos_pct: dict, 
+                        partidos: list, S: int = 400,
+                        max_pp: Optional[float] = 0.08, 
+                        max_seats_per_party: Optional[int] = 300,
+                        threshold: float = 0.03,
+                        print_debug: bool = False) -> dict:
+    """Aplica topes constitucionales a la asignación de PM.
+    
+    Los topes se aplican al TOTAL de escaños (MR + PM), no solo a PM.
+    Si MR + PM excede el límite, se reduce PM proporcionalmente.
+    Los escaños PM sobrantes se redistribuyen a otros partidos elegibles.
+    
+    Parámetros:
+    - mr_dict: escaños de MR por partido
+    - pm_dict: escaños de PM iniciales por partido
+    - votos_pct: porcentaje de votos nacionales por partido (ej: 0.4249 para 42.49%)
+    - partidos: lista de partidos
+    - S: total de escaños (400 para diputados)
+    - max_pp: máximo de sobrerrepresentación (+8 pp)
+    - max_seats_per_party: tope absoluto por partido (300)
+    - threshold: umbral del 3%
+    - print_debug: activar logs
+    
+    Retorna:
+    - pm_dict ajustado respetando topes constitucionales
+    """
+    if max_pp is None and max_seats_per_party is None:
+        # Sin topes, retornar PM sin cambios
+        return pm_dict
+    
+    pm_ajustado = pm_dict.copy()
+    
+    # Calcular límites por partido
+    caps = {}
+    for p in partidos:
+        v_pct = votos_pct.get(p, 0.0)
+        
+        # Límite por sobrerrepresentación (+8%)
+        if max_pp is not None and v_pct >= threshold:
+            cap_sobrerep = int(np.floor((v_pct + max_pp) * S))
+        else:
+            cap_sobrerep = S  # Sin límite de sobrerrepresentación
+        
+        # Límite absoluto (300 escaños)
+        if max_seats_per_party is not None:
+            cap_absoluto = max_seats_per_party
+        else:
+            cap_absoluto = S  # Sin límite absoluto
+        
+        # El tope efectivo es el menor de ambos
+        caps[p] = min(cap_sobrerep, cap_absoluto)
+        
+        # Partidos <3%: solo pueden tener MR
+        if v_pct < threshold:
+            caps[p] = mr_dict.get(p, 0)
+    
+    # PASO 1: Recortar PM de partidos que exceden el tope
+    pm_sobrantes = 0
+    partidos_capados = set()
+    
+    for p in partidos:
+        mr = mr_dict.get(p, 0)
+        pm = pm_ajustado.get(p, 0)
+        total = mr + pm
+        cap = caps.get(p, S)
+        
+        if total > cap:
+            # Excede el tope: reducir PM
+            exceso = total - cap
+            recorte_pm = min(exceso, pm)  # No podemos recortar más PM del que tiene
+            
+            pm_ajustado[p] -= recorte_pm
+            pm_sobrantes += recorte_pm
+            partidos_capados.add(p)
+            
+            if print_debug:
+                v_pct = votos_pct.get(p, 0.0)
+                _maybe_log(f"[TOPES PM] {p}: MR={mr} + PM={pm} = {total} > {cap} (votos={v_pct:.2%}+{max_pp*100:.0%}={v_pct+max_pp:.2%})", 'debug', print_debug)
+                _maybe_log(f"[TOPES PM] {p}: Recortando {recorte_pm} PM → PM ajustado={pm_ajustado[p]}", 'debug', print_debug)
+    
+    # Marcar partidos <3% como capados (no pueden recibir PM redistributed)
+    for p in partidos:
+        if votos_pct.get(p, 0.0) < threshold:
+            partidos_capados.add(p)
+    
+    # PASO 2: Redistribuir PM sobrantes a partidos NO capados
+    if pm_sobrantes > 0 and print_debug:
+        _maybe_log(f"[TOPES PM] PM sobrantes para redistribuir: {pm_sobrantes}", 'debug', print_debug)
+    
+    while pm_sobrantes > 0:
+        # Calcular votos efectivos de partidos elegibles (no capados, >=3%)
+        votos_elegibles = {}
+        for p in partidos:
+            if p in partidos_capados:
+                continue
+            
+            v_pct = votos_pct.get(p, 0.0)
+            if v_pct < threshold:
+                continue
+            
+            mr = mr_dict.get(p, 0)
+            pm = pm_ajustado.get(p, 0)
+            cap = caps.get(p, S)
+            
+            # ¿Tiene espacio para más PM?
+            if mr + pm < cap:
+                votos_elegibles[p] = v_pct
+        
+        if not votos_elegibles:
+            # No hay partidos elegibles: los PM sobrantes se pierden
+            if print_debug:
+                _maybe_log(f"[TOPES PM] No hay partidos elegibles. {pm_sobrantes} PM sobrantes se pierden.", 'warning', print_debug)
+            break
+        
+        # Asignar 1 PM al partido con más votos que tenga espacio
+        p_max = max(votos_elegibles, key=votos_elegibles.get)
+        pm_ajustado[p_max] += 1
+        pm_sobrantes -= 1
+        
+        # Verificar si el partido alcanzó su tope
+        mr = mr_dict.get(p_max, 0)
+        pm = pm_ajustado.get(p_max, 0)
+        cap = caps.get(p_max, S)
+        
+        if mr + pm >= cap:
+            partidos_capados.add(p_max)
+            if print_debug:
+                _maybe_log(f"[TOPES PM] {p_max}: Alcanzó tope {cap} (MR={mr} + PM={pm})", 'debug', print_debug)
+    
+    return pm_ajustado
+
     
 
 # ====================== ASIGNACIÓN PRINCIPAL ======================
@@ -811,6 +946,7 @@ def asignadip_v2(x: np.ndarray, ssd: np.ndarray,
             s_mr=ssd, s_rp=s_rp_init, v_nacional=v_nacional_total,
             S=S, max_pp=max_pp, max_seats=max_seats,
             max_seats_per_party=max_seats_per_party,
+            threshold=threshold,  # Pasar umbral del 3% para filtrado correcto
             partidos_nombres=partidos_base
         )
         s_tot = resultado_topes['s_tot']
@@ -901,7 +1037,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                           regla_electoral: Optional[str] = None,
                           quota_method: str = 'hare',
                           divisor_method: str = 'dhondt',
-                          umbral: Optional[float] = None,
+                          umbral: float = 0.03,  # Default: umbral del 3% (cambiar a 0.0 para desactivar)
                           max_seats_per_party: Optional[int] = None,
                           sobrerrepresentacion: Optional[float] = None,
                           aplicar_topes: bool = True,  # Nuevo: controlar si se aplican topes constitucionales
@@ -1992,6 +2128,9 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
         pm_dict = {p: 0 for p in partidos_base}  # Default: sin PM
         
         if pm_seats is not None and pm_seats > 0:
+            # CRÍTICO: Cuando hay PM, NO debe haber RP (son mutuamente excluyentes)
+            # Limpiar RP dict para evitar que se sumen escaños incorrectos
+            rp_dict = {p: 0 for p in partidos_base}
             if print_debug:
                 _maybe_log(f"[PM] Calculando primera minoría: {pm_seats} escaños", 'debug', print_debug)
             
@@ -2007,44 +2146,86 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     _maybe_log(f"[PM] Escaños PM calculados: {pm_dict}", 'debug', print_debug)
                     _maybe_log(f"[PM] Total PM: {sum(pm_dict.values())}", 'debug', print_debug)
                 
-                # PM se añade al resultado final
-                # El total debe ser: escaños originales (que ya incluyen todo el MR) - PM + PM = igual
-                # Pero queremos que MR efectivo sea menor para que el total final sea correcto
-                # La solución correcta es: tot = mr_original + pm + rp
-                # donde mr_original ya es el MR completo
-                # PERO necesitamos que tot_final = max_seats
+                # ===============================================
+                # VERIFICACIÓN DE TOPES CON PM (SOLO REPORTE)
+                # ===============================================
+                # CRÍTICO: PM NO SE AJUSTA, es resultado de victorias de segunda fuerza
+                # Si MR + PM excede el tope, se REPORTA pero NO se corrige
+                # Solo RP puede ajustarse para respetar el tope
+                if aplicar_topes and print_debug:
+                    # Calcular porcentajes de votos para reporte
+                    total_votos = sum(votos_partido.values()) if 'votos_partido' in locals() else 1
+                    
+                    for p in partidos_base:
+                        mr = mr_dict.get(p, 0)
+                        pm = pm_dict.get(p, 0)
+                        total_sin_rp = mr + pm
+                        
+                        if total_sin_rp > 0:
+                            votos_p = votos_partido.get(p, 0) if 'votos_partido' in locals() else 0
+                            votos_pct = votos_p / total_votos if total_votos > 0 else 0.0
+                            
+                            # Calcular tope
+                            if votos_pct >= umbral:
+                                if sobrerrepresentacion is not None:
+                                    cap_sobrerep = int(np.floor((votos_pct + sobrerrepresentacion) * (S if S else 400)))
+                                else:
+                                    cap_sobrerep = S if S else 400
+                                
+                                if max_seats_per_party is not None:
+                                    cap = min(cap_sobrerep, max_seats_per_party)
+                                else:
+                                    cap = cap_sobrerep
+                                
+                                # Verificar si MR + PM ya excede el tope
+                                if total_sin_rp > cap:
+                                    _maybe_log(f"[PM TOPES] {p}: MR+PM={total_sin_rp} EXCEDE tope {cap} (votos={votos_pct:.2%})", 'warning', print_debug)
+                                    _maybe_log(f"[PM TOPES] {p}: Esta sobrerrepresentación es PERMITIDA (victorias directas)", 'info', print_debug)
                 
-                # Solución: ajustar proporcionalmente TODO el MR para dejar espacio a PM
-                total_mr_original = sum(mr_dict.values())
-                if total_mr_original > 0:
-                    # Reducir MR proporcionalmente para hacer espacio a PM
-                    total_pm = sum(pm_dict.values())
-                    mr_objetivo = max(0, total_mr_original - total_pm)
-                    
-                    # Calcular factor de reducción
-                    factor = mr_objetivo / total_mr_original if total_mr_original > 0 else 0
-                    
-                    # Aplicar reducción proporcional a todos los partidos
-                    mr_dict_ajustado = {}
-                    for partido in partidos_base:
-                        mr_original = mr_dict.get(partido, 0)
-                        mr_dict_ajustado[partido] = int(mr_original * factor)
-                    
-                    # Ajustar residuos para llegar exactamente a mr_objetivo
-                    total_ajustado = sum(mr_dict_ajustado.values())
-                    diferencia = mr_objetivo - total_ajustado
-                    if diferencia != 0:
-                        # Distribuir diferencia a los partidos más grandes
-                        partidos_ordenados = sorted(mr_dict_ajustado.items(), key=lambda x: x[1], reverse=True)
-                        for i in range(abs(int(diferencia))):
-                            if i < len(partidos_ordenados):
-                                partido = partidos_ordenados[i][0]
-                                mr_dict_ajustado[partido] += 1 if diferencia > 0 else -1
-                    
-                    mr_dict = mr_dict_ajustado
-                    
+                # PM se añade al resultado final (SIN MODIFICAR)
+                # IMPORTANTE: Cuando mr_seats está configurado explícitamente, NO reducir MR
+                # porque el caller ya especificó cuántos MR quiere (ej: mr_seats=300, pm_seats=100)
+                # Solo reducir MR si NO fue especificado explícitamente
+                
+                # Verificar si mr_seats fue especificado explícitamente
+                mr_seats_explicito = mr_seats is not None and mr_seats > 0
+                
+                if not mr_seats_explicito:
+                    # Solo ajustar MR si NO fue especificado (caso automático)
+                    total_mr_original = sum(mr_dict.values())
+                    if total_mr_original > 0:
+                        # Reducir MR proporcionalmente para hacer espacio a PM
+                        total_pm = sum(pm_dict.values())
+                        mr_objetivo = max(0, total_mr_original - total_pm)
+                        
+                        # Calcular factor de reducción
+                        factor = mr_objetivo / total_mr_original if total_mr_original > 0 else 0
+                        
+                        # Aplicar reducción proporcional a todos los partidos
+                        mr_dict_ajustado = {}
+                        for partido in partidos_base:
+                            mr_original = mr_dict.get(partido, 0)
+                            mr_dict_ajustado[partido] = int(mr_original * factor)
+                        
+                        # Ajustar residuos para llegar exactamente a mr_objetivo
+                        total_ajustado = sum(mr_dict_ajustado.values())
+                        diferencia = mr_objetivo - total_ajustado
+                        if diferencia != 0:
+                            # Distribuir diferencia a los partidos más grandes
+                            partidos_ordenados = sorted(mr_dict_ajustado.items(), key=lambda x: x[1], reverse=True)
+                            for i in range(abs(int(diferencia))):
+                                if i < len(partidos_ordenados):
+                                    partido = partidos_ordenados[i][0]
+                                    mr_dict_ajustado[partido] += 1 if diferencia > 0 else -1
+                        
+                        mr_dict = mr_dict_ajustado
+                        
+                        if print_debug:
+                            _maybe_log(f"[PM] MR ajustado de {total_mr_original} a {sum(mr_dict.values())} para hacer espacio a {sum(pm_dict.values())} PM", 'debug', print_debug)
+                else:
+                    # MR fue especificado explícitamente, NO reducir
                     if print_debug:
-                        _maybe_log(f"[PM] MR ajustado de {total_mr_original} a {sum(mr_dict.values())} para hacer espacio a {total_pm} PM", 'debug', print_debug)
+                        _maybe_log(f"[PM] MR={mr_seats} especificado explícitamente, NO se reduce para PM", 'debug', print_debug)
                 
                 # ACTUALIZAR TOT: incluir PM en el total
                 tot_dict = {p: int(mr_dict.get(p, 0) + pm_dict.get(p, 0) + rp_dict.get(p, 0)) for p in partidos_base}

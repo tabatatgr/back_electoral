@@ -1,0 +1,9 @@
+fecha_generacion,metodo_real,metodo_sintetico,mr_seats,rp_seats,total_seats,umbral,topes,num_distritos_total,magnitudes_rp,gallagher_real,gallagher_sintetico,diferencia_gallagher,seed,tipo,partido,votos_pct,real_mr,real_rp,real_total,real_escanos_pct,sint_mr,sint_rp,sint_total,sint_escanos_pct,diff_mr,diff_rp,diff_total,diff_escanos_pct
+2026-01-08 21:01:14,scale_siglado MR + RP NACIONAL,scale_siglado MR + RP DISTRITAL (magnitudes variables),200.0,200.0,400.0,3%,"SÍ (+8%, max 300)",300.0,"min=0, max=2, mean=0.67",6.321532361805313,7.295955157584809,0.9744227957794962,42.0,metadata,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,comparacion,MORENA,45.375036980412844,163.0,50.0,213.0,53.25,163.0,50.0,213.0,53.25,0.0,0.0,0.0,0.0
+,,,,,,,,,,,,,,comparacion,PAN,17.582676603133812,22.0,41.0,63.0,15.75,22.0,64.0,86.0,21.5,0.0,23.0,23.0,5.75
+,,,,,,,,,,,,,,comparacion,PRI,11.589051204861173,4.0,38.0,42.0,10.5,4.0,31.0,35.0,8.75,0.0,-7.0,-7.0,-1.75
+,,,,,,,,,,,,,,comparacion,PVEM,7.231193099175462,4.0,26.0,30.0,7.5,4.0,17.0,21.0,5.25,0.0,-9.0,-9.0,-2.25
+,,,,,,,,,,,,,,comparacion,PT,4.317706068577384,0.0,17.0,17.0,4.25,0.0,11.0,11.0,2.75,0.0,-6.0,-6.0,-1.5
+,,,,,,,,,,,,,,comparacion,MC,11.367990174552098,7.0,28.0,35.0,8.75,7.0,27.0,34.0,8.5,0.0,-1.0,-1.0,-0.25
+,,,,,,,,,,,,,,comparacion,PRD,2.536345869287229,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
