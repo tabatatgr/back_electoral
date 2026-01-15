@@ -1002,7 +1002,12 @@ async def calcular_mayoria_forzada_endpoint(
     plan: str = "vigente",
     aplicar_topes: bool = True,
     votos_base: Optional[str] = None,
-    anio: int = 2024
+    anio: int = 2024,
+    # Parámetros para configuración personalizada
+    escanos_totales: Optional[int] = None,
+    mr_seats: Optional[int] = None,
+    rp_seats: Optional[int] = None,
+    sistema: Optional[str] = None
 ):
     """
     Calcula y EJECUTA el sistema electoral completo para forzar mayoría.
@@ -1017,10 +1022,14 @@ async def calcular_mayoria_forzada_endpoint(
     Parameters:
         - **partido**: Nombre del partido (MORENA, PAN, PRI, MC, PVEM, PT, etc.)
         - **tipo_mayoria**: "simple" (251 dip) o "calificada" (334 dip)
-        - **plan**: Plan electoral (vigente, plan_a, plan_c, 200_200_sin_topes, etc.)
+        - **plan**: Plan electoral (vigente, plan_a, plan_c, 200_200_sin_topes, personalizado, etc.)
         - **aplicar_topes**: Si se aplican topes de sobrerrepresentación del 8%
         - **votos_base**: JSON opcional con distribución de votos base (ej: {"MORENA":38,"PAN":22,...})
         - **anio**: Año electoral (2018, 2021, 2024)
+        - **escanos_totales**: Total de escaños (para plan personalizado)
+        - **mr_seats**: Escaños de mayoría relativa (para plan personalizado)
+        - **rp_seats**: Escaños de representación proporcional (para plan personalizado)
+        - **sistema**: Sistema electoral: "mixto", "mr", "rp" (requerido para plan personalizado)
     
     Returns:
         - viable: Si es posible alcanzar la mayoría con esa configuración
@@ -1034,6 +1043,7 @@ async def calcular_mayoria_forzada_endpoint(
     
     Ejemplo de uso:
         GET /calcular/mayoria_forzada?partido=MORENA&tipo_mayoria=simple&plan=vigente&aplicar_topes=true
+        GET /calcular/mayoria_forzada?partido=MORENA&tipo_mayoria=simple&plan=personalizado&escanos_totales=128&mr_seats=64&rp_seats=64&sistema=mixto
     """
     try:
         from engine.calcular_mayoria_forzada_v2 import calcular_mayoria_forzada
@@ -1114,7 +1124,12 @@ async def calcular_mayoria_forzada_endpoint(
             plan=plan,
             aplicar_topes=aplicar_topes,
             votos_custom=votos_custom_str,  # ← Votos ajustados (JSON string)
-            mr_distritos_manuales=mr_distritos_str  # ← MR manual si existe (JSON string)
+            mr_distritos_manuales=mr_distritos_str,  # ← MR manual si existe (JSON string)
+            # Pasar parámetros de configuración personalizada si vienen del frontend
+            escanos_totales=escanos_totales,
+            mr_seats=mr_seats,
+            rp_seats=rp_seats,
+            sistema=sistema
         )
         
         # PASO 3: Extraer datos del partido objetivo
@@ -3383,6 +3398,8 @@ def normalizar_plan(plan: str) -> str:
         '300_100_con_topes': '300_100_con_topes',
         '300_100_sin_topes': '300_100_sin_topes',
         '200_200_sin_topes': '200_200_sin_topes',
+        '240_160_sin_topes': '240_160_sin_topes',
+        '240_160_con_topes': '240_160_con_topes',
     }
     
     resultado = mapeo_planes.get(plan_lower, plan_lower)
