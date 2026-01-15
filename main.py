@@ -1146,7 +1146,8 @@ async def calcular_mayoria_forzada_endpoint(
             resultado_data = resultado_completo
         
         # PASO 3: Extraer datos del partido objetivo
-        seat_chart = resultado_data['mayorias']['seat_chart']
+        # El seat_chart está en la raíz, NO en mayorias
+        seat_chart = resultado_data['seat_chart']
         partido_data = next((p for p in seat_chart if p['party'] == partido), None)
         
         if not partido_data:
@@ -1172,8 +1173,8 @@ async def calcular_mayoria_forzada_endpoint(
             # 🔑 CRÍTICO: Seat chart completo RECALCULADO
             "seat_chart": seat_chart,
             
-            # 🔑 CRÍTICO: KPIs recalculados
-            "kpis": resultado_data['mayorias'].get('kpis', {}),
+            # 🔑 CRÍTICO: KPIs recalculados (están en la raíz, NO en mayorias)
+            "kpis": resultado_data.get('kpis', {}),
             
             # Información adicional
             "advertencias": config.get('advertencias', []),
@@ -1256,7 +1257,8 @@ async def calcular_mayoria_forzada_senado_endpoint(
         )
         
         # PASO 3: Extraer datos del partido objetivo
-        seat_chart = resultado_completo['mayorias']['seat_chart']
+        # El seat_chart está en la raíz, NO en mayorias
+        seat_chart = resultado_completo['seat_chart']
         partido_data = next((p for p in seat_chart if p['party'] == partido), None)
         
         if not partido_data:
@@ -1284,8 +1286,8 @@ async def calcular_mayoria_forzada_senado_endpoint(
             # 🔑 CRÍTICO: Seat chart completo RECALCULADO
             "seat_chart": seat_chart,
             
-            # 🔑 CRÍTICO: KPIs recalculados
-            "kpis": resultado_completo['mayorias'].get('kpis', {}),
+            # 🔑 CRÍTICO: KPIs recalculados (están en la raíz, NO en mayorias)
+            "kpis": resultado_completo.get('kpis', {}),
             
             # Información adicional
             "advertencias": config.get('advertencias', []),
