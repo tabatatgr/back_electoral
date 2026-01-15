@@ -1001,11 +1001,13 @@ async def calcular_mayoria_forzada_endpoint(
     tipo_mayoria: str = "simple",
     plan: str = "vigente",
     aplicar_topes: bool = True,
-    votos_base: Optional[str] = None
+    votos_base: Optional[str] = None,
+    anio: int = 2024
 ):
     """
-    Calcula la configuración necesaria para forzar que un partido alcance
-    mayoría simple (201 escaños) o calificada (267 escaños).
+    Calcula y EJECUTA el sistema electoral completo para forzar mayoría.
+    
+    Devuelve seat_chart completo + KPIs recalculados con TODOS los partidos ajustados.
     
     **IMPORTANTE**:
     - Mayoría simple: funciona en TODOS los escenarios
@@ -1014,26 +1016,28 @@ async def calcular_mayoria_forzada_endpoint(
     
     Parameters:
         - **partido**: Nombre del partido (MORENA, PAN, PRI, MC, PVEM, PT, etc.)
-        - **tipo_mayoria**: "simple" (201 escaños) o "calificada" (267 escaños)
+        - **tipo_mayoria**: "simple" (251 dip) o "calificada" (334 dip)
         - **plan**: Plan electoral (vigente, plan_a, plan_c, 200_200_sin_topes, etc.)
         - **aplicar_topes**: Si se aplican topes de sobrerrepresentación del 8%
         - **votos_base**: JSON opcional con distribución de votos base (ej: {"MORENA":38,"PAN":22,...})
+        - **anio**: Año electoral (2018, 2021, 2024)
     
     Returns:
         - viable: Si es posible alcanzar la mayoría con esa configuración
-        - mr_distritos_manuales: JSON para usar en POST /procesar/diputados
-        - votos_custom: JSON con % de votos ajustados
-        - detalle: Información sobre MR, RP y votos necesarios
-        - advertencias: Lista de advertencias sobre la factibilidad
+        - diputados_necesarios: Umbral de mayoría (251 o 334)
+        - diputados_obtenidos: Total alcanzado
+        - votos_porcentaje: % de votos necesarios
+        - mr_asignados: Escaños MR del partido
+        - rp_asignados: Escaños RP del partido
+        - **seat_chart**: Array completo de todos los partidos RECALCULADOS
+        - **kpis**: Gallagher, ratio, total_votos recalculados
     
     Ejemplo de uso:
         GET /calcular/mayoria_forzada?partido=MORENA&tipo_mayoria=simple&plan=vigente&aplicar_topes=true
-        
-        Retorna configuración para luego usar en:
-        POST /procesar/diputados con mr_distritos_manuales y votos_custom
     """
     try:
         from engine.calcular_mayoria_forzada_v2 import calcular_mayoria_forzada
+        from engine.procesar_diputados import procesar_diputados
         import json
         
         # Validar tipo_mayoria
@@ -1080,8 +1084,8 @@ async def calcular_mayoria_forzada_endpoint(
                     detail="votos_base debe ser un JSON válido"
                 )
         
-        # Calcular mayoría forzada
-        resultado = calcular_mayoria_forzada(
+        # PASO 1: Calcular configuración de mayoría forzada
+        config = calcular_mayoria_forzada(
             partido=partido,
             tipo_mayoria=tipo_mayoria,
             mr_total=mr_total,
@@ -1090,7 +1094,60 @@ async def calcular_mayoria_forzada_endpoint(
             votos_base=votos_base_dict
         )
         
-        return resultado
+        # Si no es viable, devolver solo eso
+        if not config.get('viable', False):
+            return {
+                "viable": False,
+                "mensaje": config.get('razon', 'Mayoría no alcanzable'),
+                "diputados_necesarios": 251 if tipo_mayoria == "simple" else 334,
+                "max_posible": int(mr_total + rp_total) * 0.60 if aplicar_topes else None,
+                "diputados_obtenidos": 0,
+                "votos_porcentaje": None
+            }
+        
+        # PASO 2: EJECUTAR sistema electoral completo con votos ajustados
+        resultado_completo = procesar_diputados(
+            anio=anio,
+            plan=plan,
+            aplicar_topes=aplicar_topes,
+            votos_custom=config['votos_custom'],  # ← Votos ajustados
+            mr_distritos_manuales=config.get('mr_distritos_manuales')  # ← MR manual si existe
+        )
+        
+        # PASO 3: Extraer datos del partido objetivo
+        seat_chart = resultado_completo['mayorias']['seat_chart']
+        partido_data = next((p for p in seat_chart if p['party'] == partido), None)
+        
+        if not partido_data:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Partido {partido} no encontrado en resultado"
+            )
+        
+        # PASO 4: Construir respuesta completa
+        umbral = 251 if tipo_mayoria == "simple" else 334
+        
+        return {
+            "viable": True,
+            "diputados_necesarios": umbral,
+            "diputados_obtenidos": partido_data['seats'],
+            "votos_porcentaje": round(config['detalle']['pct_votos'], 2),
+            "mr_asignados": partido_data['mr_seats'],
+            "rp_asignados": partido_data['rp_seats'],
+            "partido": partido,
+            "plan": plan,
+            "tipo_mayoria": tipo_mayoria,
+            
+            # 🔑 CRÍTICO: Seat chart completo RECALCULADO
+            "seat_chart": seat_chart,
+            
+            # 🔑 CRÍTICO: KPIs recalculados
+            "kpis": resultado_completo['mayorias'].get('kpis', {}),
+            
+            # Información adicional
+            "advertencias": config.get('advertencias', []),
+            "metodo": config.get('metodo', 'Redistritación realista')
+        }
         
     except HTTPException:
         raise
@@ -1106,11 +1163,13 @@ async def calcular_mayoria_forzada_senado_endpoint(
     anio: int = 2024
 ):
     """
-    Calcula la configuración necesaria para que un partido alcance mayoría en el SENADO
+    Calcula y EJECUTA el sistema electoral completo para forzar mayoría en SENADO.
+    
+    Devuelve seat_chart completo + KPIs recalculados con TODOS los partidos ajustados.
     
     Parámetros:
     - **partido**: Partido objetivo (MORENA, PAN, PRI, etc.)
-    - **tipo_mayoria**: "simple" (>64 en sistema vigente) o "calificada" (>=86)
+    - **tipo_mayoria**: "simple" (>64 senadores) o "calificada" (>=86 senadores)
     - **plan**: Plan electoral
         - "vigente": 64 MR + 32 PM + 32 RP = 128 total
         - "plan_a": 96 RP puro
@@ -1118,16 +1177,27 @@ async def calcular_mayoria_forzada_senado_endpoint(
     - **aplicar_topes**: Si aplica el tope del 8% de sobrerrepresentación
     - **anio**: Año electoral (2024, 2018)
     
+    Returns:
+        - viable: Si es posible alcanzar la mayoría
+        - senadores_necesarios: Umbral (65 o 86)
+        - senadores_obtenidos: Total alcanzado
+        - votos_porcentaje: % necesario
+        - estados_ganados: Número de estados ganados
+        - mr_senadores: Senadores MR
+        - pm_senadores: Senadores PM
+        - rp_senadores: Senadores RP
+        - **seat_chart**: Array completo RECALCULADO
+        - **kpis**: Datos recalculados
+    
     Ejemplo:
         GET /calcular/mayoria_forzada_senado?partido=MORENA&tipo_mayoria=simple&plan=vigente&aplicar_topes=true
-    
-    Returns: Configuración con estados ganados, senadores MR/RP, y porcentaje de votos necesario
     """
     try:
         from engine.calcular_mayoria_forzada_senado import calcular_mayoria_forzada_senado
+        from engine.procesar_senadores_v2 import procesar_senadores_v2
         
-        # Calcular mayoría forzada para Senado
-        resultado = calcular_mayoria_forzada_senado(
+        # PASO 1: Calcular configuración de mayoría forzada para Senado
+        config = calcular_mayoria_forzada_senado(
             partido=partido,
             tipo_mayoria=tipo_mayoria,
             plan=plan,
@@ -1135,7 +1205,61 @@ async def calcular_mayoria_forzada_senado_endpoint(
             anio=anio
         )
         
-        return resultado
+        # Si no es viable, devolver solo eso
+        if not config.get('viable', False):
+            return {
+                "viable": False,
+                "mensaje": config.get('razon', 'Mayoría no alcanzable en Senado'),
+                "senadores_necesarios": 65 if tipo_mayoria == "simple" else 86,
+                "senadores_obtenidos": 0,
+                "votos_porcentaje": None
+            }
+        
+        # PASO 2: EJECUTAR sistema electoral completo con votos ajustados
+        resultado_completo = procesar_senadores_v2(
+            anio=anio,
+            plan=plan,
+            aplicar_topes=aplicar_topes,
+            votos_custom=config.get('votos_custom'),  # ← Votos ajustados
+            estados_ganados_manual=config.get('estados_ganados_manuales')  # ← Estados manuales
+        )
+        
+        # PASO 3: Extraer datos del partido objetivo
+        seat_chart = resultado_completo['mayorias']['seat_chart']
+        partido_data = next((p for p in seat_chart if p['party'] == partido), None)
+        
+        if not partido_data:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Partido {partido} no encontrado en resultado Senado"
+            )
+        
+        # PASO 4: Construir respuesta completa
+        umbral = 65 if tipo_mayoria == "simple" else 86
+        
+        return {
+            "viable": True,
+            "senadores_necesarios": umbral,
+            "senadores_obtenidos": partido_data['seats'],
+            "votos_porcentaje": round(config['detalle']['pct_votos'], 2),
+            "estados_ganados": config['detalle'].get('estados_ganados', 0),
+            "mr_senadores": partido_data.get('mr_seats', 0),
+            "pm_senadores": partido_data.get('pm_seats', 0),
+            "rp_senadores": partido_data.get('rp_seats', 0),
+            "partido": partido,
+            "plan": plan,
+            "tipo_mayoria": tipo_mayoria,
+            
+            # 🔑 CRÍTICO: Seat chart completo RECALCULADO
+            "seat_chart": seat_chart,
+            
+            # 🔑 CRÍTICO: KPIs recalculados
+            "kpis": resultado_completo['mayorias'].get('kpis', {}),
+            
+            # Información adicional
+            "advertencias": config.get('advertencias', []),
+            "metodo": config.get('metodo', 'Redistritación realista Senado')
+        }
         
     except HTTPException:
         raise
