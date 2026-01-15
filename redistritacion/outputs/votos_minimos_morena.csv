@@ -1,0 +1,16 @@
+﻿escenario,eficiencia,eficiencia_val,mr_total,rp_total,topes,mayoria_simple_votos,mayoria_simple_mr,mayoria_simple_rp,mayoria_calificada_votos,mayoria_calificada_mr,mayoria_calificada_rp
+300-100 CON TOPES,Proporcional exacto (votos% = MR% ganado),1.0,300,100,True,54.0,148,54,70.5,197,70
+300-100 SIN TOPES,Proporcional exacto (votos% = MR% ganado),1.0,300,100,False,54.0,148,54,70.5,197,70
+200-200 SIN TOPES,Proporcional exacto (votos% = MR% ganado),1.0,200,200,False,54.5,93,109,70.5,128,141
+240-160 SIN TOPES,Proporcional exacto (votos% = MR% ganado),1.0,240,160,False,54.5,115,87,70.5,156,112
+240-160 CON TOPES,Proporcional exacto (votos% = MR% ganado),1.0,240,160,True,54.5,115,87,70.5,156,112
+300-100 CON TOPES,Eficiencia +10% (concentración geográfica favorable),1.1,300,100,True,50.0,153,50,66.5,201,66
+300-100 SIN TOPES,Eficiencia +10% (concentración geográfica favorable),1.1,300,100,False,50.0,153,50,66.5,201,66
+200-200 SIN TOPES,Eficiencia +10% (concentración geográfica favorable),1.1,200,200,False,52.0,98,104,67.0,134,134
+240-160 SIN TOPES,Eficiencia +10% (concentración geográfica favorable),1.1,240,160,False,52.0,118,83,67.0,161,107
+240-160 CON TOPES,Eficiencia +10% (concentración geográfica favorable),1.1,240,160,True,52.0,118,83,67.0,161,107
+300-100 CON TOPES,Eficiencia +20% (muy concentrado geográficamente),1.2,300,100,True,47.0,156,47,62.0,205,62
+300-100 SIN TOPES,Eficiencia +20% (muy concentrado geográficamente),1.2,300,100,False,47.0,156,47,62.0,205,62
+200-200 SIN TOPES,Eficiencia +20% (muy concentrado geográficamente),1.2,200,200,False,50.0,104,100,64.0,139,128
+240-160 SIN TOPES,Eficiencia +20% (muy concentrado geográficamente),1.2,240,160,False,49.5,123,79,63.5,167,101
+240-160 CON TOPES,Eficiencia +20% (muy concentrado geográficamente),1.2,240,160,True,49.5,123,79,63.5,167,101

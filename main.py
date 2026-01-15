@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query, Body, Request
+from fastapi import FastAPI, HTTPException, Query, Body, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import pandas as pd
@@ -623,6 +623,104 @@ async def procesar_senado(
         
         # Transformar al formato esperado por el frontend con colores
         resultado_formateado = transformar_resultado_a_formato_frontend(resultado, plan)
+        
+        # ============================================================================
+        # DETECCIÓN AUTOMÁTICA DE MAYORÍAS (SENADO)
+        # ============================================================================
+        try:
+            # Extraer total de escaños por partido
+            resultado_tot = resultado.get('tot', {})
+            
+            if resultado_tot:
+                # Calcular total de escaños y umbrales
+                total_escanos = sum(resultado_tot.values())
+                mayoria_simple_umbral = total_escanos / 2  # 50%
+                mayoria_calificada_umbral = (total_escanos * 2) / 3  # 66.67%
+                
+                # Estructura para almacenar resultados
+                mayorias_info = {
+                    "mayoria_simple": {
+                        "partido": None,
+                        "escanos": 0,
+                        "coalicion": False
+                    },
+                    "mayoria_calificada": {
+                        "partido": None,
+                        "escanos": 0,
+                        "coalicion": False
+                    }
+                }
+                
+                # 1. Revisar partidos individuales (ordenados por escaños)
+                partidos_ordenados = sorted(resultado_tot.items(), key=lambda x: x[1], reverse=True)
+                
+                for partido, escanos in partidos_ordenados:
+                    # Mayoría calificada (2/3)
+                    if escanos >= mayoria_calificada_umbral and mayorias_info["mayoria_calificada"]["partido"] is None:
+                        mayorias_info["mayoria_calificada"]["partido"] = partido
+                        mayorias_info["mayoria_calificada"]["escanos"] = escanos
+                        mayorias_info["mayoria_calificada"]["coalicion"] = False
+                    
+                    # Mayoría simple (>50%)
+                    if escanos > mayoria_simple_umbral and mayorias_info["mayoria_simple"]["partido"] is None:
+                        mayorias_info["mayoria_simple"]["partido"] = partido
+                        mayorias_info["mayoria_simple"]["escanos"] = escanos
+                        mayorias_info["mayoria_simple"]["coalicion"] = False
+                
+                # 2. Si no hay mayoría individual, revisar coaliciones
+                coaliciones_posibles = [
+                    {"nombre": "MORENA+PT+PVEM", "partidos": ["MORENA", "PT", "PVEM"]},
+                    {"nombre": "PAN+PRI+PRD", "partidos": ["PAN", "PRI", "PRD"]},
+                    {"nombre": "MORENA+PT", "partidos": ["MORENA", "PT"]},
+                ]
+                
+                for coalicion in coaliciones_posibles:
+                    escanos_coalicion = sum(resultado_tot.get(p, 0) for p in coalicion["partidos"])
+                    
+                    # Mayoría calificada con coalición
+                    if (escanos_coalicion >= mayoria_calificada_umbral and 
+                        mayorias_info["mayoria_calificada"]["partido"] is None):
+                        mayorias_info["mayoria_calificada"]["partido"] = coalicion["nombre"]
+                        mayorias_info["mayoria_calificada"]["escanos"] = escanos_coalicion
+                        mayorias_info["mayoria_calificada"]["coalicion"] = True
+                    
+                    # Mayoría simple con coalición
+                    if (escanos_coalicion > mayoria_simple_umbral and 
+                        mayorias_info["mayoria_simple"]["partido"] is None):
+                        mayorias_info["mayoria_simple"]["partido"] = coalicion["nombre"]
+                        mayorias_info["mayoria_simple"]["escanos"] = escanos_coalicion
+                        mayorias_info["mayoria_simple"]["coalicion"] = True
+                
+                # 3. Agregar información de mayorías al resultado
+                resultado_formateado["mayorias"] = {
+                    "total_escanos": total_escanos,
+                    "mayoria_simple": {
+                        "umbral": int(mayoria_simple_umbral) + 1,  # >50%
+                        "alcanzada": mayorias_info["mayoria_simple"]["partido"] is not None,
+                        "partido": mayorias_info["mayoria_simple"]["partido"],
+                        "escanos": mayorias_info["mayoria_simple"]["escanos"],
+                        "es_coalicion": mayorias_info["mayoria_simple"]["coalicion"]
+                    },
+                    "mayoria_calificada": {
+                        "umbral": int(mayoria_calificada_umbral) + 1,  # ≥66.67%
+                        "alcanzada": mayorias_info["mayoria_calificada"]["partido"] is not None,
+                        "partido": mayorias_info["mayoria_calificada"]["partido"],
+                        "escanos": mayorias_info["mayoria_calificada"]["escanos"],
+                        "es_coalicion": mayorias_info["mayoria_calificada"]["coalicion"]
+                    }
+                }
+                
+                print(f"[INFO] Senado - Mayorías detectadas:")
+                print(f"  Total escaños: {total_escanos}")
+                print(f"  Mayoría simple (>{int(mayoria_simple_umbral)}): {mayorias_info['mayoria_simple']['partido']} ({mayorias_info['mayoria_simple']['escanos']} escaños)")
+                print(f"  Mayoría calificada (≥{int(mayoria_calificada_umbral)+1}): {mayorias_info['mayoria_calificada']['partido']} ({mayorias_info['mayoria_calificada']['escanos']} escaños)")
+                
+        except Exception as e_mayorias:
+            print(f"[WARN] Error detectando mayorías en Senado: {e_mayorias}")
+            # No fallar la petición si hay error en detección de mayorías
+            pass
+        # ============================================================================
+        
         # Añadir trazas de diagnóstico sobre la redistribución (si existen)
         try:
             trace = {}
@@ -742,6 +840,995 @@ async def calcular_limites_pm(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calculando límites PM: {str(e)}")
 
+@app.get("/calcular/distribucion_estados")
+async def calcular_distribucion_estados(
+    anio: int = 2024,
+    plan: str = "vigente",
+    votos_redistribuidos: Optional[str] = None
+):
+    """
+    Calcula la distribución geográfica de distritos MR por estado y partido.
+    
+    Útil para mostrar una tabla editable estado por estado con los distritos
+    ganados por cada partido en cada entidad federativa.
+    
+    Parameters:
+        - **anio**: Año electoral (2018, 2021, 2024)
+        - **plan**: Plan electoral (vigente, plan_a, plan_c, 300_100_con_topes, etc.)
+        - **votos_redistribuidos**: JSON opcional con porcentajes de votos personalizados
+        
+    Returns:
+        - distribucion_estados: Lista de estados con distribución por partido
+        - totales: Suma total de MR por partido
+        - metadatos: Información del cálculo (año, plan, eficiencias)
+    """
+    try:
+        from redistritacion.modulos.reparto_distritos import repartir_distritos_hare
+        from redistritacion.modulos.distritacion import cargar_secciones_ine
+        from engine.calcular_eficiencia_real import calcular_eficiencia_partidos
+        import json
+        
+        # 1. Determinar configuración del plan
+        if plan == "vigente":
+            n_distritos = 300
+        elif plan == "plan_a":
+            n_distritos = 300
+        elif plan == "plan_c":
+            n_distritos = 300
+        elif plan == "300_100_con_topes":
+            n_distritos = 300
+        elif plan == "300_100_sin_topes":
+            n_distritos = 300
+        elif plan == "200_200_sin_topes":
+            n_distritos = 200
+        else:
+            n_distritos = 300
+        
+        # 2. Calcular distribución de distritos por estado (método Hare)
+        secciones_df = cargar_secciones_ine()
+        poblacion_estados = secciones_df.groupby("ENTIDAD")["POBTOT"].sum().to_dict()
+        distribucion_hare = repartir_distritos_hare(poblacion_estados, n_distritos, piso_constitucional=2)
+        
+        # 3. Calcular eficiencias históricas
+        eficiencias = calcular_eficiencia_partidos(anio, usar_coaliciones=True)
+        
+        # 4. Obtener porcentajes de votos (reales o redistribuidos)
+        if votos_redistribuidos:
+            votos_dict = json.loads(votos_redistribuidos)
+        else:
+            # Usar votos reales del año (simplificado - aquí deberías cargar desde computos)
+            # Por ahora usamos distribución default como ejemplo
+            votos_dict = {
+                "MORENA": 35.0,
+                "PAN": 22.0,
+                "PRI": 18.0,
+                "MC": 12.0,
+                "PVEM": 8.0,
+                "PT": 5.0
+            }
+        
+        # 5. Calcular votos efectivos por partido (votos × eficiencia)
+        votos_efectivos = {}
+        total_efectivo = 0
+        for partido, pct in votos_dict.items():
+            if partido in eficiencias:
+                efectivo = pct * eficiencias[partido]
+                votos_efectivos[partido] = efectivo
+                total_efectivo += efectivo
+        
+        # Normalizar a porcentajes
+        votos_efectivos_pct = {p: (v / total_efectivo * 100) for p, v in votos_efectivos.items()}
+        
+        # 6. Distribuir distritos MR por estado usando votos efectivos
+        distribucion_estados = []
+        totales_partidos = {p: 0 for p in votos_efectivos_pct.keys()}
+        
+        # Mapeo de IDs a nombres de estados
+        nombres_estados = {
+            1: "Aguascalientes", 2: "Baja California", 3: "Baja California Sur",
+            4: "Campeche", 5: "Coahuila", 6: "Colima", 7: "Chiapas", 8: "Chihuahua",
+            9: "Ciudad de México", 10: "Durango", 11: "Guanajuato", 12: "Guerrero",
+            13: "Hidalgo", 14: "Jalisco", 15: "México", 16: "Michoacán",
+            17: "Morelos", 18: "Nayarit", 19: "Nuevo León", 20: "Oaxaca",
+            21: "Puebla", 22: "Querétaro", 23: "Quintana Roo", 24: "San Luis Potosí",
+            25: "Sinaloa", 26: "Sonora", 27: "Tabasco", 28: "Tamaulipas",
+            29: "Tlaxcala", 30: "Veracruz", 31: "Yucatán", 32: "Zacatecas"
+        }
+        
+        for estado_id in sorted(distribucion_hare.keys()):
+            distritos_estado = distribucion_hare[estado_id]
+            
+            # Distribuir distritos del estado proporcionalmente a votos efectivos
+            distribucion_partidos = {}
+            asignados = 0
+            
+            # Primera vuelta: asignación proporcional
+            for partido, pct in sorted(votos_efectivos_pct.items(), key=lambda x: x[1], reverse=True):
+                cuota = (pct / 100) * distritos_estado
+                asignacion = int(cuota)
+                distribucion_partidos[partido] = asignacion
+                asignados += asignacion
+            
+            # Segunda vuelta: residuos (asignar distritos restantes al partido con mayor residuo)
+            restantes = distritos_estado - asignados
+            if restantes > 0:
+                residuos = []
+                for partido, pct in votos_efectivos_pct.items():
+                    cuota = (pct / 100) * distritos_estado
+                    residuo = cuota - distribucion_partidos[partido]
+                    residuos.append((partido, residuo))
+                
+                # Ordenar por residuo descendente
+                residuos.sort(key=lambda x: x[1], reverse=True)
+                
+                # Asignar restantes
+                for i in range(restantes):
+                    partido = residuos[i][0]
+                    distribucion_partidos[partido] += 1
+            
+            # Actualizar totales
+            for partido, distritos in distribucion_partidos.items():
+                totales_partidos[partido] += distritos
+            
+            # Agregar a lista de estados
+            distribucion_estados.append({
+                "estado_id": estado_id,
+                "estado_nombre": nombres_estados.get(estado_id, f"Estado {estado_id}"),
+                "distritos_totales": distritos_estado,
+                "distribucion_partidos": distribucion_partidos
+            })
+        
+        # 7. Construir respuesta
+        return {
+            "distribucion_estados": distribucion_estados,
+            "totales": totales_partidos,
+            "metadatos": {
+                "anio": anio,
+                "plan": plan,
+                "n_distritos": n_distritos,
+                "eficiencias": eficiencias,
+                "votos_efectivos_pct": votos_efectivos_pct,
+                "metodo": "Hare con redistribución geográfica"
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error calculando distribución por estados: {str(e)}")
+
+@app.get("/calcular/mayoria_forzada")
+async def calcular_mayoria_forzada_endpoint(
+    partido: str,
+    tipo_mayoria: str = "simple",
+    plan: str = "vigente",
+    aplicar_topes: bool = True,
+    votos_base: Optional[str] = None
+):
+    """
+    Calcula la configuración necesaria para forzar que un partido alcance
+    mayoría simple (201 escaños) o calificada (267 escaños).
+    
+    **IMPORTANTE**:
+    - Mayoría simple: funciona en TODOS los escenarios
+    - Mayoría calificada: SOLO funciona con aplicar_topes=False
+      (con topes del 8%, es matemáticamente imposible para un partido individual)
+    
+    Parameters:
+        - **partido**: Nombre del partido (MORENA, PAN, PRI, MC, PVEM, PT, etc.)
+        - **tipo_mayoria**: "simple" (201 escaños) o "calificada" (267 escaños)
+        - **plan**: Plan electoral (vigente, plan_a, plan_c, 200_200_sin_topes, etc.)
+        - **aplicar_topes**: Si se aplican topes de sobrerrepresentación del 8%
+        - **votos_base**: JSON opcional con distribución de votos base (ej: {"MORENA":38,"PAN":22,...})
+    
+    Returns:
+        - viable: Si es posible alcanzar la mayoría con esa configuración
+        - mr_distritos_manuales: JSON para usar en POST /procesar/diputados
+        - votos_custom: JSON con % de votos ajustados
+        - detalle: Información sobre MR, RP y votos necesarios
+        - advertencias: Lista de advertencias sobre la factibilidad
+    
+    Ejemplo de uso:
+        GET /calcular/mayoria_forzada?partido=MORENA&tipo_mayoria=simple&plan=vigente&aplicar_topes=true
+        
+        Retorna configuración para luego usar en:
+        POST /procesar/diputados con mr_distritos_manuales y votos_custom
+    """
+    try:
+        from engine.calcular_mayoria_forzada_v2 import calcular_mayoria_forzada
+        import json
+        
+        # Validar tipo_mayoria
+        if tipo_mayoria not in ["simple", "calificada"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"tipo_mayoria debe ser 'simple' o 'calificada', recibido: '{tipo_mayoria}'"
+            )
+        
+        # Determinar configuración del plan
+        if plan == "vigente" or plan == "plan_a" or plan == "plan_c":
+            mr_total = 300
+            rp_total = 100
+        elif plan == "300_100_con_topes":
+            mr_total = 300
+            rp_total = 100
+        elif plan == "300_100_sin_topes":
+            mr_total = 300
+            rp_total = 100
+            aplicar_topes = False  # Forzar sin topes
+        elif plan == "200_200_sin_topes":
+            mr_total = 200
+            rp_total = 200
+            aplicar_topes = False  # Forzar sin topes
+        elif plan == "240_160_sin_topes":
+            mr_total = 240
+            rp_total = 160
+            aplicar_topes = False  # Forzar sin topes
+        elif plan == "240_160_con_topes":
+            mr_total = 240
+            rp_total = 160
+        else:
+            mr_total = 300
+            rp_total = 100
+        
+        # Parsear votos_base si se proporcionó
+        votos_base_dict = None
+        if votos_base:
+            try:
+                votos_base_dict = json.loads(votos_base)
+            except json.JSONDecodeError:
+                raise HTTPException(
+                    status_code=400,
+                    detail="votos_base debe ser un JSON válido"
+                )
+        
+        # Calcular mayoría forzada
+        resultado = calcular_mayoria_forzada(
+            partido=partido,
+            tipo_mayoria=tipo_mayoria,
+            mr_total=mr_total,
+            rp_total=rp_total,
+            aplicar_topes=aplicar_topes,
+            votos_base=votos_base_dict
+        )
+        
+        return resultado
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error calculando mayoría forzada: {str(e)}")
+
+@app.get("/calcular/mayoria_forzada_senado")
+async def calcular_mayoria_forzada_senado_endpoint(
+    partido: str,
+    tipo_mayoria: str = "simple",
+    plan: str = "vigente",
+    aplicar_topes: bool = True,
+    anio: int = 2024
+):
+    """
+    Calcula la configuración necesaria para que un partido alcance mayoría en el SENADO
+    
+    Parámetros:
+    - **partido**: Partido objetivo (MORENA, PAN, PRI, etc.)
+    - **tipo_mayoria**: "simple" (>64 en sistema vigente) o "calificada" (>=86)
+    - **plan**: Plan electoral
+        - "vigente": 64 MR + 32 PM + 32 RP = 128 total
+        - "plan_a": 96 RP puro
+        - "plan_c": 64 MR+PM sin RP
+    - **aplicar_topes**: Si aplica el tope del 8% de sobrerrepresentación
+    - **anio**: Año electoral (2024, 2018)
+    
+    Ejemplo:
+        GET /calcular/mayoria_forzada_senado?partido=MORENA&tipo_mayoria=simple&plan=vigente&aplicar_topes=true
+    
+    Returns: Configuración con estados ganados, senadores MR/RP, y porcentaje de votos necesario
+    """
+    try:
+        from engine.calcular_mayoria_forzada_senado import calcular_mayoria_forzada_senado
+        
+        # Calcular mayoría forzada para Senado
+        resultado = calcular_mayoria_forzada_senado(
+            partido=partido,
+            tipo_mayoria=tipo_mayoria,
+            plan=plan,
+            aplicar_topes=aplicar_topes,
+            anio=anio
+        )
+        
+        return resultado
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] Error calculando mayoría forzada Senado: {str(e)}")
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error calculando mayoría forzada Senado: {str(e)}")
+
+@app.get("/generar/tabla_estados_senado")
+async def generar_tabla_estados_senado_endpoint(
+    partido: str,
+    votos_porcentaje: float,
+    anio: int = 2024,
+    formato: str = "json"
+):
+    """
+    Genera tabla de estados con el partido ganador y distribución de votos
+    
+    Parámetros:
+    - **partido**: Partido objetivo (MORENA, PAN, etc.)
+    - **votos_porcentaje**: Porcentaje de votos a nivel nacional (30-70)
+    - **anio**: Año electoral (2024, 2018)
+    - **formato**: "json" o "csv"
+    
+    Ejemplo:
+        GET /generar/tabla_estados_senado?partido=MORENA&votos_porcentaje=45&anio=2024
+    
+    Returns: Tabla con estado, partido_ganador, senadores_mr, votos, porcentaje
+    """
+    try:
+        from engine.calcular_mayoria_forzada_senado import generar_tabla_estados_senado
+        
+        # Generar tabla
+        df = generar_tabla_estados_senado(
+            partido=partido,
+            votos_porcentaje=votos_porcentaje,
+            anio=anio
+        )
+        
+        if df.empty:
+            return {
+                'error': 'No se pudo generar la tabla',
+                'partido': partido,
+                'votos_porcentaje': votos_porcentaje
+            }
+        
+        # Convertir a formato solicitado
+        if formato == "csv":
+            from io import StringIO
+            csv_buffer = StringIO()
+            df.to_csv(csv_buffer, index=False, encoding='utf-8')
+            csv_content = csv_buffer.getvalue()
+            
+            return Response(
+                content=csv_content,
+                media_type="text/csv",
+                headers={
+                    "Content-Disposition": f"attachment; filename=estados_senado_{partido}_{int(votos_porcentaje)}pct.csv"
+                }
+            )
+        else:
+            # JSON por defecto
+            return {
+                'partido': partido,
+                'votos_porcentaje': votos_porcentaje,
+                'total_estados': len(df),
+                'total_senadores_mr': len(df) * 2,
+                'estados': df.to_dict(orient='records')
+            }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] Error generando tabla estados Senado: {str(e)}")
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error generando tabla: {str(e)}")
+
+@app.post("/editar/estados_senado")
+async def editar_estados_senado_endpoint(
+    request: Request
+):
+    """
+    Procesa Senado con distribución manual de estados MR
+    
+    Body (JSON):
+    {
+        "anio": 2024,
+        "plan": "vigente",
+        "estados_manuales": {
+            "MORENA": ["CDMX", "MEXICO", "VERACRUZ", ...],
+            "PAN": ["GUANAJUATO", "JALISCO", ...],
+            "PRI": ["COAHUILA", ...]
+        },
+        "aplicar_topes": true,
+        "usar_coaliciones": true
+    }
+    
+    Returns:
+        Resultado completo del procesamiento de Senado con mayorías detectadas
+    
+    Ejemplo:
+        POST /editar/estados_senado
+        Body: {"anio": 2024, "plan": "vigente", "estados_manuales": {...}}
+    """
+    try:
+        body = await request.json()
+        
+        anio = body.get('anio', 2024)
+        plan = body.get('plan', 'vigente')
+        estados_manuales = body.get('estados_manuales', {})
+        aplicar_topes = body.get('aplicar_topes', True)
+        usar_coaliciones = body.get('usar_coaliciones', True)
+        
+        # Validar
+        if not estados_manuales:
+            raise HTTPException(status_code=400, detail="estados_manuales requerido")
+        
+        if anio not in [2018, 2024]:
+            raise HTTPException(status_code=400, detail="Año no soportado")
+        
+        # Normalizar nombre del plan
+        plan_normalizado = normalizar_plan(plan)
+        
+        # Configurar según plan
+        if plan_normalizado == "vigente":
+            sistema_final = "mixto"
+            mr_seats_final = 96  # 64 MR + 32 PM
+            rp_seats_final = 32
+            umbral_final = 0.03
+            max_seats = 128
+            pm_escanos = 32
+        elif plan_normalizado == "plan_a":
+            sistema_final = "rp"
+            mr_seats_final = 0
+            rp_seats_final = 96
+            umbral_final = 0.03
+            max_seats = 96
+            pm_escanos = 0
+        elif plan_normalizado == "plan_c":
+            sistema_final = "mr"
+            mr_seats_final = 64
+            rp_seats_final = 0
+            umbral_final = 0.0
+            max_seats = 64
+            pm_escanos = 32
+        else:
+            raise HTTPException(status_code=400, detail=f"Plan '{plan}' no válido")
+        
+        # Construir paths
+        path_parquet = f"data/computos_senado_{anio}.parquet"
+        if anio == 2018:
+            path_siglado = "data/siglado_senado_2018_corregido.csv"
+        else:
+            path_siglado = f"data/siglado-senado-{anio}.csv"
+        
+        # Verificar archivos
+        if not os.path.exists(path_parquet):
+            raise HTTPException(status_code=404, detail=f"Archivo no encontrado: {path_parquet}")
+        if not os.path.exists(path_siglado):
+            raise HTTPException(status_code=404, detail=f"Archivo siglado no encontrado: {path_siglado}")
+        
+        # Procesar con estados manuales
+        # TODO: Implementar modificación del siglado basado en estados_manuales
+        # Por ahora, procesar normalmente
+        resultado = procesar_senadores_v2(
+            path_parquet=path_parquet,
+            anio=anio,
+            path_siglado=path_siglado,
+            max_seats=max_seats,
+            sistema=sistema_final,
+            mr_seats=mr_seats_final,
+            rp_seats=rp_seats_final,
+            umbral=umbral_final,
+            pm_seats=pm_escanos,
+            usar_coaliciones=usar_coaliciones
+        )
+        
+        # Transformar al formato del frontend
+        resultado_formateado = transformar_resultado_a_formato_frontend(resultado, plan)
+        
+        # Detectar mayorías (mismo código que en POST /procesar/senado)
+        try:
+            resultado_tot = resultado.get('tot', {})
+            
+            if resultado_tot:
+                total_escanos = sum(resultado_tot.values())
+                mayoria_simple_umbral = total_escanos / 2
+                mayoria_calificada_umbral = (total_escanos * 2) / 3
+                
+                mayorias_info = {
+                    "mayoria_simple": {"partido": None, "escanos": 0, "coalicion": False},
+                    "mayoria_calificada": {"partido": None, "escanos": 0, "coalicion": False}
+                }
+                
+                # Revisar partidos individuales
+                partidos_ordenados = sorted(resultado_tot.items(), key=lambda x: x[1], reverse=True)
+                
+                for partido, escanos in partidos_ordenados:
+                    if escanos >= mayoria_calificada_umbral and mayorias_info["mayoria_calificada"]["partido"] is None:
+                        mayorias_info["mayoria_calificada"]["partido"] = partido
+                        mayorias_info["mayoria_calificada"]["escanos"] = escanos
+                        mayorias_info["mayoria_calificada"]["coalicion"] = False
+                    
+                    if escanos > mayoria_simple_umbral and mayorias_info["mayoria_simple"]["partido"] is None:
+                        mayorias_info["mayoria_simple"]["partido"] = partido
+                        mayorias_info["mayoria_simple"]["escanos"] = escanos
+                        mayorias_info["mayoria_simple"]["coalicion"] = False
+                
+                # Coaliciones
+                coaliciones_posibles = [
+                    {"nombre": "MORENA+PT+PVEM", "partidos": ["MORENA", "PT", "PVEM"]},
+                    {"nombre": "PAN+PRI+PRD", "partidos": ["PAN", "PRI", "PRD"]},
+                    {"nombre": "MORENA+PT", "partidos": ["MORENA", "PT"]},
+                ]
+                
+                for coalicion in coaliciones_posibles:
+                    escanos_coalicion = sum(resultado_tot.get(p, 0) for p in coalicion["partidos"])
+                    
+                    if (escanos_coalicion >= mayoria_calificada_umbral and 
+                        mayorias_info["mayoria_calificada"]["partido"] is None):
+                        mayorias_info["mayoria_calificada"]["partido"] = coalicion["nombre"]
+                        mayorias_info["mayoria_calificada"]["escanos"] = escanos_coalicion
+                        mayorias_info["mayoria_calificada"]["coalicion"] = True
+                    
+                    if (escanos_coalicion > mayoria_simple_umbral and 
+                        mayorias_info["mayoria_simple"]["partido"] is None):
+                        mayorias_info["mayoria_simple"]["partido"] = coalicion["nombre"]
+                        mayorias_info["mayoria_simple"]["escanos"] = escanos_coalicion
+                        mayorias_info["mayoria_simple"]["coalicion"] = True
+                
+                # Agregar mayorías al resultado
+                resultado_formateado["mayorias"] = {
+                    "total_escanos": total_escanos,
+                    "mayoria_simple": {
+                        "umbral": int(mayoria_simple_umbral) + 1,
+                        "alcanzada": mayorias_info["mayoria_simple"]["partido"] is not None,
+                        "partido": mayorias_info["mayoria_simple"]["partido"],
+                        "escanos": mayorias_info["mayoria_simple"]["escanos"],
+                        "es_coalicion": mayorias_info["mayoria_simple"]["coalicion"]
+                    },
+                    "mayoria_calificada": {
+                        "umbral": int(mayoria_calificada_umbral) + 1,
+                        "alcanzada": mayorias_info["mayoria_calificada"]["partido"] is not None,
+                        "partido": mayorias_info["mayoria_calificada"]["partido"],
+                        "escanos": mayorias_info["mayoria_calificada"]["escanos"],
+                        "es_coalicion": mayorias_info["mayoria_calificada"]["coalicion"]
+                    }
+                }
+        except Exception as e_mayorias:
+            print(f"[WARN] Error detectando mayorías: {e_mayorias}")
+        
+        # Agregar info de estados editados
+        resultado_formateado['estados_editados'] = {
+            partido: len(estados) for partido, estados in estados_manuales.items()
+        }
+        
+        return JSONResponse(
+            content=resultado_formateado,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] Error en /editar/estados_senado: {str(e)}")
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error procesando: {str(e)}")
+
+@app.post("/exportar/escenario_senado")
+async def exportar_escenario_senado_endpoint(
+    request: Request
+):
+    """
+    Exporta un escenario de distribución de estados a CSV
+    
+    Body (JSON):
+    {
+        "nombre_escenario": "MORENA_Mayoria_2024",
+        "estados_por_partido": {
+            "MORENA": ["CDMX", "MEXICO", ...],
+            "PAN": ["GUANAJUATO", ...],
+            ...
+        },
+        "descripcion": "Escenario de mayoría simple MORENA"
+    }
+    
+    Returns:
+        CSV file con la distribución de estados
+    """
+    try:
+        body = await request.json()
+        
+        nombre = body.get('nombre_escenario', 'escenario_senado')
+        estados_por_partido = body.get('estados_por_partido', {})
+        descripcion = body.get('descripcion', '')
+        
+        if not estados_por_partido:
+            raise HTTPException(status_code=400, detail="estados_por_partido requerido")
+        
+        # Crear DataFrame
+        datos = []
+        for partido, estados in estados_por_partido.items():
+            for estado in estados:
+                datos.append({
+                    'estado': estado,
+                    'partido_ganador': partido,
+                    'senadores_mr': 2  # Siempre 2 por estado en sistema vigente
+                })
+        
+        df = pd.DataFrame(datos)
+        
+        # Agregar metadata
+        import datetime
+        metadata_rows = [
+            {'estado': f'# Escenario: {nombre}', 'partido_ganador': '', 'senadores_mr': ''},
+            {'estado': f'# Descripción: {descripcion}', 'partido_ganador': '', 'senadores_mr': ''},
+            {'estado': f'# Fecha: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}', 'partido_ganador': '', 'senadores_mr': ''},
+            {'estado': '# ---', 'partido_ganador': '', 'senadores_mr': ''},
+        ]
+        df_metadata = pd.DataFrame(metadata_rows)
+        df_final = pd.concat([df_metadata, df], ignore_index=True)
+        
+        # Convertir a CSV
+        from io import StringIO
+        csv_buffer = StringIO()
+        df_final.to_csv(csv_buffer, index=False, encoding='utf-8')
+        csv_content = csv_buffer.getvalue()
+        
+        return Response(
+            content=csv_content,
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f"attachment; filename={nombre}.csv"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] Error exportando escenario: {str(e)}")
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error exportando: {str(e)}")
+
+@app.post("/importar/escenario_senado")
+async def importar_escenario_senado_endpoint(
+    request: Request
+):
+    """
+    Importa un escenario de distribución de estados desde CSV
+    
+    Body (JSON):
+    {
+        "csv_content": "estado,partido_ganador,senadores_mr\\nCDMX,MORENA,2\\n..."
+    }
+    
+    Returns:
+        {
+            "nombre_escenario": "...",
+            "estados_por_partido": {...},
+            "total_estados": 32,
+            "descripcion": "..."
+        }
+    """
+    try:
+        body = await request.json()
+        csv_content = body.get('csv_content', '')
+        
+        if not csv_content:
+            raise HTTPException(status_code=400, detail="csv_content requerido")
+        
+        # Leer CSV
+        from io import StringIO
+        csv_buffer = StringIO(csv_content)
+        
+        # Extraer metadata (líneas que empiezan con #)
+        metadata = {}
+        lineas_datos = []
+        
+        for linea in csv_content.split('\n'):
+            linea_limpia = linea.strip()
+            if linea_limpia.startswith('#'):
+                # Parsear metadata - remover # y parsear
+                contenido = linea_limpia[1:].strip()
+                if ':' in contenido:
+                    key, value = contenido.split(':', 1)
+                    # Limpiar comas finales del CSV y espacios
+                    value_limpio = value.strip().rstrip(',')
+                    metadata[key.strip()] = value_limpio
+            else:
+                if linea_limpia:  # Solo agregar líneas no vacías
+                    lineas_datos.append(linea)
+        
+        # Leer datos
+        csv_datos = '\n'.join(lineas_datos)
+        df = pd.read_csv(StringIO(csv_datos))
+        
+        # Agrupar por partido
+        estados_por_partido = {}
+        for _, row in df.iterrows():
+            partido = row['partido_ganador']
+            estado = row['estado']
+            
+            if partido not in estados_por_partido:
+                estados_por_partido[partido] = []
+            estados_por_partido[partido].append(estado)
+        
+        return {
+            'nombre_escenario': metadata.get('Escenario', 'Importado'),
+            'descripcion': metadata.get('Descripción', ''),
+            'fecha': metadata.get('Fecha', ''),
+            'estados_por_partido': estados_por_partido,
+            'total_estados': len(df),
+            'partidos': list(estados_por_partido.keys())
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] Error importando escenario: {str(e)}")
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error importando: {str(e)}")
+
+@app.get("/generar/tabla_distritos_diputados")
+async def generar_tabla_distritos_diputados_endpoint(
+    partido: str,
+    votos_porcentaje: float,
+    anio: int = 2024,
+    mr_total: int = 300,
+    formato: str = "json"
+):
+    """
+    Genera tabla de distritos con el partido ganador y distribución de votos
+    
+    Parámetros:
+    - **partido**: Partido objetivo (MORENA, PAN, etc.)
+    - **votos_porcentaje**: Porcentaje de votos a nivel nacional (30-70)
+    - **anio**: Año electoral (2024, 2021, 2018)
+    - **mr_total**: Total de distritos MR (default 300)
+    - **formato**: "json" o "csv"
+    
+    Ejemplo:
+        GET /generar/tabla_distritos_diputados?partido=MORENA&votos_porcentaje=45&anio=2024
+    
+    Returns: Tabla con entidad, distrito, partido_ganador, votos, porcentaje
+    """
+    try:
+        from engine.calcular_mayoria_forzada_v2 import calcular_distritos_mr_realistas
+        
+        # Calcular distribución realista
+        votos_decimal = votos_porcentaje / 100.0
+        resultado = calcular_distritos_mr_realistas(
+            partido=partido,
+            votos_objetivo=votos_decimal,
+            anio=anio,
+            mr_total=mr_total
+        )
+        
+        if not resultado.get('viable'):
+            return {
+                'error': 'No se pudo generar la tabla',
+                'partido': partido,
+                'votos_porcentaje': votos_porcentaje
+            }
+        
+        # Obtener distribución por estado
+        distribucion = resultado.get('distribucion_por_estado', {})
+        
+        # Crear DataFrame con distritos
+        datos = []
+        for estado, info in distribucion.items():
+            distritos_ganados = info.get('distritos_mr', 0)
+            for distrito in range(1, distritos_ganados + 1):
+                datos.append({
+                    'ENTIDAD': estado,
+                    'DISTRITO': distrito,
+                    'partido_ganador': partido,
+                    'votos_estimados': info.get('votos_partido', 0) // distritos_ganados if distritos_ganados > 0 else 0
+                })
+        
+        df = pd.DataFrame(datos)
+        
+        if df.empty:
+            return {
+                'error': 'No se pudo generar la tabla',
+                'partido': partido,
+                'votos_porcentaje': votos_porcentaje
+            }
+        
+        # Convertir a formato solicitado
+        if formato == "csv":
+            from io import StringIO
+            csv_buffer = StringIO()
+            df.to_csv(csv_buffer, index=False, encoding='utf-8')
+            csv_content = csv_buffer.getvalue()
+            
+            return Response(
+                content=csv_content,
+                media_type="text/csv",
+                headers={
+                    "Content-Disposition": f"attachment; filename=distritos_diputados_{partido}_{int(votos_porcentaje)}pct.csv"
+                }
+            )
+        else:
+            # JSON por defecto
+            return {
+                'partido': partido,
+                'votos_porcentaje': votos_porcentaje,
+                'total_distritos': len(df),
+                'distribucion_por_estado': df.groupby('ENTIDAD').size().to_dict(),
+                'distritos': df.to_dict(orient='records')
+            }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] Error generando tabla distritos Diputados: {str(e)}")
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error generando tabla: {str(e)}")
+
+@app.post("/exportar/escenario_diputados")
+async def exportar_escenario_diputados_endpoint(
+    request: Request
+):
+    """
+    Exporta un escenario de distribución de distritos MR a CSV
+    
+    Body (JSON):
+    {
+        "nombre_escenario": "MORENA_Mayoria_300MR_2024",
+        "distritos_por_partido": {
+            "MORENA": [
+                {"entidad": "CDMX", "distrito": 1},
+                {"entidad": "CDMX", "distrito": 2},
+                ...
+            ],
+            "PAN": [...],
+            ...
+        },
+        "descripcion": "Escenario de mayoría simple MORENA con 145 MR"
+    }
+    
+    Returns:
+        CSV file con la distribución de distritos
+    """
+    try:
+        body = await request.json()
+        
+        nombre = body.get('nombre_escenario', 'escenario_diputados')
+        distritos_por_partido = body.get('distritos_por_partido', {})
+        descripcion = body.get('descripcion', '')
+        
+        if not distritos_por_partido:
+            raise HTTPException(status_code=400, detail="distritos_por_partido requerido")
+        
+        # Crear DataFrame
+        datos = []
+        for partido, distritos in distritos_por_partido.items():
+            for distrito_info in distritos:
+                datos.append({
+                    'entidad': distrito_info.get('entidad'),
+                    'distrito': distrito_info.get('distrito'),
+                    'partido_ganador': partido
+                })
+        
+        df = pd.DataFrame(datos)
+        
+        # Agregar metadata
+        import datetime
+        metadata_rows = [
+            {'entidad': f'# Escenario: {nombre}', 'distrito': '', 'partido_ganador': ''},
+            {'entidad': f'# Descripción: {descripcion}', 'distrito': '', 'partido_ganador': ''},
+            {'entidad': f'# Fecha: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M")}', 'distrito': '', 'partido_ganador': ''},
+            {'entidad': f'# Total distritos: {len(df)}', 'distrito': '', 'partido_ganador': ''},
+            {'entidad': '# ---', 'distrito': '', 'partido_ganador': ''},
+        ]
+        df_metadata = pd.DataFrame(metadata_rows)
+        df_final = pd.concat([df_metadata, df], ignore_index=True)
+        
+        # Convertir a CSV
+        from io import StringIO
+        csv_buffer = StringIO()
+        df_final.to_csv(csv_buffer, index=False, encoding='utf-8')
+        csv_content = csv_buffer.getvalue()
+        
+        return Response(
+            content=csv_content,
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f"attachment; filename={nombre}.csv"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] Error exportando escenario diputados: {str(e)}")
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error exportando: {str(e)}")
+
+@app.post("/importar/escenario_diputados")
+async def importar_escenario_diputados_endpoint(
+    request: Request
+):
+    """
+    Importa un escenario de distribución de distritos MR desde CSV
+    
+    Body (JSON):
+    {
+        "csv_content": "entidad,distrito,partido_ganador\\nCDMX,1,MORENA\\n..."
+    }
+    
+    Returns:
+        {
+            "nombre_escenario": "...",
+            "distritos_por_partido": {...},
+            "total_distritos": 300,
+            "descripcion": "..."
+        }
+    """
+    try:
+        body = await request.json()
+        csv_content = body.get('csv_content', '')
+        
+        if not csv_content:
+            raise HTTPException(status_code=400, detail="csv_content requerido")
+        
+        # Leer CSV
+        from io import StringIO
+        
+        # Extraer metadata (líneas que empiezan con #)
+        metadata = {}
+        lineas_datos = []
+        
+        for linea in csv_content.split('\n'):
+            linea_limpia = linea.strip()
+            if linea_limpia.startswith('#'):
+                # Parsear metadata - remover # y parsear
+                contenido = linea_limpia[1:].strip()
+                if ':' in contenido:
+                    key, value = contenido.split(':', 1)
+                    # Limpiar comas finales del CSV y espacios
+                    value_limpio = value.strip().rstrip(',')
+                    metadata[key.strip()] = value_limpio
+            else:
+                if linea_limpia:  # Solo agregar líneas no vacías
+                    lineas_datos.append(linea)
+        
+        # Leer datos
+        csv_datos = '\n'.join(lineas_datos)
+        df = pd.read_csv(StringIO(csv_datos))
+        
+        # Agrupar por partido
+        distritos_por_partido = {}
+        for _, row in df.iterrows():
+            partido = row['partido_ganador']
+            distrito_info = {
+                'entidad': row['entidad'],
+                'distrito': row['distrito']
+            }
+            
+            if partido not in distritos_por_partido:
+                distritos_por_partido[partido] = []
+            distritos_por_partido[partido].append(distrito_info)
+        
+        return {
+            'nombre_escenario': metadata.get('Escenario', 'Importado'),
+            'descripcion': metadata.get('Descripción', ''),
+            'fecha': metadata.get('Fecha', ''),
+            'total_distritos': metadata.get('Total distritos', len(df)),
+            'distritos_por_partido': distritos_por_partido,
+            'partidos': list(distritos_por_partido.keys()),
+            'distribucion_por_estado': df.groupby(['entidad', 'partido_ganador']).size().to_dict()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"[ERROR] Error importando escenario diputados: {str(e)}")
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error importando: {str(e)}")
+
 @app.options("/procesar/diputados")
 async def options_procesar_diputados():
     """Manejo de CORS preflight para diputados"""
@@ -772,6 +1859,9 @@ async def procesar_diputados(
     reparto_mode: str = "cuota",  # Default: cuota (Hare es el método oficial en México)
     reparto_method: str = "hare",  # Default: Hare (método oficial IFE/INE)
     usar_coaliciones: bool = True,
+    redistritacion_geografica: bool = True,  # ← DEFAULT: Usar SIEMPRE redistritación geográfica real (calcula eficiencias históricas por partido)
+    mr_distritos_manuales: Optional[str] = None,  # ← NUEVO: JSON con MR manuales por partido {"MORENA": 150, "PAN": 60, ...}
+    mr_distritos_por_estado: Optional[str] = None,  # ← NUEVO: JSON con MR por estado y partido {"15": {"MORENA": 22, "PAN": 6, ...}, "9": {"MORENA": 14, ...}}
     votos_custom: Optional[str] = None,  # JSON string con redistribución
     partidos_fijos: Optional[str] = None,  # JSON string con partidos fijos
     overrides_pool: Optional[str] = None,   # JSON string con overrides del pool
@@ -795,6 +1885,9 @@ async def procesar_diputados(
     - **reparto_method**: Método específico:
       - Si reparto_mode="cuota": "hare", "droop", "imperiali"
       - Si reparto_mode="divisor": "dhondt", "sainte_lague", "webster"
+    - **redistritacion_geografica**: SIEMPRE activa por defecto. Usa redistritación geográfica real por población (método Hare) con eficiencias históricas calculadas por partido. Default: True
+    - **mr_distritos_manuales**: JSON con número de distritos MR ganados por partido. Formato: {"MORENA": 150, "PAN": 60, "PRI": 45, ...}. Si se proporciona, sobrescribe el cálculo automático de eficiencias geográficas.
+    - **mr_distritos_por_estado**: JSON con distribución estado por estado de distritos MR por partido. Formato: {"15": {"MORENA": 22, "PAN": 6, "PRI": 8}, "9": {"MORENA": 14, "PAN": 5}}. Las claves son IDs de estados (1-32), los valores son diccionarios partido→distritos. Si se proporciona, se valida que la suma por estado coincida con la distribución Hare y se convierte automáticamente a mr_distritos_manuales (suma total).
     - **votos_custom**: JSON con % de votos por partido {"MORENA":45, "PAN":30, ...}
     - **partidos_fijos**: JSON con partidos fijos {"MORENA":2, "PAN":40}
     - **overrides_pool**: JSON con overrides del pool {"PAN":20, "MC":10}
@@ -1254,6 +2347,48 @@ async def procesar_diputados(
             divisor_method_final = None
             sistema_final = "mr"  # Solo MR
             
+        elif plan_normalizado == "300_100_con_topes":
+            # 300 MR + 100 RP = 400 total, CON TOPES (300 max por partido), CON REDISTRITACIÓN GEOGRÁFICA (por defecto)
+            max_seats = 400
+            mr_seats_final = 300
+            pm_seats_final = 0
+            rp_seats_final = 100
+            umbral_final = 0.03
+            max_seats_per_party_final = 300  # Tope constitucional
+            quota_method_final = "hare"
+            divisor_method_final = None
+            sistema_final = "mixto"
+            aplicar_topes = True
+            print(f"[DEBUG] Escenario 300-100 CON TOPES activado (redistritación geográfica por defecto)")
+            
+        elif plan_normalizado == "300_100_sin_topes":
+            # 300 MR + 100 RP = 400 total, SIN TOPES, CON REDISTRITACIÓN GEOGRÁFICA (por defecto)
+            max_seats = 400
+            mr_seats_final = 300
+            pm_seats_final = 0
+            rp_seats_final = 100
+            umbral_final = 0.03
+            max_seats_per_party_final = None  # Sin tope
+            quota_method_final = "hare"
+            divisor_method_final = None
+            sistema_final = "mixto"
+            aplicar_topes = False
+            print(f"[DEBUG] Escenario 300-100 SIN TOPES activado (redistritación geográfica por defecto)")
+            
+        elif plan_normalizado == "200_200_sin_topes":
+            # 200 MR + 200 RP = 400 total, SIN TOPES, CON REDISTRITACIÓN GEOGRÁFICA (por defecto)
+            max_seats = 400
+            mr_seats_final = 200
+            pm_seats_final = 0
+            rp_seats_final = 200
+            umbral_final = 0.03
+            max_seats_per_party_final = None  # Sin tope
+            quota_method_final = "hare"
+            divisor_method_final = None
+            sistema_final = "mixto"
+            aplicar_topes = False
+            print(f"[DEBUG] Escenario 200-200 SIN TOPES activado (redistritación geográfica por defecto)")
+            
         elif plan_normalizado == "personalizado":
             # Plan personalizado con parámetros del usuario
             if not sistema:
@@ -1406,7 +2541,216 @@ async def procesar_diputados(
         print(f"[DEBUG] usar_coaliciones: {usar_coaliciones}")
         print(f"[DEBUG] votos_redistribuidos: {votos_redistribuidos}")
         print(f"[DEBUG] seed: {seed_value}")
+        print(f"[DEBUG] redistritacion_geografica: {redistritacion_geografica}")
         print(f"[DEBUG] =============================================")
+        
+        # APLICAR REDISTRITACIÓN GEOGRÁFICA si está activada
+        mr_ganados_geograficos = None
+        if redistritacion_geografica and mr_seats_final and mr_seats_final > 0:
+            print(f"[DEBUG] ===== APLICANDO REDISTRITACIÓN GEOGRÁFICA =====")
+            
+            # PRIORIDAD 1: Si hay distribución por estado, convertirla a MR manuales totales
+            if mr_distritos_por_estado:
+                print(f"[DEBUG] Procesando distribución por estado: {mr_distritos_por_estado}")
+                try:
+                    from redistritacion.modulos.reparto_distritos import repartir_distritos_hare
+                    from redistritacion.modulos.distritacion import cargar_secciones_ine
+                    
+                    # Parsear JSON
+                    distribucion_estados = json.loads(mr_distritos_por_estado)
+                    
+                    # Cargar distribución Hare real para validación
+                    secciones = cargar_secciones_ine()
+                    poblacion_por_estado = secciones.groupby('ENTIDAD')['POBTOT'].sum().to_dict()
+                    asignacion_hare = repartir_distritos_hare(
+                        poblacion_estados=poblacion_por_estado,
+                        n_distritos=mr_seats_final,
+                        piso_constitucional=2
+                    )
+                    
+                    # Validar y sumar
+                    totales_por_partido = {}
+                    for estado_id_str, partidos_dict in distribucion_estados.items():
+                        estado_id = int(estado_id_str)
+                        
+                        # Validar que el estado existe en la distribución Hare
+                        if estado_id not in asignacion_hare:
+                            raise HTTPException(
+                                status_code=400,
+                                detail=f"Estado {estado_id} no válido (rango: 1-32)"
+                            )
+                        
+                        # Validar que la suma de partidos = distritos asignados al estado
+                        distritos_esperados = asignacion_hare[estado_id]
+                        distritos_asignados = sum(partidos_dict.values())
+                        
+                        if distritos_asignados != distritos_esperados:
+                            raise HTTPException(
+                                status_code=400,
+                                detail=f"Estado {estado_id}: suma de distritos ({distritos_asignados}) != esperados ({distritos_esperados})"
+                            )
+                        
+                        # Sumar a totales
+                        for partido, distritos in partidos_dict.items():
+                            totales_por_partido[partido] = totales_por_partido.get(partido, 0) + distritos
+                    
+                    # Convertir a mr_distritos_manuales (para que la lógica existente lo procese)
+                    mr_distritos_manuales = json.dumps(totales_por_partido)
+                    print(f"[DEBUG] Distribución por estado convertida a MR manuales: {mr_distritos_manuales}")
+                    
+                except json.JSONDecodeError:
+                    raise HTTPException(status_code=400, detail="mr_distritos_por_estado debe ser un JSON válido")
+                except Exception as e:
+                    raise HTTPException(status_code=400, detail=f"Error procesando mr_distritos_por_estado: {str(e)}")
+            
+            # PRIORIDAD 2: Si hay MR manuales (o fueron convertidos desde mr_distritos_por_estado), usarlos
+            if mr_distritos_manuales:
+                print(f"[DEBUG] Usando MR manuales: {mr_distritos_manuales}")
+                try:
+                    mr_ganados_geograficos = json.loads(mr_distritos_manuales)
+                    
+                    # Validar que el total no exceda mr_seats_final
+                    total_mr_manuales = sum(mr_ganados_geograficos.values())
+                    if total_mr_manuales > mr_seats_final:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"La suma de MR manuales ({total_mr_manuales}) excede el total de escaños MR ({mr_seats_final})"
+                        )
+                    
+                    print(f"[DEBUG] MR manuales validados: {mr_ganados_geograficos} (total={total_mr_manuales}/{mr_seats_final})")
+                
+                except json.JSONDecodeError:
+                    raise HTTPException(status_code=400, detail="mr_distritos_manuales debe ser un JSON válido")
+            
+            # Si NO hay MR manuales, calcularlos automáticamente
+            else:
+                try:
+                    from redistritacion.modulos.reparto_distritos import repartir_distritos_hare
+                    from redistritacion.modulos.distritacion import cargar_secciones_ine
+                    from engine.calcular_eficiencia_real import calcular_eficiencia_partidos
+                    
+                    # PASO 1: Calcular eficiencias reales de los partidos en el año seleccionado
+                    print(f"[DEBUG] Calculando eficiencias históricas para {anio}...")
+                    eficiencias_por_partido = calcular_eficiencia_partidos(anio, usar_coaliciones=usar_coaliciones)
+                    print(f"[DEBUG] Eficiencias calculadas: {eficiencias_por_partido}")
+                    
+                    # PASO 2: Cargar secciones para población
+                    secciones = cargar_secciones_ine()
+                    poblacion_por_estado = secciones.groupby('ENTIDAD')['POBTOT'].sum().to_dict()
+                    
+                    # Repartir distritos usando método Hare
+                    asignacion_distritos = repartir_distritos_hare(
+                        poblacion_estados=poblacion_por_estado,
+                        n_distritos=mr_seats_final,
+                        piso_constitucional=2
+                    )
+                    
+                    print(f"[DEBUG] Asignación de distritos por estado: {asignacion_distritos}")
+                    
+                    # Cargar votos reales
+                    df_votos = pd.read_parquet(path_parquet)
+                    
+                    # Mapeo de nombres de estados
+                    estado_nombres = {
+                        1: 'AGUASCALIENTES', 2: 'BAJA CALIFORNIA', 3: 'BAJA CALIFORNIA SUR',
+                        4: 'CAMPECHE', 5: 'CHIAPAS', 6: 'CHIHUAHUA', 7: 'COAHUILA',
+                        8: 'COLIMA', 9: 'CIUDAD DE MEXICO', 10: 'DURANGO', 11: 'GUANAJUATO',
+                        12: 'GUERRERO', 13: 'HIDALGO', 14: 'JALISCO', 15: 'MEXICO',
+                        16: 'MICHOACAN', 17: 'MORELOS', 18: 'NAYARIT', 19: 'NUEVO LEON',
+                        20: 'OAXACA', 21: 'PUEBLA', 22: 'QUERETARO', 23: 'QUINTANA ROO',
+                        24: 'SAN LUIS POTOSI', 25: 'SINALOA', 26: 'SONORA', 27: 'TABASCO',
+                        28: 'TAMAULIPAS', 29: 'TLAXCALA', 30: 'VERACRUZ', 31: 'YUCATAN',
+                        32: 'ZACATECAS'
+                    }
+                    
+                    # Normalizar nombres
+                    df_votos['ENTIDAD_NOMBRE'] = df_votos['ENTIDAD'].str.strip().str.upper()
+                    
+                    # Calcular MR ganados por partido usando votos redistribuidos o reales
+                    mr_ganados_por_partido = {}
+                    
+                    # Obtener lista de partidos
+                    columnas_excluir = ['ENTIDAD', 'DISTRITO', 'TOTAL_BOLETAS', 'CI', 'ENTIDAD_NOMBRE']
+                    partidos_disponibles = [col for col in df_votos.columns if col not in columnas_excluir]
+                    
+                    # Calcular % nacional de cada partido (usar votos_redistribuidos si existe)
+                    if votos_redistribuidos:
+                        print(f"[DEBUG] Usando votos redistribuidos para geografía: {votos_redistribuidos}")
+                        porcentajes_partidos_dict = votos_redistribuidos
+                    else:
+                        # Calcular de los datos reales
+                        porcentajes_partidos_dict = {}
+                        for partido in partidos_disponibles:
+                            total_partido = df_votos[partido].sum()
+                            total_nacional = df_votos['TOTAL_BOLETAS'].sum()
+                            porcentajes_partidos_dict[partido] = (total_partido / total_nacional * 100) if total_nacional > 0 else 0
+                    
+                    print(f"[DEBUG] Porcentajes para redistritación geográfica: {porcentajes_partidos_dict}")
+                    
+                    # Por cada partido, calcular MR ganados por estado
+                    for partido in partidos_disponibles:
+                        pct_nacional = porcentajes_partidos_dict.get(partido, 0)
+                        
+                        if pct_nacional == 0:
+                            mr_ganados_por_partido[partido] = 0
+                            continue
+                        
+                        # Obtener eficiencia real del partido (histórica)
+                        eficiencia_partido = eficiencias_por_partido.get(partido, 1.0)
+                        print(f"[DEBUG] {partido}: usando eficiencia {eficiencia_partido:.3f}")
+                        
+                        total_mr_ganados = 0
+                        
+                        for entidad_id, nombre in estado_nombres.items():
+                            # Buscar datos del estado
+                            df_estado = df_votos[df_votos['ENTIDAD_NOMBRE'] == nombre]
+                            
+                            if len(df_estado) == 0:
+                                df_estado = df_votos[df_votos['ENTIDAD_NOMBRE'].str.contains(nombre.split()[0], na=False)]
+                            
+                            if len(df_estado) > 0:
+                                votos_partido = df_estado[partido].sum()
+                                votos_totales = df_estado['TOTAL_BOLETAS'].sum()
+                                pct_estado_real = (votos_partido / votos_totales * 100) if votos_totales > 0 else 0
+                                
+                                # Escalar proporcionalmente si hay redistribución
+                                if pct_nacional > 0:
+                                    # Factor de cambio nacional aplicado al estado
+                                    # Si a nivel nacional el partido pasó de X% real a pct_nacional, aplicar el mismo factor
+                                    df_temp_nacional = pd.read_parquet(f"data/computos_diputados_{anio}.parquet")
+                                    pct_real_nacional = (df_temp_nacional[partido].sum() / df_temp_nacional['TOTAL_BOLETAS'].sum() * 100) if df_temp_nacional['TOTAL_BOLETAS'].sum() > 0 else 0
+                                    
+                                    if pct_real_nacional > 0:
+                                        factor_escala = pct_nacional / pct_real_nacional
+                                        pct_estado = pct_estado_real * factor_escala
+                                    else:
+                                        pct_estado = pct_nacional
+                                else:
+                                    pct_estado = pct_estado_real
+                            else:
+                                pct_estado = pct_nacional
+                            
+                            distritos_totales = asignacion_distritos.get(entidad_id, 0)
+                            
+                            # Calcular distritos ganados con eficiencia REAL del partido
+                            distritos_ganados = int(distritos_totales * (pct_estado / 100) * eficiencia_partido)
+                            distritos_ganados = min(distritos_ganados, distritos_totales)
+                            
+                            total_mr_ganados += distritos_ganados
+                        
+                        mr_ganados_por_partido[partido] = total_mr_ganados
+                        print(f"[DEBUG] {partido}: {total_mr_ganados} MR (de {mr_seats_final} total)")
+                    
+                    mr_ganados_geograficos = mr_ganados_por_partido
+                    print(f"[DEBUG] MR ganados con redistritación geográfica: {mr_ganados_geograficos}")
+                    print(f"[DEBUG] Total MR asignados: {sum(mr_ganados_geograficos.values())} de {mr_seats_final}")
+                    
+                except Exception as e:
+                    print(f"[ERROR] Error en redistritación geográfica automática: {e}")
+                    import traceback
+                    print(traceback.format_exc())
+                    # Continuar sin redistritación geográfica
+                    mr_ganados_geograficos = None
         
         resultado = procesar_diputados_v2(
             path_parquet=path_parquet,
@@ -1425,6 +2769,7 @@ async def procesar_diputados(
             divisor_method=divisor_method_final,
             usar_coaliciones=usar_coaliciones,
             votos_redistribuidos=votos_redistribuidos,
+            mr_ganados_geograficos=mr_ganados_geograficos,  # ← NUEVO: MR calculados con redistritación geográfica
             seed=seed_value,  # ← NUEVO: Seed fijo para reproducibilidad
             print_debug=True
         )
@@ -1437,6 +2782,118 @@ async def procesar_diputados(
         
         # Transformar al formato esperado por el frontend con colores
         resultado_formateado = transformar_resultado_a_formato_frontend(resultado, plan)
+
+        # ========================================================================
+        # DETECCIÓN AUTOMÁTICA DE MAYORÍAS (SIMPLE Y CALIFICADA)
+        # ========================================================================
+        try:
+            # Calcular total de escaños
+            total_escanos = sum(resultado.get('tot', {}).values())
+            mayoria_simple_umbral = total_escanos / 2  # 50%
+            mayoria_calificada_umbral = (total_escanos * 2) / 3  # 66.67%
+            
+            # Buscar mayorías por partido individual
+            mayorias_info = {
+                "mayoria_simple": {
+                    "partido": None,
+                    "escanos": 0,
+                    "coalicion": False
+                },
+                "mayoria_calificada": {
+                    "partido": None,
+                    "escanos": 0,
+                    "coalicion": False
+                }
+            }
+            
+            # Revisar partidos individuales
+            partidos_ordenados = sorted(
+                resultado.get('tot', {}).items(), 
+                key=lambda x: x[1], 
+                reverse=True
+            )
+            
+            for partido, escanos in partidos_ordenados:
+                # Mayoría calificada individual
+                if escanos >= mayoria_calificada_umbral and mayorias_info["mayoria_calificada"]["partido"] is None:
+                    mayorias_info["mayoria_calificada"]["partido"] = partido
+                    mayorias_info["mayoria_calificada"]["escanos"] = escanos
+                    mayorias_info["mayoria_calificada"]["coalicion"] = False
+                
+                # Mayoría simple individual
+                if escanos > mayoria_simple_umbral and mayorias_info["mayoria_simple"]["partido"] is None:
+                    mayorias_info["mayoria_simple"]["partido"] = partido
+                    mayorias_info["mayoria_simple"]["escanos"] = escanos
+                    mayorias_info["mayoria_simple"]["coalicion"] = False
+            
+            # Buscar mayorías de coalición (solo si no hay mayoría calificada individual)
+            # Revisar coaliciones típicas
+            coaliciones_posibles = [
+                # Coalición 4T (MORENA + PT + PVEM)
+                {
+                    "nombre": "MORENA+PT+PVEM",
+                    "partidos": ["MORENA", "PT", "PVEM"]
+                },
+                # Coalición Va por México (PAN + PRI + PRD)
+                {
+                    "nombre": "PAN+PRI+PRD",
+                    "partidos": ["PAN", "PRI", "PRD"]
+                },
+                # MORENA + aliados
+                {
+                    "nombre": "MORENA+PT",
+                    "partidos": ["MORENA", "PT"]
+                }
+            ]
+            
+            for coalicion in coaliciones_posibles:
+                escanos_coalicion = sum(
+                    resultado.get('tot', {}).get(p, 0) 
+                    for p in coalicion["partidos"]
+                )
+                
+                # Mayoría calificada de coalición
+                if (escanos_coalicion >= mayoria_calificada_umbral and 
+                    mayorias_info["mayoria_calificada"]["partido"] is None):
+                    mayorias_info["mayoria_calificada"]["partido"] = coalicion["nombre"]
+                    mayorias_info["mayoria_calificada"]["escanos"] = escanos_coalicion
+                    mayorias_info["mayoria_calificada"]["coalicion"] = True
+                
+                # Mayoría simple de coalición (solo si no hay simple individual)
+                if (escanos_coalicion > mayoria_simple_umbral and 
+                    mayorias_info["mayoria_simple"]["partido"] is None):
+                    mayorias_info["mayoria_simple"]["partido"] = coalicion["nombre"]
+                    mayorias_info["mayoria_simple"]["escanos"] = escanos_coalicion
+                    mayorias_info["mayoria_simple"]["coalicion"] = True
+            
+            # Agregar información al resultado
+            resultado_formateado["mayorias"] = {
+                "total_escanos": total_escanos,
+                "mayoria_simple": {
+                    "umbral": int(mayoria_simple_umbral) + 1,  # +1 porque necesita más del 50%
+                    "alcanzada": mayorias_info["mayoria_simple"]["partido"] is not None,
+                    "partido": mayorias_info["mayoria_simple"]["partido"],
+                    "escanos": mayorias_info["mayoria_simple"]["escanos"],
+                    "es_coalicion": mayorias_info["mayoria_simple"]["coalicion"]
+                },
+                "mayoria_calificada": {
+                    "umbral": int(mayoria_calificada_umbral) + 1,  # Redondear hacia arriba
+                    "alcanzada": mayorias_info["mayoria_calificada"]["partido"] is not None,
+                    "partido": mayorias_info["mayoria_calificada"]["partido"],
+                    "escanos": mayorias_info["mayoria_calificada"]["escanos"],
+                    "es_coalicion": mayorias_info["mayoria_calificada"]["coalicion"]
+                }
+            }
+            
+        except Exception as e_mayorias:
+            print(f"[WARN] No se pudo calcular mayorías: {e_mayorias}")
+            # Si falla, agregar info básica
+            resultado_formateado["mayorias"] = {
+                "error": str(e_mayorias),
+                "mayoria_simple": {"alcanzada": False},
+                "mayoria_calificada": {"alcanzada": False}
+            }
+        # ========================================================================
 
         # Intentar añadir trazas de redistribución (tmp_parquet, votos_redistribuidos, scaled_info)
         try:
@@ -1781,7 +3238,8 @@ async def obtener_seat_chart(
 def normalizar_plan(plan: str) -> str:
     """
     Normaliza los nombres de planes para compatibilidad con frontend
-    Frontend puede enviar: A, B, C, vigente, plan_a, plan_c, personalizado
+    Frontend puede enviar: A, B, C, vigente, plan_a, plan_c, personalizado,
+    300_100_con_topes, 300_100_sin_topes, 200_200_sin_topes
     """
     plan_lower = plan.lower().strip()
     
@@ -1793,7 +3251,11 @@ def normalizar_plan(plan: str) -> str:
         'vigente': 'vigente',
         'plan_a': 'plan_a',
         'plan_c': 'plan_c', 
-        'personalizado': 'personalizado'
+        'personalizado': 'personalizado',
+        # Nuevos escenarios con redistritación geográfica
+        '300_100_con_topes': '300_100_con_topes',
+        '300_100_sin_topes': '300_100_sin_topes',
+        '200_200_sin_topes': '200_200_sin_topes',
     }
     
     resultado = mapeo_planes.get(plan_lower, plan_lower)

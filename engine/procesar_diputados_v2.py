@@ -1043,10 +1043,17 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                           aplicar_topes: bool = True,  # Nuevo: controlar si se aplican topes constitucionales
                           usar_coaliciones: bool = True,
                           votos_redistribuidos: Optional[Dict] = None,
+                          mr_ganados_geograficos: Optional[Dict[str, int]] = None,  # NUEVO: MR por partido con redistritación geográfica
                           seed: Optional[int] = None,
                           print_debug: bool = False) -> Dict:
     """
     Procesador principal de diputados versión 2
+    
+    Args:
+        ...
+        mr_ganados_geograficos: Dict opcional con MR ganados por cada partido usando redistritación geográfica real.
+                                Si se proporciona, se usa en lugar del cálculo proporcional simple.
+                                Formato: {'MORENA': 153, 'PAN': 45, ...}
     """
     try:
         # Seguridad: evitar comportamiento silencioso con un default no explícito.
@@ -1251,7 +1258,21 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     _maybe_log(f"Total votos después de redistribución: {total_redistribuido}", 'debug', print_debug)
         
     # Calcular MR por distrito considerando coaliciones
-        if coaliciones_detectadas and usar_coaliciones:
+        # NUEVO: Si se proporciona mr_ganados_geograficos, usar esos valores directamente
+        # (evita el cálculo distrito por distrito usando redistritación geográfica real)
+        if mr_ganados_geograficos is not None:
+            if print_debug:
+                _maybe_log("Usando MR geográficos proporcionados (redistritación geográfica real)", 'info', print_debug)
+                _maybe_log(f"MR geográficos: {mr_ganados_geograficos}", 'debug', print_debug)
+            
+            # Asegurar que todos los partidos base están representados
+            mr_aligned = {p: int(mr_ganados_geograficos.get(p, 0)) for p in partidos_base}
+            indep_mr = 0
+            
+            total_mr_geograficos = sum(mr_aligned.values())
+            if print_debug:
+                _maybe_log(f"Total MR geográficos: {total_mr_geograficos}", 'debug', print_debug)
+        elif coaliciones_detectadas and usar_coaliciones:
             if print_debug:
                 _maybe_log("Calculando MR con coaliciones y siglado", 'debug', print_debug)
             

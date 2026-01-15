@@ -1,0 +1,20 @@
+================================================================================
+COMPARATIVA DE MAYORÍA SIMPLE
+Partido: MORENA
+Tipo: Mayoría Simple (>50%)
+Fecha: 2026-01-15 13:11
+================================================================================
+
+SENADO (>64 senadores de 128)
+--------------------------------------------------------------------------------
+                                         Plan  Total Senadores  Necesarios (>50%)  Obtenidos   % Votos Necesario Estados Ganados  Senadores MR  Senadores RP Viable
+Sistema Vigente (64 MR + 32 PM + 32 RP = 128)              128                 65         72                 38%           30/32            60            12      ✅
+                          Plan A (96 RP puro)               96                 49          0 51.041666666666664%            0/32             0            49      ✅
+
+DIPUTADOS (>200 diputados de 400)
+--------------------------------------------------------------------------------
+                                       Plan  MR Total  RP Total  Total Diputados  Necesarios (>50%) Con Topes Viable
+Sistema Vigente (300 MR + 100 RP con topes)       300       100              400                201        Sí   ✅ Sí
+                  300 MR + 100 RP sin topes       300       100              400                201        No   ✅ Sí
+             Plan 200-200 (200 MR + 200 RP)       200       200              400                201        No   ✅ Sí
+             Plan 240-160 (240 MR + 160 RP)       240       160              400                201        No   ✅ Sí
