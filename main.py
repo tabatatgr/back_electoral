@@ -1057,7 +1057,13 @@ async def calcular_mayoria_forzada_endpoint(
             )
         
         # Determinar configuración del plan
-        if plan == "vigente" or plan == "plan_a" or plan == "plan_c":
+        # Si el usuario proporcionó parámetros personalizados, usarlos
+        if escanos_totales is not None and mr_seats is not None and rp_seats is not None:
+            # Configuración personalizada del usuario
+            mr_total = mr_seats
+            rp_total = rp_seats
+            print(f"[DEBUG] Usando configuración personalizada: mr={mr_total}, rp={rp_total}, total={mr_total+rp_total}")
+        elif plan == "vigente" or plan == "plan_a" or plan == "plan_c":
             mr_total = 300
             rp_total = 100
         elif plan == "300_100_con_topes":
@@ -1132,8 +1138,15 @@ async def calcular_mayoria_forzada_endpoint(
             sistema=sistema
         )
         
+        # Extraer el contenido del JSONResponse
+        if hasattr(resultado_completo, 'body'):
+            import json
+            resultado_data = json.loads(resultado_completo.body.decode())
+        else:
+            resultado_data = resultado_completo
+        
         # PASO 3: Extraer datos del partido objetivo
-        seat_chart = resultado_completo['mayorias']['seat_chart']
+        seat_chart = resultado_data['mayorias']['seat_chart']
         partido_data = next((p for p in seat_chart if p['party'] == partido), None)
         
         if not partido_data:
@@ -1160,7 +1173,7 @@ async def calcular_mayoria_forzada_endpoint(
             "seat_chart": seat_chart,
             
             # 🔑 CRÍTICO: KPIs recalculados
-            "kpis": resultado_completo['mayorias'].get('kpis', {}),
+            "kpis": resultado_data['mayorias'].get('kpis', {}),
             
             # Información adicional
             "advertencias": config.get('advertencias', []),
