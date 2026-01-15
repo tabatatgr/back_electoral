@@ -16,17 +16,24 @@ from typing import Dict, List, Tuple, Optional
 from collections import defaultdict
 
 
-def cargar_secciones_ine(path: str = 'redistritacion/data/INE_SECCION_2020.csv') -> pd.DataFrame:
+def cargar_secciones_ine(path: str = 'redistritacion/data/INE_SECCION_2020.parquet') -> pd.DataFrame:
     """
     Carga archivo de secciones del INE Censo 2020.
     
     Args:
-        path: Ruta al archivo CSV
+        path: Ruta al archivo Parquet (más eficiente que CSV)
     
     Returns:
         DataFrame con columnas: ID, ENTIDAD, DISTRITO, MUNICIPIO, SECCION, POBTOT
     """
-    df = pd.read_csv(path, encoding='latin-1')
+    # Usar parquet si existe, sino fallback a CSV
+    import os
+    if os.path.exists(path):
+        df = pd.read_parquet(path)
+    else:
+        # Fallback a CSV si no existe parquet
+        csv_path = path.replace('.parquet', '.csv')
+        df = pd.read_csv(csv_path, encoding='latin-1')
     
     # Seleccionar columnas relevantes
     columnas = ['ID', 'ENTIDAD', 'DISTRITO', 'MUNICIPIO', 'SECCION', 'POBTOT']
