@@ -1037,7 +1037,6 @@ async def calcular_mayoria_forzada_endpoint(
     """
     try:
         from engine.calcular_mayoria_forzada_v2 import calcular_mayoria_forzada
-        from engine.procesar_diputados import procesar_diputados
         import json
         
         # Validar tipo_mayoria
@@ -1106,12 +1105,16 @@ async def calcular_mayoria_forzada_endpoint(
             }
         
         # PASO 2: EJECUTAR sistema electoral completo con votos ajustados
-        resultado_completo = procesar_diputados(
+        # Convertir votos_custom a JSON string si es dict
+        votos_custom_str = json.dumps(config['votos_custom']) if isinstance(config.get('votos_custom'), dict) else config.get('votos_custom')
+        mr_distritos_str = json.dumps(config.get('mr_distritos_manuales')) if isinstance(config.get('mr_distritos_manuales'), dict) else config.get('mr_distritos_manuales')
+        
+        resultado_completo = await procesar_diputados(
             anio=anio,
             plan=plan,
             aplicar_topes=aplicar_topes,
-            votos_custom=config['votos_custom'],  # ← Votos ajustados
-            mr_distritos_manuales=config.get('mr_distritos_manuales')  # ← MR manual si existe
+            votos_custom=votos_custom_str,  # ← Votos ajustados (JSON string)
+            mr_distritos_manuales=mr_distritos_str  # ← MR manual si existe (JSON string)
         )
         
         # PASO 3: Extraer datos del partido objetivo
