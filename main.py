@@ -2704,7 +2704,6 @@ async def procesar_diputados(
         # APLICAR REDISTRITACIÓN GEOGRÁFICA si está activada
         mr_ganados_geograficos = None
         if redistritacion_geografica and mr_seats_final and mr_seats_final > 0:
-            print(f"[DEBUG] ===== APLICANDO REDISTRITACIÓN GEOGRÁFICA =====")
             
             # PRIORIDAD 1: Si hay distribución por estado, convertirla a MR manuales totales
             if mr_distritos_por_estado:

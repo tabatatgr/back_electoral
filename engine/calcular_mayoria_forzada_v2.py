@@ -258,12 +258,55 @@ def calcular_mayoria_forzada(
             mr_objetivo = 130
             rp_esperado = 72
         else:
-            # Estimación genérica
-            pct_votos_necesario = 45.0
-            mr_objetivo = int(mr_total * 0.45 * 1.1)  # 45% con +10% eficiencia
-            rp_esperado = objetivo - mr_objetivo
+            # Estimación genérica basada en umbral (50% + margen)
+            # Para cualquier configuración personalizada
+            umbral_mayorias = (total_escanos // 2) + 1  # Mayoría simple = 50% + 1
+            
+            # Calcular % necesario considerando:
+            # 1. Sistema mixto: MR tienen eficiencia geográfica variable
+            # 2. RP son proporcionales
+            # 3. Topes del 8% si aplican
+            
+            if aplicar_topes:
+                # Con topes del 8%: máximo 58% de escaños
+                max_escanos_posible = int(total_escanos * 0.58)
+                
+                if umbral_mayorias > max_escanos_posible:
+                    # Imposible alcanzar mayoría con topes
+                    return {
+                        "viable": False,
+                        "razon": f"Mayoría simple ({umbral_mayorias} escaños) IMPOSIBLE con topes del 8%. "
+                                f"Máximo alcanzable: {max_escanos_posible} escaños.",
+                        "sugerencia": "Desactivar topes o aumentar escaños totales",
+                        "max_posible": max_escanos_posible
+                    }
+                
+                # Calcular % necesario: necesita alcanzar el umbral respetando tope
+                # Con eficiencia 1.1 en MR, aproximadamente:
+                # escaños_totales = (pct * mr_total * 1.1) + (pct * rp_total)
+                # umbral = pct * (mr_total * 1.1 + rp_total)
+                # pct = umbral / (mr_total * 1.1 + rp_total)
+                
+                pct_votos_necesario = (umbral_mayorias / (mr_total * 1.1 + rp_total)) * 100
+                pct_votos_necesario = min(pct_votos_necesario, 50.0)  # Cap al 50% (tope efectivo)
+                
+            else:
+                # Sin topes: cálculo más simple
+                # pct = umbral / (mr_total * 1.1 + rp_total)
+                pct_votos_necesario = (umbral_mayorias / (mr_total * 1.1 + rp_total)) * 100
+            
+            # Estimar distribución MR/RP
+            mr_objetivo = int(mr_total * (pct_votos_necesario / 100) * 1.1)  # Con eficiencia
+            mr_objetivo = min(mr_objetivo, mr_total)  # No exceder total MR
+            rp_esperado = umbral_mayorias - mr_objetivo
+            
+            print(f"[DEBUG] Mayoría forzada genérica: total={total_escanos}, umbral={umbral_mayorias}")
+            print(f"[DEBUG] Estimación: {pct_votos_necesario:.1f}% votos → {mr_objetivo} MR + {rp_esperado} RP = {mr_objetivo + rp_esperado} escaños")
+            
     else:
-        # Mayoría calificada (solo sin topes)
+        # Mayoría calificada (solo sin topes, ya validado arriba)
+        umbral_calificada = int(total_escanos * 2 / 3) + 1  # 66.67% + 1
+        
         if mr_total == 300 and rp_total == 100:
             pct_votos_necesario = 62.5
             mr_objetivo = 206
@@ -273,10 +316,18 @@ def calcular_mayoria_forzada(
             mr_objetivo = 140
             rp_esperado = 128
         else:
-            # Estimación genérica
-            pct_votos_necesario = 63.0
-            mr_objetivo = int(mr_total * 0.63 * 1.1)
-            rp_esperado = objetivo - mr_objetivo
+            # Estimación genérica para mayoría calificada
+            # Requiere ~66.67% de escaños
+            # Con eficiencia 1.1 en MR:
+            # pct = umbral / (mr_total * 1.1 + rp_total)
+            
+            pct_votos_necesario = (umbral_calificada / (mr_total * 1.1 + rp_total)) * 100
+            mr_objetivo = int(mr_total * (pct_votos_necesario / 100) * 1.1)
+            mr_objetivo = min(mr_objetivo, mr_total)
+            rp_esperado = umbral_calificada - mr_objetivo
+            
+            print(f"[DEBUG] Mayoría calificada genérica: total={total_escanos}, umbral={umbral_calificada}")
+            print(f"[DEBUG] Estimación: {pct_votos_necesario:.1f}% votos → {mr_objetivo} MR + {rp_esperado} RP = {mr_objetivo + rp_esperado} escaños")
     
     # 3. GENERAR distribución realista de MR
     mr_distritos = calcular_distritos_mr_realistas(
