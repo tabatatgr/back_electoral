@@ -2542,10 +2542,19 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                                 # Necesitamos quitar: buscar estado donde este partido tiene MR asignados
                                 estados_con_mr = [e for e in mr_por_estado_partido if mr_por_estado_partido[e][partido] > 0]
                                 if not estados_con_mr:
+                                    if print_debug:
+                                        _maybe_log(f"[mr_por_estado] ⚠️  No hay estados con MR>0 para quitar de {partido}", 'warn', print_debug)
                                     break  # No hay de dónde quitar
-                                estado_a_ajustar = estados_con_mr[0]  # Tomar el primero
-                                mr_por_estado_partido[estado_a_ajustar][partido] -= 1
-                                diferencia_partido += 1
+                                # Elegir el estado con MR menor (para distribuir equitativamente)
+                                estado_a_ajustar = min(estados_con_mr, key=lambda e: mr_por_estado_partido[e][partido])
+                                # VALIDACIÓN: Asegurar que no se vuelva negativo
+                                if mr_por_estado_partido[estado_a_ajustar][partido] > 0:
+                                    mr_por_estado_partido[estado_a_ajustar][partido] -= 1
+                                    diferencia_partido += 1
+                                else:
+                                    if print_debug:
+                                        _maybe_log(f"[mr_por_estado] ⚠️  Intento de restar MR de {partido} en {estado_a_ajustar} con valor {mr_por_estado_partido[estado_a_ajustar][partido]}", 'warn', print_debug)
+                                    break  # Evitar valores negativos
                     
                     if print_debug:
                         _maybe_log(f"[mr_por_estado] Distribución calculada con MR finales", 'debug', print_debug)

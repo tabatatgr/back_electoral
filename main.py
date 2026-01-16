@@ -2322,6 +2322,8 @@ async def procesar_diputados(
             partidos_fijos = body_obj.get('partidos_fijos', partidos_fijos)
             overrides_pool = body_obj.get('overrides_pool', overrides_pool)
             porcentajes_partidos = body_obj.get('porcentajes_partidos', porcentajes_partidos)
+            mr_distritos_manuales = body_obj.get('mr_distritos_manuales', mr_distritos_manuales)  # ← FIX CRÍTICO
+            mr_distritos_por_estado = body_obj.get('mr_distritos_por_estado', mr_distritos_por_estado)  # ← FIX CRÍTICO
             # Soporte para payloads 'desnudos' como {"PRD":90, "PAN":5, ...}
             # Detectar si el body contiene solo claves de partidos en mayúsculas y valores numéricos
             try:
@@ -2358,6 +2360,8 @@ async def procesar_diputados(
         print(f"[DEBUG] - mr_seats: {mr_seats}")
         print(f"[DEBUG] - rp_seats: {rp_seats}")
         print(f"[DEBUG] - total_distritos: {total_distritos}")  # ← NUEVO
+        print(f"[DEBUG] 🎚️ mr_distritos_manuales (inicial): {mr_distritos_manuales[:100] if isinstance(mr_distritos_manuales, str) and mr_distritos_manuales else mr_distritos_manuales}")
+        print(f"[DEBUG] 🗺️ mr_distritos_por_estado (inicial): {mr_distritos_por_estado[:100] if isinstance(mr_distritos_por_estado, str) and mr_distritos_por_estado else mr_distritos_por_estado}")
 
         # FORZAR redistritación geográfica SIEMPRE activa
         # Esto garantiza que los MR se calculen correctamente en todos los casos
@@ -2942,7 +2946,7 @@ async def procesar_diputados(
             
             # PRIORIDAD 2: Si hay MR manuales (o fueron convertidos desde mr_distritos_por_estado), usarlos
             if mr_distritos_manuales:
-                print(f"[DEBUG] Usando MR manuales: {mr_distritos_manuales}")
+                print(f"[DEBUG] 🎯 mr_distritos_manuales RECIBIDO (tipo: {type(mr_distritos_manuales)}): {mr_distritos_manuales[:200] if isinstance(mr_distritos_manuales, str) else mr_distritos_manuales}")
                 try:
                     mr_ganados_geograficos = json.loads(mr_distritos_manuales)
                     
@@ -2954,13 +2958,14 @@ async def procesar_diputados(
                             detail=f"La suma de MR manuales ({total_mr_manuales}) excede el total de escaños MR ({mr_seats_final})"
                         )
                     
-                    print(f"[DEBUG] MR manuales validados: {mr_ganados_geograficos} (total={total_mr_manuales}/{mr_seats_final})")
+                    print(f"[DEBUG] ✅ MR manuales validados: {mr_ganados_geograficos} (total={total_mr_manuales}/{mr_seats_final})")
                 
                 except json.JSONDecodeError:
                     raise HTTPException(status_code=400, detail="mr_distritos_manuales debe ser un JSON válido")
             
             # Si NO hay MR manuales, calcularlos automáticamente
             else:
+                print(f"[DEBUG] ❌ NO se recibieron MR manuales, calculando automáticamente...")
                 try:
                     from redistritacion.modulos.reparto_distritos import repartir_distritos_hare
                     from redistritacion.modulos.distritacion import cargar_secciones_ine
