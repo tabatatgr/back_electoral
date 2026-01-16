@@ -1313,14 +1313,19 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     if estado_id in asignacion_distritos:
                         mr_por_estado_raw[nombre_estado] = {p: 0 for p in partidos_base}
                 
-                # Distribuir MR de cada partido proporcionalmente por estado
+                # Distribuir MR de cada partido proporcionalmente por estado usando POBLACIÓN
+                # NO usar total_mr_a_distribuir porque da 0 para partidos con pocos MR
                 import math
+                
+                # Calcular total de población para normalizar
+                poblacion_total = sum(poblacion_por_estado.values())
+                
                 for partido in partidos_base:
                     mr_partido_total = mr_aligned.get(partido, 0)
                     if mr_partido_total == 0:
                         continue
                     
-                    # Calcular distribución proporcional
+                    # Calcular distribución proporcional USANDO POBLACIÓN DEL ESTADO
                     mr_asignados = 0
                     residuos = []
                     
@@ -1328,8 +1333,10 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                         if estado_id not in asignacion_distritos:
                             continue
                         
-                        distritos_estado = asignacion_distritos[estado_id]
-                        proporcion = (mr_partido_total / total_mr_a_distribuir) * distritos_estado if total_mr_a_distribuir > 0 else 0
+                        # Proporción basada en POBLACIÓN del estado (no en total de MR)
+                        poblacion_estado = poblacion_por_estado.get(estado_id, 0)
+                        proporcion_poblacional = poblacion_estado / poblacion_total if poblacion_total > 0 else 0
+                        proporcion = mr_partido_total * proporcion_poblacional
                         
                         # Asignar parte entera
                         mr_floor = math.floor(proporcion)
@@ -1338,7 +1345,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                         
                         # Guardar residuo para método Hare
                         residuo = proporcion - mr_floor
-                        residuos.append((residuo, nombre_estado))
+                        residuos.append((residuo, nombre_estado, estado_id))
                     
                     # Asignar MR restantes usando método Hare (mayores residuos)
                     # VALIDACIÓN: solo asignar si el estado tiene capacidad disponible
@@ -1352,20 +1359,18 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                         # Buscar un estado con capacidad disponible
                         asignado = False
                         for j in range(i, len(residuos)):
-                            _, nombre_estado = residuos[j]
-                            estado_id_lookup = [k for k, v in estado_nombres.items() if v == nombre_estado]
-                            if estado_id_lookup:
-                                max_distritos = asignacion_distritos.get(estado_id_lookup[0], 0)
-                                total_actual = sum(mr_por_estado_raw[nombre_estado].values())
-                                
-                                # Solo asignar si hay capacidad
-                                if total_actual < max_distritos:
-                                    mr_por_estado_raw[nombre_estado][partido] += 1
-                                    asignado = True
-                                    # Mover este estado al final para no volver a usarlo de inmediato
-                                    if j > i:
-                                        residuos[i], residuos[j] = residuos[j], residuos[i]
-                                    break
+                            _, nombre_estado, estado_id = residuos[j]
+                            max_distritos = asignacion_distritos.get(estado_id, 0)
+                            total_actual = sum(mr_por_estado_raw[nombre_estado].values())
+                            
+                            # Solo asignar si hay capacidad
+                            if total_actual < max_distritos:
+                                mr_por_estado_raw[nombre_estado][partido] += 1
+                                asignado = True
+                                # Mover este estado al final para no volver a usarlo de inmediato
+                                if j > i:
+                                    residuos[i], residuos[j] = residuos[j], residuos[i]
+                                break
                         
                         if not asignado:
                             # No hay estados disponibles para este MR adicional
