@@ -2271,10 +2271,12 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
         mr_por_estado_partido = {}
         distritos_por_estado = {}  # Total de distritos por estado
         try:
-            # CASO 1: Si hay mr_ganados_geograficos, distribuir por estado usando Hare
-            if mr_ganados_geograficos is not None and mr_seats and mr_seats > 0:
+            # CASO 1: Si hay MR calculados (mr_dict), distribuir por estado usando Hare
+            # IMPORTANTE: Usar mr_dict (MR FINALES después de topes) no mr_ganados_geograficos (MR pre-topes)
+            if mr_dict and mr_seats and mr_seats > 0:
                 if print_debug:
-                    _maybe_log("[mr_por_estado] Usando mr_ganados_geograficos para distribución geográfica", 'debug', print_debug)
+                    _maybe_log("[mr_por_estado] Distribuyendo MR finales por estado usando Hare", 'debug', print_debug)
+                    _maybe_log(f"[mr_por_estado] MR finales a distribuir: {mr_dict}", 'debug', print_debug)
                 
                 try:
                     from redistritacion.modulos.reparto_distritos import repartir_distritos_hare
@@ -2304,45 +2306,77 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                         32: 'ZACATECAS'
                     }
                     
-                    # Calcular % nacional de cada partido (de votos o votos_redistribuidos)
-                    porcentajes_partidos = {}
-                    if votos_redistribuidos:
-                        # Usar porcentajes redistribuidos
-                        porcentajes_partidos = votos_redistribuidos
-                    else:
-                        # Calcular de votos reales
-                        total_votos = sum(votos_partido.values())
-                        if total_votos > 0:
-                            for p in partidos_base:
-                                porcentajes_partidos[p] = (votos_partido.get(p, 0) / total_votos) * 100
+                    # CRÍTICO: Usar mr_dict (MR finales) en lugar de mr_ganados_geograficos
+                    # mr_dict ya tiene los topes aplicados y es lo que se muestra en seat_chart
+                    total_mr_nacional = sum(mr_dict.values())
                     
-                    # Distribuir MR de cada partido por estado
+                    if print_debug:
+                        _maybe_log(f"[mr_por_estado] Total MR nacional (finales): {total_mr_nacional}", 'debug', print_debug)
+                    
+                    # PASO 1: Distribuir usando floor (parte entera) y acumular residuos por partido
+                    import math
+                    residuos_por_partido = {p: 0.0 for p in partidos_base}  # Acumular residuos
+                    
                     for estado_id, nombre_estado in estado_nombres.items():
                         distritos_totales = asignacion_distritos.get(estado_id, 0)
                         distritos_por_estado[nombre_estado] = distritos_totales
                         mr_por_estado_partido[nombre_estado] = {p: 0 for p in partidos_base}
                         
-                        # Calcular cuántos MR le tocan a cada partido en este estado
-                        # Proporcionalmente a sus MR nacionales y los distritos del estado
-                        total_mr_nacional = sum(mr_ganados_geograficos.values())
-                        
                         if total_mr_nacional > 0 and distritos_totales > 0:
                             for partido in partidos_base:
-                                mr_partido_nacional = mr_ganados_geograficos.get(partido, 0)
-                                # Proporción: (MR_partido / MR_total) * distritos_estado
-                                mr_partido_estado = int(round((mr_partido_nacional / total_mr_nacional) * distritos_totales))
-                                mr_por_estado_partido[nombre_estado][partido] = mr_partido_estado
+                                mr_partido_nacional = mr_dict.get(partido, 0)
+                                # Calcular proporción exacta
+                                proporcion_exacta = (mr_partido_nacional / total_mr_nacional) * distritos_totales
+                                # Asignar parte entera
+                                mr_asignado = math.floor(proporcion_exacta)
+                                mr_por_estado_partido[nombre_estado][partido] = mr_asignado
+                                # Acumular residuo para este partido
+                                residuos_por_partido[partido] += (proporcion_exacta - mr_asignado)
                             
-                            # Ajustar para que sume exactamente distritos_totales
+                            # Ajustar para que este estado sume exactamente distritos_totales
                             suma_actual = sum(mr_por_estado_partido[nombre_estado].values())
                             if suma_actual != distritos_totales:
-                                # Dar el residuo al partido con más MR nacional
-                                partido_mayor = max(partidos_base, key=lambda p: mr_ganados_geograficos.get(p, 0))
+                                # Método Hare: dar residuos a partidos con mayor fracción EN ESTE ESTADO
                                 diferencia = distritos_totales - suma_actual
-                                mr_por_estado_partido[nombre_estado][partido_mayor] += diferencia
+                                partidos_ordenados = sorted(
+                                    partidos_base,
+                                    key=lambda p: (mr_dict.get(p, 0) / total_mr_nacional * distritos_totales) % 1,
+                                    reverse=True
+                                )
+                                for i in range(abs(diferencia)):
+                                    mr_por_estado_partido[nombre_estado][partidos_ordenados[i]] += 1 if diferencia > 0 else -1
+                    
+                    # PASO 2: Verificar y ajustar totales por partido para que coincidan con mr_dict
+                    for partido in partidos_base:
+                        total_asignado = sum(mr_por_estado_partido[estado].get(partido, 0) for estado in mr_por_estado_partido)
+                        objetivo = mr_dict.get(partido, 0)
+                        diferencia_partido = objetivo - total_asignado
+                        
+                        if diferencia_partido != 0 and print_debug:
+                            _maybe_log(f"[mr_por_estado] Ajustando {partido}: {total_asignado} → {objetivo} (dif: {diferencia_partido:+d})", 'debug', print_debug)
+                        
+                        # Ajustar estado por estado hasta cuadrar
+                        while diferencia_partido != 0:
+                            # Ordenar estados por mayor residuo acumulado de este partido
+                            if diferencia_partido > 0:
+                                # Necesitamos agregar: buscar estado donde este partido tiene más peso proporcional
+                                estado_a_ajustar = max(
+                                    mr_por_estado_partido.keys(),
+                                    key=lambda e: (mr_dict.get(partido, 0) / total_mr_nacional * distritos_por_estado[e]) if total_mr_nacional > 0 else 0
+                                )
+                                mr_por_estado_partido[estado_a_ajustar][partido] += 1
+                                diferencia_partido -= 1
+                            else:
+                                # Necesitamos quitar: buscar estado donde este partido tiene MR asignados
+                                estados_con_mr = [e for e in mr_por_estado_partido if mr_por_estado_partido[e][partido] > 0]
+                                if not estados_con_mr:
+                                    break  # No hay de dónde quitar
+                                estado_a_ajustar = estados_con_mr[0]  # Tomar el primero
+                                mr_por_estado_partido[estado_a_ajustar][partido] -= 1
+                                diferencia_partido += 1
                     
                     if print_debug:
-                        _maybe_log(f"[mr_por_estado] Distribución calculada con mr_ganados_geograficos", 'debug', print_debug)
+                        _maybe_log(f"[mr_por_estado] Distribución calculada con MR finales", 'debug', print_debug)
                         _maybe_log(f"[mr_por_estado] Total distritos: {sum(distritos_por_estado.values())}", 'debug', print_debug)
                     
                 except Exception as e_geo:
