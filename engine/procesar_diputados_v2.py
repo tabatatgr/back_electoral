@@ -1272,6 +1272,118 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
             total_mr_geograficos = sum(mr_aligned.values())
             if print_debug:
                 _maybe_log(f"Total MR geográficos: {total_mr_geograficos}", 'debug', print_debug)
+            
+            # 🔥 CRÍTICO: Construir mr_por_estado_raw para distribución geográfica
+            # Cuando se usan mr_ganados_geograficos, necesitamos distribuirlos por estado
+            # para que la tabla de distritos muestre TODOS los partidos, no solo uno
+            mr_por_estado_raw = {}
+            try:
+                from redistritacion.modulos.reparto_distritos import repartir_distritos_hare
+                from redistritacion.modulos.distritacion import cargar_secciones_ine
+                
+                # Cargar población por estado
+                secciones = cargar_secciones_ine()
+                poblacion_por_estado = secciones.groupby('ENTIDAD')['POBTOT'].sum().to_dict()
+                
+                # Determinar total de distritos MR a distribuir
+                total_mr_a_distribuir = total_mr_geograficos if total_mr_geograficos > 0 else mr_seats
+                
+                # Repartir distritos usando Hare
+                asignacion_distritos = repartir_distritos_hare(
+                    poblacion_estados=poblacion_por_estado,
+                    n_distritos=total_mr_a_distribuir,
+                    piso_constitucional=2
+                )
+                
+                # Mapeo de IDs a nombres
+                estado_nombres = {
+                    1: 'AGUASCALIENTES', 2: 'BAJA CALIFORNIA', 3: 'BAJA CALIFORNIA SUR',
+                    4: 'CAMPECHE', 5: 'CHIAPAS', 6: 'CHIHUAHUA', 7: 'COAHUILA',
+                    8: 'COLIMA', 9: 'CIUDAD DE MEXICO', 10: 'DURANGO', 11: 'GUANAJUATO',
+                    12: 'GUERRERO', 13: 'HIDALGO', 14: 'JALISCO', 15: 'MEXICO',
+                    16: 'MICHOACAN', 17: 'MORELOS', 18: 'NAYARIT', 19: 'NUEVO LEON',
+                    20: 'OAXACA', 21: 'PUEBLA', 22: 'QUERETARO', 23: 'QUINTANA ROO',
+                    24: 'SAN LUIS POTOSI', 25: 'SINALOA', 26: 'SONORA', 27: 'TABASCO',
+                    28: 'TAMAULIPAS', 29: 'TLAXCALA', 30: 'VERACRUZ', 31: 'YUCATAN',
+                    32: 'ZACATECAS'
+                }
+                
+                # Inicializar estados
+                for estado_id, nombre_estado in estado_nombres.items():
+                    if estado_id in asignacion_distritos:
+                        mr_por_estado_raw[nombre_estado] = {p: 0 for p in partidos_base}
+                
+                # Distribuir MR de cada partido proporcionalmente por estado
+                import math
+                for partido in partidos_base:
+                    mr_partido_total = mr_aligned.get(partido, 0)
+                    if mr_partido_total == 0:
+                        continue
+                    
+                    # Calcular distribución proporcional
+                    mr_asignados = 0
+                    residuos = []
+                    
+                    for estado_id, nombre_estado in estado_nombres.items():
+                        if estado_id not in asignacion_distritos:
+                            continue
+                        
+                        distritos_estado = asignacion_distritos[estado_id]
+                        proporcion = (mr_partido_total / total_mr_a_distribuir) * distritos_estado if total_mr_a_distribuir > 0 else 0
+                        
+                        # Asignar parte entera
+                        mr_floor = math.floor(proporcion)
+                        mr_por_estado_raw[nombre_estado][partido] = mr_floor
+                        mr_asignados += mr_floor
+                        
+                        # Guardar residuo para método Hare
+                        residuo = proporcion - mr_floor
+                        residuos.append((residuo, nombre_estado))
+                    
+                    # Asignar MR restantes usando método Hare (mayores residuos)
+                    # VALIDACIÓN: solo asignar si el estado tiene capacidad disponible
+                    mr_faltantes = mr_partido_total - mr_asignados
+                    residuos.sort(reverse=True)
+                    
+                    for i in range(mr_faltantes):
+                        if i >= len(residuos):
+                            break
+                        
+                        # Buscar un estado con capacidad disponible
+                        asignado = False
+                        for j in range(i, len(residuos)):
+                            _, nombre_estado = residuos[j]
+                            estado_id_lookup = [k for k, v in estado_nombres.items() if v == nombre_estado]
+                            if estado_id_lookup:
+                                max_distritos = asignacion_distritos.get(estado_id_lookup[0], 0)
+                                total_actual = sum(mr_por_estado_raw[nombre_estado].values())
+                                
+                                # Solo asignar si hay capacidad
+                                if total_actual < max_distritos:
+                                    mr_por_estado_raw[nombre_estado][partido] += 1
+                                    asignado = True
+                                    # Mover este estado al final para no volver a usarlo de inmediato
+                                    if j > i:
+                                        residuos[i], residuos[j] = residuos[j], residuos[i]
+                                    break
+                        
+                        if not asignado:
+                            # No hay estados disponibles para este MR adicional
+                            if print_debug:
+                                _maybe_log(f"[mr_por_estado_raw] No se pudo asignar 1 MR de {partido} (sin capacidad)", 'warn', print_debug)
+                            break
+                
+                if print_debug:
+                    _maybe_log(f"[mr_por_estado_raw] Construido para {len(mr_por_estado_raw)} estados desde mr_ganados_geograficos", 'debug', print_debug)
+                    total_desglosado = sum(sum(partidos.values()) for partidos in mr_por_estado_raw.values())
+                    _maybe_log(f"[mr_por_estado_raw] Total desglosado: {total_desglosado}/{total_mr_geograficos}", 'debug', print_debug)
+                    
+            except Exception as e_geo:
+                if print_debug:
+                    _maybe_log(f"[mr_por_estado_raw] Error construyendo distribución geográfica: {e_geo}", 'warn', print_debug)
+                import traceback
+                traceback.print_exc()
+                mr_por_estado_raw = {}  # Dejar vacío y usar FALLBACK después
         elif coaliciones_detectadas and usar_coaliciones:
             if print_debug:
                 _maybe_log("Calculando MR con coaliciones y siglado", 'debug', print_debug)
