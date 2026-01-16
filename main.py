@@ -273,36 +273,80 @@ async def root():
     }
 
 @app.get("/data/initial")
-async def get_initial_data():
+async def get_initial_data(camara: str = "diputados"):
     """
-    Carga los datos iniciales por defecto: Diputados 2024 vigente
-    Este endpoint se usa para cargar los datos al inicializar el frontend
+    Carga los datos iniciales por defecto: 2024 vigente
+    
+    Parámetros:
+    - camara: "diputados" o "senadores" (default: "diputados")
+    
+    Devuelve datos completos incluyendo:
+    - seat_chart: Gráfico de escaños
+    - mr/rp/tot: Distribución de escaños por partido
+    - meta.mr_por_estado: Distribución geográfica de MR por estado
+    - meta.distritos_por_estado o meta.senadores_por_estado: Total por estado
     """
     try:
-        print("[INFO] Cargando datos iniciales: Diputados 2024 vigente")
+        camara_lower = camara.lower()
+        print(f"[INFO] Cargando datos iniciales: {camara_lower.capitalize()} 2024 vigente")
         
-        # Procesar datos vigentes de diputados 2024
-        resultado = await procesar_diputados(
-            anio=2024,
-            plan="vigente"
-        )
-        
-        # Agregar metadatos de configuración inicial
-        if hasattr(resultado, 'body'):
-            import json
-            data = json.loads(resultado.body.decode())
-        else:
-            data = resultado
+        if camara_lower == "diputados":
+            # Procesar datos vigentes de diputados 2024
+            resultado = await procesar_diputados(
+                anio=2024,
+                plan="vigente"
+            )
             
-        # Agregar información de configuración inicial
-        data["config_inicial"] = {
-            "anio": 2024,
-            "camara": "diputados", 
-            "plan": "vigente",
-            "descripcion": "Datos vigentes de la Cámara de Diputados 2024-2027",
-            "total_escanos": 500,
-            "fecha_carga": pd.Timestamp.now().isoformat()
-        }
+            # Agregar metadatos de configuración inicial
+            if hasattr(resultado, 'body'):
+                import json
+                data = json.loads(resultado.body.decode())
+            else:
+                data = resultado
+                
+            # Agregar información de configuración inicial
+            data["config_inicial"] = {
+                "anio": 2024,
+                "camara": "diputados", 
+                "plan": "vigente",
+                "descripcion": "Datos vigentes de la Cámara de Diputados 2024-2027",
+                "total_escanos": 500,
+                "mr_escanos": 300,
+                "rp_escanos": 200,
+                "fecha_carga": pd.Timestamp.now().isoformat()
+            }
+            
+        elif camara_lower == "senadores" or camara_lower == "senado":
+            # Procesar datos vigentes de senadores 2024
+            resultado = await procesar_senado(
+                anio=2024,
+                plan="vigente"
+            )
+            
+            # Agregar metadatos de configuración inicial
+            if hasattr(resultado, 'body'):
+                import json
+                data = json.loads(resultado.body.decode())
+            else:
+                data = resultado
+                
+            # Agregar información de configuración inicial
+            data["config_inicial"] = {
+                "anio": 2024,
+                "camara": "senadores", 
+                "plan": "vigente",
+                "descripcion": "Datos vigentes del Senado 2024-2030",
+                "total_escanos": 128,
+                "mr_escanos": 64,
+                "pm_escanos": 32,
+                "rp_escanos": 32,
+                "fecha_carga": pd.Timestamp.now().isoformat()
+            }
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cámara no válida: '{camara}'. Use 'diputados' o 'senadores'"
+            )
         
         # Agregar lista de partidos principales para el frontend
         if "resultados" in data and data["resultados"]:
@@ -322,11 +366,42 @@ async def get_initial_data():
                 reverse=True
             )
         
-        print(f"[INFO] Datos iniciales cargados exitosamente")
+        # VERIFICAR que los datos geográficos estén presentes
+        if "meta" in data:
+            if camara_lower == "diputados":
+                if "mr_por_estado" not in data["meta"]:
+                    print(f"[WARN] mr_por_estado NO presente en respuesta de diputados")
+                else:
+                    print(f"[INFO] ✅ mr_por_estado presente con {len(data['meta']['mr_por_estado'])} estados")
+                    
+                if "distritos_por_estado" not in data["meta"]:
+                    print(f"[WARN] distritos_por_estado NO presente en respuesta de diputados")
+                else:
+                    total_distritos = sum(data['meta']['distritos_por_estado'].values())
+                    print(f"[INFO] ✅ distritos_por_estado presente: {total_distritos} distritos totales")
+            elif camara_lower in ["senadores", "senado"]:
+                if "mr_por_estado" not in data["meta"]:
+                    print(f"[WARN] mr_por_estado NO presente en respuesta de senadores")
+                else:
+                    print(f"[INFO] ✅ mr_por_estado presente con {len(data['meta']['mr_por_estado'])} estados")
+                    
+                if "senadores_por_estado" not in data["meta"]:
+                    print(f"[WARN] senadores_por_estado NO presente en respuesta de senadores")
+                else:
+                    total_senadores = sum(data['meta']['senadores_por_estado'].values())
+                    print(f"[INFO] ✅ senadores_por_estado presente: {total_senadores} senadores totales")
+        else:
+            print(f"[WARN] 'meta' NO presente en respuesta")
+        
+        print(f"[INFO] Datos iniciales de {camara_lower} cargados exitosamente")
         return data
         
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[ERROR] Error cargando datos iniciales: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
         raise HTTPException(
             status_code=500, 
             detail=f"Error cargando datos iniciales: {str(e)}"
@@ -2063,6 +2138,7 @@ async def procesar_diputados(
     mr_seats: Optional[int] = None,
     pm_seats: Optional[int] = None,  # ← NUEVO: Escaños de primera minoría
     rp_seats: Optional[int] = None,
+    total_distritos: Optional[int] = None,  # ← NUEVO: Total de distritos electorales (default: 300)
     max_seats_per_party: Optional[int] = None,
     sobrerrepresentacion: Optional[float] = None,
     aplicar_topes: bool = True,  # ← NUEVO: Controlar si se aplican topes constitucionales
@@ -2236,6 +2312,7 @@ async def procesar_diputados(
             umbral = body_obj.get('umbral', umbral)
             mr_seats = body_obj.get('mr_seats', mr_seats)
             rp_seats = body_obj.get('rp_seats', rp_seats)
+            total_distritos = body_obj.get('total_distritos', total_distritos)  # ← NUEVO
             max_seats_per_party = body_obj.get('max_seats_per_party', max_seats_per_party)
             sobrerrepresentacion = body_obj.get('sobrerrepresentacion', sobrerrepresentacion)
             reparto_mode = body_obj.get('reparto_mode', reparto_mode)
@@ -2280,6 +2357,7 @@ async def procesar_diputados(
         print(f"[DEBUG] - sistema: {sistema}")
         print(f"[DEBUG] - mr_seats: {mr_seats}")
         print(f"[DEBUG] - rp_seats: {rp_seats}")
+        print(f"[DEBUG] - total_distritos: {total_distritos}")  # ← NUEVO
 
         # FORZAR redistritación geográfica SIEMPRE activa
         # Esto garantiza que los MR se calculen correctamente en todos los casos
@@ -2816,9 +2894,14 @@ async def procesar_diputados(
                     # Cargar distribución Hare real para validación
                     secciones = cargar_secciones_ine()
                     poblacion_por_estado = secciones.groupby('ENTIDAD')['POBTOT'].sum().to_dict()
+                    
+                    # Usar total_distritos si fue especificado, sino usar mr_seats_final
+                    n_distritos_param = total_distritos if total_distritos is not None else mr_seats_final
+                    print(f"[DEBUG] Distribución Hare con {n_distritos_param} distritos (total_distritos={total_distritos}, mr_seats={mr_seats_final})")
+                    
                     asignacion_hare = repartir_distritos_hare(
                         poblacion_estados=poblacion_por_estado,
-                        n_distritos=mr_seats_final,
+                        n_distritos=n_distritos_param,
                         piso_constitucional=2
                     )
                     
@@ -2892,10 +2975,14 @@ async def procesar_diputados(
                     secciones = cargar_secciones_ine()
                     poblacion_por_estado = secciones.groupby('ENTIDAD')['POBTOT'].sum().to_dict()
                     
+                    # Usar total_distritos si fue especificado, sino usar mr_seats_final
+                    n_distritos_param = total_distritos if total_distritos is not None else mr_seats_final
+                    print(f"[DEBUG] Redistritación geográfica con {n_distritos_param} distritos (total_distritos={total_distritos}, mr_seats={mr_seats_final})")
+                    
                     # Repartir distritos usando método Hare
                     asignacion_distritos = repartir_distritos_hare(
                         poblacion_estados=poblacion_por_estado,
-                        n_distritos=mr_seats_final,
+                        n_distritos=n_distritos_param,
                         piso_constitucional=2
                     )
                     
