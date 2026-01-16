@@ -1372,7 +1372,16 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
 
             # Calcular ganador por distrito
             mr_raw = {}
+            mr_por_estado_raw = {}  # 📍 Tracking geográfico: {estado: {partido: count}}
             distritos_procesados = 0
+            
+            # Helper para asignar MR tanto nacional como por estado
+            def asignar_mr_distrito(partido, estado):
+                """Incrementa contador MR nacional y por estado para un partido"""
+                mr_raw[partido] = mr_raw.get(partido, 0) + 1
+                if estado not in mr_por_estado_raw:
+                    mr_por_estado_raw[estado] = {p: 0 for p in partidos_base}
+                mr_por_estado_raw[estado][partido] = mr_por_estado_raw[estado].get(partido, 0) + 1
 
             # Construir lookup del dataframe original (antes de recomposición) para comprobar columnas de coalición por fila
             df_lookup = None
@@ -1456,7 +1465,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                         if nominadores_set == SHH and set(partidos_coalicion) == SHH and coalicion_ganadora in coaliciones_detectadas:
                             if ppn_gp:
                                 if ppn_gp in partidos_base:
-                                    mr_raw[ppn_gp] = mr_raw.get(ppn_gp, 0) + 1
+                                    asignar_mr_distrito(ppn_gp, entidad)
                                     distrito_procesado = True
                                     if print_debug:
                                         _maybe_log(f"{entidad}-{num_distrito}: SHH ganó -> acreditar a {ppn_gp}", 'info', print_debug)
@@ -1468,7 +1477,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                         if not distrito_procesado and nominadores_set == FCM and set(partidos_coalicion) == FCM and coalicion_ganadora in coaliciones_detectadas:
                             if ppn_gp:
                                 if ppn_gp in partidos_base:
-                                    mr_raw[ppn_gp] = mr_raw.get(ppn_gp, 0) + 1
+                                    asignar_mr_distrito(ppn_gp, entidad)
                                     distrito_procesado = True
                                     if print_debug:
                                         _maybe_log(f"{entidad}-{num_distrito}: FCM ganó -> acreditar a {ppn_gp}", 'info', print_debug)
@@ -1478,7 +1487,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                             solo = list(nominadores_set)[0]
                             if coalicion_ganadora == solo or (solo in partidos_base and coalicion_ganadora == solo):
                                 if solo in partidos_base:
-                                    mr_raw[solo] = mr_raw.get(solo, 0) + 1
+                                    asignar_mr_distrito(solo, entidad)
                                     distrito_procesado = True
                                     if print_debug:
                                         _maybe_log(f"{entidad}-{num_distrito}: único nominador {solo} y ganó -> acreditar a {solo}", 'info', print_debug)
@@ -1498,7 +1507,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                                 partido_ganador = norm_ascii_up(str(partido_ganador))
                                 # Solo acreditar ppn_gp si ganador es la coalición y ppn_gp pertenece a la coalición
                                 if partido_ganador in partidos_coalicion and partido_ganador in partidos_base:
-                                    mr_raw[partido_ganador] = mr_raw.get(partido_ganador, 0) + 1
+                                    asignar_mr_distrito(partido_ganador, entidad)
                                     distrito_procesado = True
                                     if print_debug:
                                         _maybe_log(f"{entidad}-{num_distrito}: acreditar a dominante {partido_ganador}", 'warn', print_debug)
@@ -1509,7 +1518,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                                 votos_coalicion = {p: float(distrito.get(p,0) or 0) for p in partidos_coalicion_list if p in partidos_base}
                                 if votos_coalicion:
                                     partido_fallback = max(votos_coalicion, key=votos_coalicion.get)
-                                    mr_raw[partido_fallback] = mr_raw.get(partido_fallback, 0) + 1
+                                    asignar_mr_distrito(partido_fallback, entidad)
                                     distrito_procesado = True
                                     if print_debug:
                                         _maybe_log(f"Distrito {entidad}-{num_distrito}: {coalicion_ganadora} -> {partido_fallback} (por votos coalición)", 'warn', print_debug)
@@ -1517,7 +1526,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                         # Aunque la suma ponderada sugiera una coalición, la columna de coalición
                         # no existía o no tenía votos en el parquet: tratar como partido individual
                         if coalicion_ganadora in partidos_base:
-                            mr_raw[coalicion_ganadora] = mr_raw.get(coalicion_ganadora, 0) + 1
+                            asignar_mr_distrito(coalicion_ganadora, entidad)
                             distrito_procesado = True
                             if print_debug and len(mr_raw) <= 5:
                                 _maybe_log(f"Distrito {entidad}-{num_distrito}: {coalicion_ganadora} (individual, sin columna de coalición)", 'debug', print_debug)
@@ -1526,14 +1535,14 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                             votos_ind = {p: float(distrito.get(p,0) or 0) for p in partidos_base}
                             if votos_ind:
                                 ganador_ind = max(votos_ind, key=votos_ind.get)
-                                mr_raw[ganador_ind] = mr_raw.get(ganador_ind, 0) + 1
+                                asignar_mr_distrito(ganador_ind, entidad)
                                 distrito_procesado = True
                                 if print_debug:
                                     _maybe_log(f"Distrito {entidad}-{num_distrito}: {ganador_ind} (fallback sin columna de coalición)", 'debug', print_debug)
                     else:
                         # Partido individual ganó directamente
                         if coalicion_ganadora in partidos_base:
-                            mr_raw[coalicion_ganadora] = mr_raw.get(coalicion_ganadora, 0) + 1
+                            asignar_mr_distrito(coalicion_ganadora, entidad)
                             distrito_procesado = True
                             if print_debug and len(mr_raw) <= 5:
                                 _maybe_log(f"Distrito {entidad}-{num_distrito}: {coalicion_ganadora} (individual)", 'debug', print_debug)
@@ -1548,7 +1557,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     
                     if votos_individuales:
                         ganador_individual = max(votos_individuales, key=votos_individuales.get)
-                        mr_raw[ganador_individual] = mr_raw.get(ganador_individual, 0) + 1
+                        asignar_mr_distrito(ganador_individual, entidad)
                         distrito_procesado = True
                         if print_debug:
                             _maybe_log(f"Distrito {entidad}-{num_distrito}: {ganador_individual} (ganador directo por votos parquet)", 'info', print_debug)
@@ -2267,13 +2276,36 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
         except Exception:
             pass
 
-        # 📊 NUEVO: Calcular distribución geográfica MR por estado y partido
+        # 📊 Desglosar MR FINALES por estado (para tabla geográfica del frontend)
+        # IMPORTANTE: Usar mr_por_estado_raw que ya capturó la lógica correcta de coaliciones
+        # durante el procesamiento de distritos (líneas 1370-1560)
         mr_por_estado_partido = {}
-        distritos_por_estado = {}  # Total de distritos por estado
+        distritos_por_estado = {}
+        
         try:
-            # CASO 1: Si hay MR calculados (mr_dict), distribuir por estado usando Hare
-            # IMPORTANTE: Usar mr_dict (MR FINALES después de topes) no mr_ganados_geograficos (MR pre-topes)
-            if mr_dict and mr_seats and mr_seats > 0:
+            # Usar el tracking geográfico que ya se construyó durante el cálculo de MR
+            if 'mr_por_estado_raw' in locals() and mr_por_estado_raw:
+                mr_por_estado_partido = mr_por_estado_raw.copy()
+                
+                # Calcular distritos por estado
+                if 'recomposed' in locals() and recomposed is not None and 'ENTIDAD' in recomposed.columns:
+                    for estado in recomposed['ENTIDAD'].unique():
+                        distritos_por_estado[estado] = len(recomposed[recomposed['ENTIDAD'] == estado])
+                
+                if print_debug:
+                    total_mr_desglosado = sum(sum(partidos.values()) for partidos in mr_por_estado_partido.values())
+                    total_mr_dict = sum(mr_dict.values()) if mr_dict else 0
+                    _maybe_log(f"[mr_por_estado] ✅ Desglosados {total_mr_desglosado}/{total_mr_dict} MR en {len(mr_por_estado_partido)} estados", 'debug', print_debug)
+                    
+                    # Validación: verificar que cada estado no exceda sus distritos
+                    for estado, partidos in mr_por_estado_partido.items():
+                        total_estado = sum(partidos.values())
+                        max_distritos = distritos_por_estado.get(estado, 0)
+                        if total_estado > max_distritos:
+                            _maybe_log(f"[mr_por_estado] ⚠️  {estado}: {total_estado} MR > {max_distritos} distritos!", 'error', print_debug)
+            
+            # FALLBACK: Si no hay mr_por_estado_raw, usar distribución proporcional pura
+            elif mr_dict and mr_seats and mr_seats > 0:
                 if print_debug:
                     _maybe_log("[mr_por_estado] Distribuyendo MR finales por estado usando Hare", 'debug', print_debug)
                     _maybe_log(f"[mr_por_estado] MR finales a distribuir: {mr_dict}", 'debug', print_debug)
@@ -2385,31 +2417,6 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     # Caer al método tradicional (distrito por distrito)
                     mr_por_estado_partido = {}
                     distritos_por_estado = {}
-            
-            # CASO 2: Método tradicional - calcular distrito por distrito desde recomposed
-            if not mr_por_estado_partido and 'recomposed' in locals() and recomposed is not None and 'ENTIDAD' in recomposed.columns:
-                if print_debug:
-                    _maybe_log("[mr_por_estado] Calculando distrito por distrito desde recomposed", 'debug', print_debug)
-                    
-                # Crear estructura: {estado: {partido: count}}
-                estados_unicos = recomposed['ENTIDAD'].unique()
-                
-                for estado in estados_unicos:
-                    mr_por_estado_partido[estado] = {p: 0 for p in partidos_base}
-                    df_estado = recomposed[recomposed['ENTIDAD'] == estado]
-                    
-                    # Contar total de distritos en este estado
-                    distritos_por_estado[estado] = len(df_estado)
-                    
-                    for _, distrito in df_estado.iterrows():
-                        # Determinar ganador del distrito
-                        votos_distrito = {}
-                        for partido in partidos_base:
-                            votos_distrito[partido] = float(distrito.get(partido, 0) or 0)
-                        
-                        if votos_distrito:
-                            ganador = max(votos_distrito, key=votos_distrito.get)
-                            mr_por_estado_partido[estado][ganador] += 1
             
             # Guardar en meta solo si hay datos
             if mr_por_estado_partido:

@@ -489,6 +489,34 @@ curl "http://localhost:8000/data/initial?camara=senadores" | jq '.meta.senadores
 ✅ **Backend listo**: Endpoint `/data/initial` devuelve datos completos para ambas cámaras  
 ✅ **Datos geográficos incluidos**: `mr_por_estado` + `distritos_por_estado`/`senadores_por_estado`  
 ✅ **Senado soportado**: Usar parámetro `?camara=senadores`  
-✅ **Validación automática**: Backend verifica y reporta datos presentes
+✅ **Validación automática**: Backend verifica y reporta datos presentes  
+✅ **Desglose geográfico verificado**: Test local confirma que funciona correctamente
+
+## ⚠️ IMPORTANTE: Interpretación de mr_por_estado
+
+El desglose geográfico (`mr_por_estado`) muestra **quién ganó DIRECTAMENTE** cada distrito/estado:
+
+```json
+{
+  "mr_por_estado": {
+    "AGUASCALIENTES": {
+      "MORENA": 0,  // ← Distritos ganados DIRECTAMENTE
+      "PAN": 3      // ← PAN ganó los 3 distritos
+    }
+  }
+}
+```
+
+**Diferencia con seat_chart/mr total**:
+- `mr_por_estado`: Ganadores DIRECTOS por distrito (geografía real)
+- `seat_chart.mr`: Incluye ajustes por coaliciones (escaños finales)
+
+**Ejemplo**: En 2024 vigente:
+- MORENA ganó **245 distritos directamente** → `mr_por_estado` muestra 245
+- PVEM tiene **58 MR** en seat_chart → porque ganó en coalición con MORENA
+- La tabla geográfica debe mostrar los **245 de MORENA** (realidad geográfica)
+- El seat_chart muestra los **58 de PVEM** (realidad legislativa)
+
+Ambos son correctos, solo muestran perspectivas diferentes del mismo resultado.
 
 **Próximo paso**: Frontend debe actualizar la llamada inicial para usar este endpoint y procesar los datos geográficos.

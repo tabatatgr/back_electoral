@@ -881,97 +881,209 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
             }
             seat_chart.append(seat_chart_item)
         
-        # 9) CALCULAR DISTRIBUCIÓN GEOGRÁFICA (mr_por_estado)
-        # Para senado: cada estado tiene 3 senadores (2 MR/PM + 1 PM normalmente)
-        # Distribuir los MR+PM (ssd) proporcionalmente entre los 32 estados
+        # 9) DESGLOSAR MR+PM FINALES POR ESTADO (para tabla geográfica del frontend)
+        # IMPORTANTE: Distribuir ssd (MR+PM finales con coaliciones) geográficamente
+        # No solo contar ganadores directos, sino distribuir los escaños FINALES
         
-        import math
         mr_por_estado = {}
         senadores_por_estado = {}
         
-        # Nombres de estados (mismo mapeo que diputados)
-        estado_nombres = {
-            1: 'AGUASCALIENTES', 2: 'BAJA CALIFORNIA', 3: 'BAJA CALIFORNIA SUR',
-            4: 'CAMPECHE', 5: 'CHIAPAS', 6: 'CHIHUAHUA', 7: 'COAHUILA',
-            8: 'COLIMA', 9: 'CIUDAD DE MEXICO', 10: 'DURANGO', 11: 'GUANAJUATO',
-            12: 'GUERRERO', 13: 'HIDALGO', 14: 'JALISCO', 15: 'MEXICO',
-            16: 'MICHOACAN', 17: 'MORELOS', 18: 'NAYARIT', 19: 'NUEVO LEON',
-            20: 'OAXACA', 21: 'PUEBLA', 22: 'QUERETARO', 23: 'QUINTANA ROO',
-            24: 'SAN LUIS POTOSI', 25: 'SINALOA', 26: 'SONORA', 27: 'TABASCO',
-            28: 'TAMAULIPAS', 29: 'TLAXCALA', 30: 'VERACRUZ', 31: 'YUCATAN',
-            32: 'ZACATECAS'
-        }
-        
-        # Total de MR+PM nacional
-        total_mr_nacional = sum(ssd.values())
-        
-        # En senado, cada estado tiene igual número de senadores (3 normalmente)
-        # Vamos a asumir 3 senadores por estado (96 total / 32 = 3)
-        senadores_por_estado_default = escanos_mr_total // 32  # Normalmente 3
-        
-        if total_mr_nacional > 0:
-            # PASO 1: Distribución con floor() y acumulación de residuos
-            for estado_id, nombre_estado in estado_nombres.items():
-                senadores_totales = senadores_por_estado_default  # 3 para senado típico
-                senadores_por_estado[nombre_estado] = senadores_totales
-                mr_por_estado[nombre_estado] = {p: 0 for p in partidos_base}
+        try:
+            # Si tenemos recomposed Y ssd, distribuir los senadores finales geográficamente
+            if 'recomposed' in locals() and recomposed is not None and 'ENTIDAD' in recomposed.columns and ssd:
+                print(f"[DEBUG] 📍 Distribuyendo senadores FINALES geográficamente: {ssd}")
                 
-                # Distribuir proporcionalmente
+                estados_unicos = recomposed['ENTIDAD'].unique()
+                
+                # PASO 1: Determinar ganadores directos por estado (1º y 2º lugar)
+                ganadores_por_estado = {}  # {estado: [(partido1, votos1), (partido2, votos2)]}
+                
+                for estado in estados_unicos:
+                    senadores_por_estado[estado] = 3  # Cada estado tiene 3 senadores
+                    df_estado = recomposed[recomposed['ENTIDAD'] == estado]
+                    
+                    # Sumar votos por partido en este estado
+                    votos_estado = {p: float(df_estado[p].sum() or 0) for p in partidos_base if p in df_estado.columns}
+                    
+                    if votos_estado:
+                        # Ordenar partidos por votos
+                        partidos_ordenados = sorted(votos_estado.items(), key=lambda x: x[1], reverse=True)
+                        ganadores_por_estado[estado] = partidos_ordenados
+                
+                # PASO 2: Contar cuántos estados ganó cada partido (1º lugar) y cuántos 2º lugares
+                primeros_lugares = {p: 0 for p in partidos_base}
+                segundos_lugares = {p: 0 for p in partidos_base}
+                
+                for estado, partidos_ordenados in ganadores_por_estado.items():
+                    if len(partidos_ordenados) > 0:
+                        primeros_lugares[partidos_ordenados[0][0]] += 1
+                    if len(partidos_ordenados) > 1:
+                        segundos_lugares[partidos_ordenados[1][0]] += 1
+                
+                # PASO 3: Distribuir ssd (senadores finales) proporcionalmente
+                # Cada partido tiene 2*primeros + 1*segundos como base
+                base_senadores = {p: 2 * primeros_lugares[p] + segundos_lugares[p] for p in partidos_base}
+                
+                # Inicializar estructura
+                for estado in estados_unicos:
+                    mr_por_estado[estado] = {p: 0 for p in partidos_base}
+                
+                # Distribuir los senadores finales de cada partido
+                import math
                 for partido in partidos_base:
-                    mr_partido_nacional = ssd.get(partido, 0)
-                    # Proporción: (MR_partido / MR_total) * senadores_estado
-                    proporcion_exacta = (mr_partido_nacional / total_mr_nacional) * senadores_totales
-                    # Asignar parte entera
-                    mr_asignado = math.floor(proporcion_exacta)
-                    mr_por_estado[nombre_estado][partido] = mr_asignado
+                    senadores_final = ssd.get(partido, 0)
+                    base_partido = base_senadores[partido]
+                    
+                    if base_partido > 0 and senadores_final > 0:
+                        # Distribuir proporcionalmente según ganadores
+                        asignados_total = 0
+                        residuos = []
+                        
+                        for estado, partidos_ordenados in ganadores_por_estado.items():
+                            # Determinar cuántos senadores "base" tiene este partido en este estado
+                            base_estado = 0
+                            if len(partidos_ordenados) > 0 and partidos_ordenados[0][0] == partido:
+                                base_estado = 2  # 1º lugar = 2 senadores
+                            elif len(partidos_ordenados) > 1 and partidos_ordenados[1][0] == partido:
+                                base_estado = 1  # 2º lugar = 1 senador
+                            
+                            if base_estado > 0:
+                                # Proporción: (base_estado / base_total) * senadores_final
+                                proporcion = (base_estado / base_partido) * senadores_final
+                                asignado = math.floor(proporcion)
+                                residuo = proporcion - asignado
+                                
+                                mr_por_estado[estado][partido] = asignado
+                                asignados_total += asignado
+                                residuos.append((estado, residuo))
+                        
+                        # Distribuir residuos
+                        faltantes = senadores_final - asignados_total
+                        if faltantes > 0:
+                            residuos.sort(key=lambda x: x[1], reverse=True)
+                            for i in range(int(faltantes)):
+                                if i < len(residuos):
+                                    mr_por_estado[residuos[i][0]][partido] += 1
+                    
+                    elif senadores_final > 0 and base_partido == 0:
+                        # Caso especial: partido tiene senadores finales pero no ganó estados
+                        # Distribuir uniformemente
+                        print(f"[DEBUG] ⚠️  {partido} tiene {senadores_final} senadores pero 0 base - distribuyendo uniformemente")
+                        
+                        asignados_total = 0
+                        residuos = []
+                        total_estados = len(estados_unicos)
+                        
+                        for estado in estados_unicos:
+                            proporcion = senadores_final / total_estados
+                            asignado = math.floor(proporcion)
+                            residuo = proporcion - asignado
+                            
+                            mr_por_estado[estado][partido] = asignado
+                            asignados_total += asignado
+                            residuos.append((estado, residuo))
+                        
+                        # Distribuir residuos
+                        faltantes = senadores_final - asignados_total
+                        if faltantes > 0:
+                            residuos.sort(key=lambda x: x[1], reverse=True)
+                            for i in range(int(faltantes)):
+                                if i < len(residuos):
+                                    mr_por_estado[residuos[i][0]][partido] += 1
                 
-                # Ajustar para que sume exactamente senadores_totales
-                suma_actual = sum(mr_por_estado[nombre_estado].values())
-                if suma_actual != senadores_totales:
-                    # Método Hare: dar residuos a partidos con mayor fracción
-                    diferencia = senadores_totales - suma_actual
-                    partidos_ordenados = sorted(
-                        partidos_base,
-                        key=lambda p: (ssd.get(p, 0) / total_mr_nacional * senadores_totales) % 1 if total_mr_nacional > 0 else 0,
-                        reverse=True
-                    )
-                    for i in range(abs(diferencia)):
-                        if diferencia > 0:
-                            mr_por_estado[nombre_estado][partidos_ordenados[i]] += 1
-                        else:
-                            if mr_por_estado[nombre_estado][partidos_ordenados[i]] > 0:
-                                mr_por_estado[nombre_estado][partidos_ordenados[i]] -= 1
+                total_senadores = sum(sum(partidos.values()) for partidos in mr_por_estado.values())
+                total_ssd = sum(ssd.values())
+                print(f"[DEBUG] ✅ Desglosados {total_senadores}/{total_ssd} senadores en {len(mr_por_estado)} estados")
             
-            # PASO 2: Verificar y ajustar totales por partido
-            for partido in partidos_base:
-                total_asignado = sum(mr_por_estado[estado].get(partido, 0) for estado in mr_por_estado)
-                objetivo = ssd.get(partido, 0)
-                diferencia_partido = objetivo - total_asignado
+            # FALLBACK: Distribución proporcional si no hay datos de votos
+            else:
+                import math
+                print(f"[DEBUG] 📐 FALLBACK: Distribución proporcional (sin datos de votos)")
                 
-                if diferencia_partido != 0:
-                    print(f"[DEBUG] Ajustando {partido}: {total_asignado} → {objetivo} (dif: {diferencia_partido:+d})")
+                # Nombres de estados
+                estado_nombres = {
+                    1: 'AGUASCALIENTES', 2: 'BAJA CALIFORNIA', 3: 'BAJA CALIFORNIA SUR',
+                    4: 'CAMPECHE', 5: 'CHIAPAS', 6: 'CHIHUAHUA', 7: 'COAHUILA',
+                    8: 'COLIMA', 9: 'CIUDAD DE MEXICO', 10: 'DURANGO', 11: 'GUANAJUATO',
+                    12: 'GUERRERO', 13: 'HIDALGO', 14: 'JALISCO', 15: 'MEXICO',
+                    16: 'MICHOACAN', 17: 'MORELOS', 18: 'NAYARIT', 19: 'NUEVO LEON',
+                    20: 'OAXACA', 21: 'PUEBLA', 22: 'QUERETARO', 23: 'QUINTANA ROO',
+                    24: 'SAN LUIS POTOSI', 25: 'SINALOA', 26: 'SONORA', 27: 'TABASCO',
+                    28: 'TAMAULIPAS', 29: 'TLAXCALA', 30: 'VERACRUZ', 31: 'YUCATAN',
+                    32: 'ZACATECAS'
+                }
                 
-                # Ajustar estado por estado
-                while diferencia_partido != 0:
-                    if diferencia_partido > 0:
-                        # Agregar: buscar estado con más peso proporcional para este partido
-                        estado_a_ajustar = max(
-                            mr_por_estado.keys(),
-                            key=lambda e: (ssd.get(partido, 0) / total_mr_nacional * senadores_por_estado[e]) if total_mr_nacional > 0 else 0
-                        )
-                        mr_por_estado[estado_a_ajustar][partido] += 1
-                        diferencia_partido -= 1
-                    else:
-                        # Quitar: buscar estado donde este partido tenga senadores
-                        estados_con_mr = [e for e in mr_por_estado if mr_por_estado[e][partido] > 0]
-                        if not estados_con_mr:
-                            break
-                        estado_a_ajustar = estados_con_mr[0]
-                        mr_por_estado[estado_a_ajustar][partido] -= 1
-                        diferencia_partido += 1
-            
-            print(f"[DEBUG] Distribución geográfica calculada para {len(mr_por_estado)} estados")
-            print(f"[DEBUG] Senadores por estado: {senadores_por_estado_default} (uniforme)")
+                total_mr_nacional = sum(ssd.values())
+                senadores_por_estado_default = escanos_mr_total // 32  # Normalmente 3
+                
+                if total_mr_nacional > 0:
+                    # PASO 1: Distribución con floor() y acumulación de residuos
+                    for estado_id, nombre_estado in estado_nombres.items():
+                        senadores_totales = senadores_por_estado_default  # 3 para senado típico
+                        senadores_por_estado[nombre_estado] = senadores_totales
+                        mr_por_estado[nombre_estado] = {p: 0 for p in partidos_base}
+                        
+                        # Distribuir proporcionalmente
+                        for partido in partidos_base:
+                            mr_partido_nacional = ssd.get(partido, 0)
+                            # Proporción: (MR_partido / MR_total) * senadores_estado
+                            proporcion_exacta = (mr_partido_nacional / total_mr_nacional) * senadores_totales
+                            # Asignar parte entera
+                            mr_asignado = math.floor(proporcion_exacta)
+                            mr_por_estado[nombre_estado][partido] = mr_asignado
+                        
+                        # Ajustar para que sume exactamente senadores_totales
+                        suma_actual = sum(mr_por_estado[nombre_estado].values())
+                        if suma_actual != senadores_totales:
+                            # Método Hare: dar residuos a partidos con mayor fracción
+                            diferencia = senadores_totales - suma_actual
+                            partidos_ordenados = sorted(
+                                partidos_base,
+                                key=lambda p: (ssd.get(p, 0) / total_mr_nacional * senadores_totales) % 1 if total_mr_nacional > 0 else 0,
+                                reverse=True
+                            )
+                            for i in range(abs(diferencia)):
+                                if diferencia > 0:
+                                    mr_por_estado[nombre_estado][partidos_ordenados[i]] += 1
+                                else:
+                                    if mr_por_estado[nombre_estado][partidos_ordenados[i]] > 0:
+                                        mr_por_estado[nombre_estado][partidos_ordenados[i]] -= 1
+                    
+                    # PASO 2: Verificar y ajustar totales por partido
+                    for partido in partidos_base:
+                        total_asignado = sum(mr_por_estado[estado].get(partido, 0) for estado in mr_por_estado)
+                        objetivo = ssd.get(partido, 0)
+                        diferencia_partido = objetivo - total_asignado
+                        
+                        if diferencia_partido != 0:
+                            print(f"[DEBUG] Ajustando {partido}: {total_asignado} → {objetivo} (dif: {diferencia_partido:+d})")
+                        
+                        # Ajustar estado por estado
+                        while diferencia_partido != 0:
+                            if diferencia_partido > 0:
+                                # Agregar: buscar estado con más peso proporcional para este partido
+                                estado_a_ajustar = max(
+                                    mr_por_estado.keys(),
+                                    key=lambda e: (ssd.get(partido, 0) / total_mr_nacional * senadores_por_estado[e]) if total_mr_nacional > 0 else 0
+                                )
+                                mr_por_estado[estado_a_ajustar][partido] += 1
+                                diferencia_partido -= 1
+                            else:
+                                # Quitar: buscar estado donde este partido tenga senadores
+                                estados_con_mr = [e for e in mr_por_estado if mr_por_estado[e][partido] > 0]
+                                if not estados_con_mr:
+                                    break
+                                estado_a_ajustar = estados_con_mr[0]
+                                mr_por_estado[estado_a_ajustar][partido] -= 1
+                                diferencia_partido += 1
+                    
+                    print(f"[DEBUG] Distribución geográfica (fallback) calculada para {len(mr_por_estado)} estados")
+        
+        except Exception as e:
+            print(f"[ERROR] Error calculando mr_por_estado: {e}")
+            # Crear estructura vacía para evitar errores
+            mr_por_estado = {}
+            senadores_por_estado = {}
         
         # 10) Estructura de retorno compatible con seat_chart incluido
         resultado = {
