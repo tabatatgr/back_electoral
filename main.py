@@ -211,15 +211,25 @@ def transformar_resultado_a_formato_frontend(resultado_dict: Dict, plan: str) ->
             "cache_buster": datetime.now().timestamp()
         }
 
-        # Incluir metadatos de escalado si existen (trazabilidad)
+        # Incluir metadatos completos (trazabilidad + distribución geográfica)
         try:
             meta = resultado_dict.get('meta', {}) if isinstance(resultado_dict, dict) else {}
-            if meta and isinstance(meta, dict) and 'scaled_info' in meta:
-                out['meta'] = {
-                    'scaled_info': meta.get('scaled_info')
-                }
-        except Exception:
-            pass
+            if meta and isinstance(meta, dict):
+                out['meta'] = {}
+                
+                # Incluir scaled_info si existe
+                if 'scaled_info' in meta:
+                    out['meta']['scaled_info'] = meta.get('scaled_info')
+                
+                # 📍 NUEVO: Incluir distribución geográfica de MR por estado
+                if 'mr_por_estado' in meta:
+                    out['meta']['mr_por_estado'] = meta.get('mr_por_estado')
+                
+                # 📍 NUEVO: Incluir total de distritos por estado
+                if 'distritos_por_estado' in meta:
+                    out['meta']['distritos_por_estado'] = meta.get('distritos_por_estado')
+        except Exception as e:
+            print(f"[WARN] Error incluyendo meta en respuesta: {e}")
 
         return out
         
