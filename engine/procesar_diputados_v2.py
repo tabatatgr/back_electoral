@@ -2469,16 +2469,22 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     import math
                     residuos_por_partido = {p: 0.0 for p in partidos_base}  # Acumular residuos
                     
+                    # Calcular población total para proporción
+                    poblacion_total = sum(poblacion_por_estado.values())
+                    
                     for estado_id, nombre_estado in estado_nombres.items():
                         distritos_totales = asignacion_distritos.get(estado_id, 0)
                         distritos_por_estado[nombre_estado] = distritos_totales
                         mr_por_estado_partido[nombre_estado] = {p: 0 for p in partidos_base}
                         
-                        if total_mr_nacional > 0 and distritos_totales > 0:
+                        if total_mr_nacional > 0 and distritos_totales > 0 and poblacion_total > 0:
+                            poblacion_estado = poblacion_por_estado.get(estado_id, 0)
+                            proporcion_poblacional = poblacion_estado / poblacion_total
+                            
                             for partido in partidos_base:
                                 mr_partido_nacional = mr_dict.get(partido, 0)
-                                # Calcular proporción exacta
-                                proporcion_exacta = (mr_partido_nacional / total_mr_nacional) * distritos_totales
+                                # Calcular proporción exacta usando población (no total_mr para evitar floor=0)
+                                proporcion_exacta = mr_partido_nacional * proporcion_poblacional
                                 # Asignar parte entera
                                 mr_asignado = math.floor(proporcion_exacta)
                                 mr_por_estado_partido[nombre_estado][partido] = mr_asignado
@@ -2492,7 +2498,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                                 diferencia = distritos_totales - suma_actual
                                 partidos_ordenados = sorted(
                                     partidos_base,
-                                    key=lambda p: (mr_dict.get(p, 0) / total_mr_nacional * distritos_totales) % 1,
+                                    key=lambda p: (mr_dict.get(p, 0) * proporcion_poblacional) % 1,
                                     reverse=True
                                 )
                                 for i in range(abs(diferencia)):
@@ -2528,7 +2534,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                                 
                                 estado_a_ajustar = max(
                                     estados_disponibles,
-                                    key=lambda e: (mr_dict.get(partido, 0) / total_mr_nacional * distritos_por_estado[e]) if total_mr_nacional > 0 else 0
+                                    key=lambda e: (mr_dict.get(partido, 0) * (poblacion_por_estado.get([k for k,v in estado_nombres.items() if v==e][0], 0) / poblacion_total)) if poblacion_total > 0 else 0
                                 )
                                 mr_por_estado_partido[estado_a_ajustar][partido] += 1
                                 diferencia_partido -= 1
