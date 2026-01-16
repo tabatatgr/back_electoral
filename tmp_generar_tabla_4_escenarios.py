@@ -1,6 +1,6 @@
 """
 Genera tabla comparativa 2021 vs 2024 con 4 escenarios
-Basado en tmp_generar_escenario_200_200.py que SÍ funciona
+VERSIÓN DINÁMICA: Recalcula todos los valores cuando cambian parámetros
 """
 import pandas as pd
 from datetime import datetime
@@ -12,249 +12,249 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from engine.procesar_diputados_v2 import procesar_diputados_v2
 
-def generar_tabla_comparativa():
+def calcular_escenario_dinamico(anio, mr_seats, rp_seats, pm_seats, 
+                               votos_redistribuidos=None, usar_coaliciones=True,
+                               aplicar_topes=True, print_debug=False):
     """
-    Genera tabla con 4 escenarios comparando 2021 vs 2024
-    """
-    print("=" * 80)
-    print("GENERANDO TABLA COMPARATIVA 2021 vs 2024")
-    print("=" * 80)
-    print()
+    Calcula un escenario completo de forma dinámica
     
-    # Definir escenarios
-    escenarios = [
-        {
-            "nombre": "MR 200 - RP 200",
-            "mr_seats": 200,
-            "rp_seats": 200,
-            "pm_seats": 0
+    Args:
+        anio: Año electoral (2021, 2024)
+        mr_seats: Escaños de Mayoría Relativa
+        rp_seats: Escaños de Representación Proporcional
+        pm_seats: Escaños de Plurinominales Mixtos
+        votos_redistribuidos: Dict con porcentajes ajustados por sliders {partido: porcentaje}
+        usar_coaliciones: Activar coaliciones
+        aplicar_topes: Aplicar topes constitucionales
+        print_debug: Imprimir debug
+    
+    Returns:
+        Dict con resultados completos
+    """
+    # Paths según el año
+    path_parquet = f'data/computos_diputados_{anio}.parquet'
+    path_siglado = f'data/siglado-diputados-{anio}.csv'
+    
+    # Partidos según año
+    if anio == 2021:
+        partidos_base = ['PAN', 'PRI', 'PRD', 'PVEM', 'PT', 'MC', 'MORENA', 'PES', 'RSP', 'FXM']
+    else:  # 2024
+        partidos_base = ['PAN', 'PRI', 'PRD', 'PVEM', 'PT', 'MC', 'MORENA']
+    
+    # Calcular total de escaños
+    max_seats = mr_seats + rp_seats + pm_seats
+    
+    # Ejecutar motor con votos redistribuidos si aplica
+    resultado = procesar_diputados_v2(
+        path_parquet=path_parquet,
+        path_siglado=path_siglado,
+        partidos_base=partidos_base,
+        anio=anio,
+        max_seats=max_seats,
+        mr_seats=mr_seats,
+        pm_seats=pm_seats,
+        rp_seats=rp_seats,
+        aplicar_topes=aplicar_topes,
+        umbral=0.03,
+        sobrerrepresentacion=8.0,
+        max_seats_per_party=300,
+        usar_coaliciones=usar_coaliciones,
+        votos_redistribuidos=votos_redistribuidos,  # NUEVO: pasar votos ajustados
+        seed=42,
+        print_debug=print_debug
+    )
+    
+    # Extraer resultados
+    mr_dict = resultado['mr']
+    pm_dict = resultado.get('pm', {})
+    rp_dict = resultado['rp']
+    tot_dict = resultado['tot']
+    votos_dict = resultado['votos']
+    
+    # Calcular porcentajes de votos
+    total_votos = sum(votos_dict.values())
+    votos_pct = {p: (votos_dict[p] / total_votos * 100) if total_votos > 0 else 0 
+                 for p in partidos_base}
+    
+    # Calcular porcentajes de escaños
+    escanos_pct = {p: (tot_dict[p] / max_seats * 100) if max_seats > 0 else 0 
+                   for p in partidos_base}
+    
+    # Calcular totales de coaliciones
+    if anio == 2021:
+        coal_morena = ['MORENA', 'PT', 'PVEM']
+        coal_pan = ['PAN', 'PRI', 'PRD']
+    else:  # 2024
+        coal_morena = ['MORENA', 'PT', 'PVEM']
+        coal_pan = ['PAN', 'PRI', 'PRD']
+    
+    coal_morena_total = sum(tot_dict.get(p, 0) for p in coal_morena)
+    coal_pan_total = sum(tot_dict.get(p, 0) for p in coal_pan)
+    
+    coal_morena_votos = sum(votos_dict.get(p, 0) for p in coal_morena)
+    coal_pan_votos = sum(votos_dict.get(p, 0) for p in coal_pan)
+    
+    # Calcular mayorías
+    morena_total = tot_dict.get('MORENA', 0)
+    mayoria_simple = max_seats / 2
+    mayoria_calificada = (max_seats * 2) / 3
+    
+    return {
+        'partidos': partidos_base,
+        'mr': mr_dict,
+        'pm': pm_dict,
+        'rp': rp_dict,
+        'tot': tot_dict,
+        'votos': votos_dict,
+        'votos_pct': votos_pct,
+        'escanos_pct': escanos_pct,
+        'total_escanos': max_seats,
+        'coalicion_morena': {
+            'escanos': coal_morena_total,
+            'votos': coal_morena_votos,
+            'pct_escanos': (coal_morena_total / max_seats * 100) if max_seats > 0 else 0,
+            'pct_votos': (coal_morena_votos / total_votos * 100) if total_votos > 0 else 0,
+            'mayoria_simple': coal_morena_total > mayoria_simple,
+            'mayoria_calificada': coal_morena_total >= mayoria_calificada
         },
-        {
-            "nombre": "MR 300 - RP 100",
-            "mr_seats": 300,
-            "rp_seats": 100,
-            "pm_seats": 0
+        'coalicion_pan': {
+            'escanos': coal_pan_total,
+            'votos': coal_pan_votos,
+            'pct_escanos': (coal_pan_total / max_seats * 100) if max_seats > 0 else 0,
+            'pct_votos': (coal_pan_votos / total_votos * 100) if total_votos > 0 else 0
         },
-        {
-            "nombre": "MR 200 - PM 200",
-            "mr_seats": 200,
-            "rp_seats": 0,
-            "pm_seats": 200
+        'morena_solo': {
+            'escanos': morena_total,
+            'pct_escanos': (morena_total / max_seats * 100) if max_seats > 0 else 0,
+            'mayoria_simple': morena_total > mayoria_simple,
+            'mayoria_calificada': morena_total >= mayoria_calificada
         },
-        {
-            "nombre": "MR 300 - PM 100",
-            "mr_seats": 300,
-            "rp_seats": 0,
-            "pm_seats": 100
+        'umbrales': {
+            'mayoria_simple': int(mayoria_simple) + 1,
+            'mayoria_calificada': int(mayoria_calificada)
         }
-    ]
+    }
+
+
+def generar_tabla_comparativa_dinamica(escenarios_config, votos_redistribuidos=None):
+    """
+    Genera tabla comparativa con cálculo dinámico
     
-    # Supuestos fijos
-    print("Supuestos aplicados:")
-    print("  - Umbral de representacion: 3% (solo partidos >=3% acceden a RP)")
-    print("  - Tope de sobrerrepresentacion: +8% sobre voto nacional")
-    print("  - Limite maximo: 300 curules por partido")
-    print("  - Coaliciones: Activadas")
-    print()
+    Args:
+        escenarios_config: Lista de configs [{nombre, mr_seats, rp_seats, pm_seats}, ...]
+        votos_redistribuidos: Dict con ajustes de sliders {partido: porcentaje}
+    
+    Returns:
+        DataFrame con resultados
+    """
+    print("=" * 80)
+    print("GENERANDO TABLA COMPARATIVA DINÁMICA")
+    print("=" * 80)
+    
+    if votos_redistribuidos:
+        print("\nAjustes de votos aplicados:")
+        for partido, pct in votos_redistribuidos.items():
+            print(f"  {partido}: {pct:.2f}%")
     
     resultados = []
     
-    for escenario in escenarios:
+    for config in escenarios_config:
+        nombre = config['nombre']
+        mr_seats = config['mr_seats']
+        rp_seats = config['rp_seats']
+        pm_seats = config.get('pm_seats', 0)
+        
         print(f"\n{'='*80}")
-        print(f"Escenario: {escenario['nombre']}")
+        print(f"Escenario: {nombre}")
+        print(f"  MR: {mr_seats}, RP: {rp_seats}, PM: {pm_seats}")
         print(f"{'='*80}")
         
         for anio in [2021, 2024]:
-            print(f"\n  Procesando año {anio}...")
+            print(f"\n  Calculando {anio}...")
             
-            # Paths según el año
-            path_parquet = f'data/computos_diputados_{anio}.parquet'
-            path_siglado = f'data/siglado-diputados-{anio}.csv'
+            resultado = calcular_escenario_dinamico(
+                anio=anio,
+                mr_seats=mr_seats,
+                rp_seats=rp_seats,
+                pm_seats=pm_seats,
+                votos_redistribuidos=votos_redistribuidos,
+                usar_coaliciones=True,
+                aplicar_topes=True,
+                print_debug=False
+            )
             
-            # Partidos que participaron según año
-            if anio == 2021:
-                partidos_base = ['PAN', 'PRI', 'PRD', 'PVEM', 'PT', 'MC', 'MORENA', 'PES', 'RSP', 'FXM']
-            else:  # 2024
-                partidos_base = ['PAN', 'PRI', 'PRD', 'PVEM', 'PT', 'MC', 'MORENA']
+            # Guardar resultados por partido
+            for partido in resultado['partidos']:
+                resultados.append({
+                    'Año': anio,
+                    'Escenario': nombre,
+                    'Partido': partido,
+                    'Votos_%': round(resultado['votos_pct'][partido], 2),
+                    'MR': resultado['mr'].get(partido, 0),
+                    'PM': resultado['pm'].get(partido, 0),
+                    'RP': resultado['rp'].get(partido, 0),
+                    'Total': resultado['tot'].get(partido, 0),
+                    'Escaños_%': round(resultado['escanos_pct'][partido], 2)
+                })
             
-            try:
-                # Llamar motor
-                resultado = procesar_diputados_v2(
-                    path_parquet=path_parquet,
-                    path_siglado=path_siglado,
-                    partidos_base=partidos_base,
-                    anio=anio,
-                    max_seats=400,
-                    mr_seats=escenario["mr_seats"],
-                    pm_seats=escenario["pm_seats"],
-                    rp_seats=escenario["rp_seats"],
-                    aplicar_topes=True,  # CON topes
-                    umbral=0.03,  # 3%
-                    sobrerrepresentacion=8.0,  # +8%
-                    max_seats_per_party=300,
-                    usar_coaliciones=True,
-                    seed=42,
-                    print_debug=False
-                )
-                
-                # Extraer resultados
-                mr_dict = resultado['mr']
-                pm_dict = resultado.get('pm', {})
-                rp_dict = resultado['rp']
-                tot_dict = resultado['tot']
-                votos_dict = resultado['votos']
-                
-                # Total votos para porcentajes
-                total_votos = sum(votos_dict.values())
-                
-                # Procesar cada partido
-                for partido in partidos_base:
-                    votos = votos_dict.get(partido, 0)
-                    votos_pct = (votos / total_votos * 100) if total_votos > 0 else 0
-                    
-                    mr = mr_dict.get(partido, 0)
-                    pm = pm_dict.get(partido, 0)
-                    rp = rp_dict.get(partido, 0)
-                    total = tot_dict.get(partido, 0)
-                    
-                    # VERIFICACION PRD 2024
-                    if partido == 'PRD' and anio == 2024:
-                        if rp > 0 and votos_pct < 3.0:
-                            print(f"    [!]  WARNING: PRD con {votos_pct:.2f}% tiene {rp} RP (deberia ser 0)")
-                        else:
-                            print(f"    [OK] PRD: {votos_pct:.2f}% votos, {rp} RP")
-                    
-                    resultados.append({
-                        'Año': anio,
-                        'Escenario': escenario['nombre'],
-                        'Partido': partido,
-                        'Votos_%': round(votos_pct, 2),
-                        'MR': mr,
-                        'PM': pm,
-                        'RP': rp,
-                        'Total': total
-                    })
-                
-                print(f"    [OK] Completado")
-                
-            except Exception as e:
-                print(f"    [ERROR] Error: {e}")
-                import traceback
-                traceback.print_exc()
+            # Guardar resultados de coaliciones
+            resultados.append({
+                'Año': anio,
+                'Escenario': nombre,
+                'Partido': 'COALICIÓN MORENA+PT+PVEM',
+                'Votos_%': round(resultado['coalicion_morena']['pct_votos'], 2),
+                'MR': sum(resultado['mr'].get(p, 0) for p in ['MORENA', 'PT', 'PVEM']),
+                'PM': sum(resultado['pm'].get(p, 0) for p in ['MORENA', 'PT', 'PVEM']),
+                'RP': sum(resultado['rp'].get(p, 0) for p in ['MORENA', 'PT', 'PVEM']),
+                'Total': resultado['coalicion_morena']['escanos'],
+                'Escaños_%': round(resultado['coalicion_morena']['pct_escanos'], 2)
+            })
+            
+            print(f"    [OK] MORENA: {resultado['morena_solo']['escanos']} escaños")
+            print(f"    [OK] Coalición: {resultado['coalicion_morena']['escanos']} escaños")
     
     # Crear DataFrame
     df = pd.DataFrame(resultados)
     
-    # Calcular diferencias MORENA (2024 - 2021)
+    # Guardar CSV
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    output_path = f'outputs/comparativa_DINAMICA_{timestamp}.csv'
+    df.to_csv(output_path, index=False, encoding='utf-8-sig')
+    
     print(f"\n{'='*80}")
-    print("Calculando diferencias MORENA (2024 - 2021)...")
+    print("[OK] TABLA GENERADA EXITOSAMENTE")
     print(f"{'='*80}")
+    print(f"Archivo: {output_path}")
+    print(f"Total filas: {len(df)}")
     
-    diferencias = []
+    return output_path
+
+
+if __name__ == '__main__':
+    # Definir escenarios
+    escenarios = [
+        {'nombre': 'MR 200 - RP 200', 'mr_seats': 200, 'rp_seats': 200, 'pm_seats': 0},
+        {'nombre': 'MR 300 - RP 100', 'mr_seats': 300, 'rp_seats': 100, 'pm_seats': 0},
+        {'nombre': 'MR 200 - PM 200', 'mr_seats': 200, 'rp_seats': 0, 'pm_seats': 200},
+        {'nombre': 'MR 300 - PM 100', 'mr_seats': 300, 'rp_seats': 0, 'pm_seats': 100}
+    ]
     
-    for escenario in escenarios:
-        escenario_nombre = escenario['nombre']
-        
-        morena_2021 = df[(df['Escenario'] == escenario_nombre) & 
-                         (df['Año'] == 2021) & 
-                         (df['Partido'] == 'MORENA')]
-        
-        morena_2024 = df[(df['Escenario'] == escenario_nombre) & 
-                         (df['Año'] == 2024) & 
-                         (df['Partido'] == 'MORENA')]
-        
-        if not morena_2021.empty and not morena_2024.empty:
-            diff_mr = morena_2024['MR'].values[0] - morena_2021['MR'].values[0]
-            diff_pm = morena_2024['PM'].values[0] - morena_2021['PM'].values[0]
-            diff_rp = morena_2024['RP'].values[0] - morena_2021['RP'].values[0]
-            diff_total = morena_2024['Total'].values[0] - morena_2021['Total'].values[0]
-            
-            diferencias.append({
-                'Escenario': escenario_nombre,
-                'Diff_MORENA_MR': diff_mr,
-                'Diff_MORENA_PM': diff_pm,
-                'Diff_MORENA_RP': diff_rp,
-                'Diff_MORENA_Total': diff_total
-            })
-            
-            print(f"\n{escenario_nombre}:")
-            print(f"  MR: {diff_mr:+d}")
-            print(f"  PM: {diff_pm:+d}")
-            print(f"  RP: {diff_rp:+d}")
-            print(f"  Total: {diff_total:+d}")
+    # EJEMPLO: Ajuste de votos por sliders (comentar si no se usa)
+    # votos_ajustados = {
+    #     'MORENA': 42.0,
+    #     'PAN': 18.0,
+    #     'PRI': 12.0,
+    #     'PRD': 3.0,
+    #     'PVEM': 9.0,
+    #     'PT': 6.0,
+    #     'MC': 10.0
+    # }
     
-    # Agregar diferencias al DataFrame
-    df_diff = pd.DataFrame(diferencias)
-    df = df.merge(df_diff, on='Escenario', how='left')
+    # Generar sin ajustes (usa votos reales)
+    output = generar_tabla_comparativa_dinamica(escenarios, votos_redistribuidos=None)
     
-    # =========================================================================
-    # AGREGAR FILAS DE COALICIONES
-    # =========================================================================
-    print(f"\n{'='*80}")
-    print("Agregando totales por coalición...")
-    print(f"{'='*80}\n")
-    
-    coalicion_morena = ['MORENA', 'PT', 'PVEM']
-    coalicion_pan = ['PAN', 'PRI', 'PRD']
-    
-    filas_coaliciones = []
-    
-    for escenario in escenarios:
-        escenario_nombre = escenario['nombre']
-        
-        for anio in [2021, 2024]:
-            df_filtrado = df[(df['Escenario'] == escenario_nombre) & (df['Año'] == anio)]
-            
-            # Coalición MORENA + PT + PVEM
-            morena_coal = df_filtrado[df_filtrado['Partido'].isin(coalicion_morena)]
-            if not morena_coal.empty:
-                fila_morena = {
-                    'Año': anio,
-                    'Escenario': escenario_nombre,
-                    'Partido': 'COALICIÓN MORENA+PT+PVEM',
-                    'Votos_%': morena_coal['Votos_%'].sum(),
-                    'MR': morena_coal['MR'].sum(),
-                    'PM': morena_coal['PM'].sum(),
-                    'RP': morena_coal['RP'].sum(),
-                    'Total': morena_coal['Total'].sum()
-                }
-                # Agregar las columnas de diferencias si existen
-                if 'Diff_MORENA_MR' in df_filtrado.columns:
-                    fila_morena['Diff_MORENA_MR'] = df_filtrado['Diff_MORENA_MR'].iloc[0] if not df_filtrado.empty else None
-                    fila_morena['Diff_MORENA_PM'] = df_filtrado['Diff_MORENA_PM'].iloc[0] if not df_filtrado.empty else None
-                    fila_morena['Diff_MORENA_RP'] = df_filtrado['Diff_MORENA_RP'].iloc[0] if not df_filtrado.empty else None
-                    fila_morena['Diff_MORENA_Total'] = df_filtrado['Diff_MORENA_Total'].iloc[0] if not df_filtrado.empty else None
-                
-                filas_coaliciones.append(fila_morena)
-            
-            # Coalición PAN + PRI + PRD
-            pan_coal = df_filtrado[df_filtrado['Partido'].isin(coalicion_pan)]
-            if not pan_coal.empty:
-                fila_pan = {
-                    'Año': anio,
-                    'Escenario': escenario_nombre,
-                    'Partido': 'COALICIÓN PAN+PRI+PRD',
-                    'Votos_%': pan_coal['Votos_%'].sum(),
-                    'MR': pan_coal['MR'].sum(),
-                    'PM': pan_coal['PM'].sum(),
-                    'RP': pan_coal['RP'].sum(),
-                    'Total': pan_coal['Total'].sum()
-                }
-                # Agregar las columnas de diferencias si existen
-                if 'Diff_MORENA_MR' in df_filtrado.columns:
-                    fila_pan['Diff_MORENA_MR'] = df_filtrado['Diff_MORENA_MR'].iloc[0] if not df_filtrado.empty else None
-                    fila_pan['Diff_MORENA_PM'] = df_filtrado['Diff_MORENA_PM'].iloc[0] if not df_filtrado.empty else None
-                    fila_pan['Diff_MORENA_RP'] = df_filtrado['Diff_MORENA_RP'].iloc[0] if not df_filtrado.empty else None
-                    fila_pan['Diff_MORENA_Total'] = df_filtrado['Diff_MORENA_Total'].iloc[0] if not df_filtrado.empty else None
-                
-                filas_coaliciones.append(fila_pan)
-    
-    # Agregar filas de coaliciones al DataFrame
-    if filas_coaliciones:
-        df_coaliciones = pd.DataFrame(filas_coaliciones)
-        df = pd.concat([df, df_coaliciones], ignore_index=True)
-        print(f"[OK] Agregadas {len(filas_coaliciones)} filas de coaliciones")
-    
+    print("\n[OK] Generación exitosa")
+    sys.exit(0)
     # =========================================================================
     # AGREGAR COLUMNA DE PORCENTAJE DE ESCAÑOS
     # =========================================================================

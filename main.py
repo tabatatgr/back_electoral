@@ -703,7 +703,7 @@ async def procesar_senado(
                 
                 # 3. Agregar información de mayorías al resultado
                 resultado_formateado["mayorias"] = {
-                    "total_escanos": total_escanos,
+                    "total_escaños": total_escanos,
                     "mayoria_simple": {
                         "umbral": int(mayoria_simple_umbral) + 1,  # >50%
                         "alcanzada": mayorias_info["mayoria_simple"]["partido"] is not None,
@@ -2069,7 +2069,7 @@ async def procesar_diputados(
     reparto_mode: str = "cuota",  # Default: cuota (Hare es el método oficial en México)
     reparto_method: str = "hare",  # Default: Hare (método oficial IFE/INE)
     usar_coaliciones: bool = True,
-    redistritacion_geografica: bool = True,  # ← DEFAULT: Usar SIEMPRE redistritación geográfica real (calcula eficiencias históricas por partido)
+    # redistritacion_geografica REMOVIDO - SIEMPRE True internamente
     mr_distritos_manuales: Optional[str] = None,  # ← NUEVO: JSON con MR manuales por partido {"MORENA": 150, "PAN": 60, ...}
     mr_distritos_por_estado: Optional[str] = None,  # ← NUEVO: JSON con MR por estado y partido {"15": {"MORENA": 22, "PAN": 6, ...}, "9": {"MORENA": 14, ...}}
     votos_custom: Optional[str] = None,  # JSON string con redistribución
@@ -2095,13 +2095,16 @@ async def procesar_diputados(
     - **reparto_method**: Método específico:
       - Si reparto_mode="cuota": "hare", "droop", "imperiali"
       - Si reparto_mode="divisor": "dhondt", "sainte_lague", "webster"
-    - **redistritacion_geografica**: SIEMPRE activa por defecto. Usa redistritación geográfica real por población (método Hare) con eficiencias históricas calculadas por partido. Default: True
     - **mr_distritos_manuales**: JSON con número de distritos MR ganados por partido. Formato: {"MORENA": 150, "PAN": 60, "PRI": 45, ...}. Si se proporciona, sobrescribe el cálculo automático de eficiencias geográficas.
     - **mr_distritos_por_estado**: JSON con distribución estado por estado de distritos MR por partido. Formato: {"15": {"MORENA": 22, "PAN": 6, "PRI": 8}, "9": {"MORENA": 14, "PAN": 5}}. Las claves son IDs de estados (1-32), los valores son diccionarios partido→distritos. Si se proporciona, se valida que la suma por estado coincida con la distribución Hare y se convierte automáticamente a mr_distritos_manuales (suma total).
     - **votos_custom**: JSON con % de votos por partido {"MORENA":45, "PAN":30, ...}
     - **partidos_fijos**: JSON con partidos fijos {"MORENA":2, "PAN":40}
     - **overrides_pool**: JSON con overrides del pool {"PAN":20, "MC":10}
     - **porcentajes_partidos**: JSON con % de votos por partido {"MORENA":42.5, "PAN":20.7, ...}
+    
+    NOTA: La redistritación geográfica está SIEMPRE ACTIVA. El sistema usa el método Hare 
+    para distribuir distritos por estado según población y aplica eficiencias históricas 
+    calculadas por partido. Esto garantiza que los MR se calculen correctamente en todos los casos.
     """
     try:
         # Intentar leer body JSON si fue enviado (si el cliente envía JSON en el body
@@ -2278,10 +2281,17 @@ async def procesar_diputados(
         print(f"[DEBUG] - mr_seats: {mr_seats}")
         print(f"[DEBUG] - rp_seats: {rp_seats}")
 
+        # FORZAR redistritación geográfica SIEMPRE activa
+        # Esto garantiza que los MR se calculen correctamente en todos los casos
+        redistritacion_geografica = True
+        print(f"[DEBUG] - redistritacion_geografica: FORZADO a True (SIEMPRE activo)")
+
         # NUEVO: Procesar parámetros de redistribución de votos
         votos_redistribuidos = None
         # Si generamos un parquet temporal con votos redistribuidos, lo almacenamos aquí
         parquet_replacement = None
+        # Si generamos un siglado temporal con ganadores redistribuidos, lo almacenamos aquí
+        path_siglado = None
         # DEBUG CRÍTICO: loguear las keys que llegaron para redistribución (facilita ver en producción)
         keys_present = {
             'votos_custom': bool(votos_custom),
@@ -2316,6 +2326,7 @@ async def procesar_diputados(
             print(f"[DEBUG] - partidos_fijos: {partidos_fijos}")
             print(f"[DEBUG] - overrides_pool: {overrides_pool}")
             print(f"[DEBUG] - porcentajes_partidos: {porcentajes_partidos}")
+            print(f"[DEBUG] NOTA: redistritacion_geografica se activará automáticamente para recalcular MR")
             
             try:
                 # Parsear JSON strings o aceptar dicts ya parseados (frontend puede enviar objeto JSON)
@@ -2470,6 +2481,30 @@ async def procesar_diputados(
                         print(f"[DEBUG] Parquet temporal con votos redistribuidos creado: {tmp_name}")
 
                         votos_redistribuidos = porcentajes_finales
+                        
+                        # GENERAR SIGLADO TEMPORAL con ganadores según votos redistribuidos
+                        # Esto es crucial para que el motor sepa quién gana cada distrito
+                        try:
+                            from redistritacion.modulos.tabla_puente import generar_siglado_new
+                            
+                            print(f"[DEBUG] Generando siglado temporal con ganadores redistribuidos...")
+                            siglado_temporal = generar_siglado_new(tmp_to_save, print_debug=False)
+                            
+                            # Guardar siglado temporal
+                            siglado_tmp_name = f'outputs/tmp_siglado_{uuid.uuid4().hex}.csv'
+                            siglado_temporal.to_csv(siglado_tmp_name, index=False, encoding='utf-8-sig')
+                            print(f"[DEBUG] Siglado temporal creado: {siglado_tmp_name}")
+                            print(f"[DEBUG] Ganadores por distrito actualizados según redistribución")
+                            
+                            # Actualizar path_siglado para usar el temporal
+                            path_siglado = siglado_tmp_name
+                            
+                        except Exception as e_siglado:
+                            print(f"[WARN] No se pudo generar siglado temporal: {e_siglado}")
+                            # Continuar sin siglado temporal (usará el histórico)
+                            import traceback
+                            print(traceback.format_exc())
+                        
                         # Reemplazar el path_datos por el parquet temporal para forzar
                         # a `procesar_diputados_v2` a recalcular MR a partir de estos votos
                         path_datos = tmp_name
@@ -2721,7 +2756,14 @@ async def procesar_diputados(
 
         # Construir paths (si hay un parquet temporal generado por redistribución, usarlo)
         path_parquet = parquet_replacement if parquet_replacement else f"data/computos_diputados_{anio}.parquet"
-        path_siglado = f"data/siglado-diputados-{anio}.csv"
+        
+        # IMPORTANTE: Si ya se generó un siglado temporal (por redistribución de votos),
+        # NO sobrescribirlo con el siglado histórico
+        if 'path_siglado' not in locals() or path_siglado is None:
+            path_siglado = f"data/siglado-diputados-{anio}.csv"
+        
+        print(f"[DEBUG] path_parquet: {path_parquet}")
+        print(f"[DEBUG] path_siglado: {path_siglado}")
         
         # Verificar que existen los archivos
         if not os.path.exists(path_parquet):
@@ -2751,10 +2793,13 @@ async def procesar_diputados(
         print(f"[DEBUG] usar_coaliciones: {usar_coaliciones}")
         print(f"[DEBUG] votos_redistribuidos: {votos_redistribuidos}")
         print(f"[DEBUG] seed: {seed_value}")
-        print(f"[DEBUG] redistritacion_geografica: {redistritacion_geografica}")
+        print(f"[DEBUG] redistritacion_geografica: {redistritacion_geografica} (SIEMPRE True)")
         print(f"[DEBUG] =============================================")
         
-        # APLICAR REDISTRITACIÓN GEOGRÁFICA si está activada
+        # APLICAR REDISTRITACIÓN GEOGRÁFICA (siempre activa)
+        # La redistritación geográfica está SIEMPRE activada para garantizar
+        # que los MR se calculen correctamente en todos los casos
+        
         mr_ganados_geograficos = None
         if redistritacion_geografica and mr_seats_final and mr_seats_final > 0:
             
@@ -2960,6 +3005,17 @@ async def procesar_diputados(
                     print(traceback.format_exc())
                     # Continuar sin redistritación geográfica
                     mr_ganados_geograficos = None
+        
+        # Logging explicativo sobre cómo se determinarán los MR
+        if mr_ganados_geograficos is not None:
+            print(f"[INFO] ✅ MR se calcularán con REDISTRITACIÓN GEOGRÁFICA (eficiencias reales + nuevos porcentajes)")
+            print(f"[INFO] Total MR pre-calculados: {sum(mr_ganados_geograficos.values())}")
+        else:
+            print(f"[INFO] ⚠️  MR se calcularán DISTRITO POR DISTRITO desde siglado histórico")
+            print(f"[INFO] Esto es correcto SOLO si NO hay redistribución de votos")
+            if votos_redistribuidos:
+                print(f"[WARN] ⚠️⚠️⚠️  HAY VOTOS REDISTRIBUIDOS pero mr_ganados_geograficos es None!")
+                print(f"[WARN] Los resultados pueden NO reflejar los cambios de porcentajes solicitados")
         
         resultado = procesar_diputados_v2(
             path_parquet=path_parquet,

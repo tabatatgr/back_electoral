@@ -1,0 +1,68 @@
+{
+  "mr": {
+    "PAN": 59,
+    "PRI": 39,
+    "PRD": 0,
+    "PVEM": 7,
+    "PT": 4,
+    "MC": 0,
+    "MORENA": 41
+  },
+  "pm": {
+    "PAN": 0,
+    "PRI": 0,
+    "PRD": 0,
+    "PVEM": 0,
+    "PT": 0,
+    "MC": 0,
+    "MORENA": 0
+  },
+  "rp": {
+    "PAN": 39,
+    "PRI": 24,
+    "PRD": 0,
+    "PVEM": 0,
+    "PT": 0,
+    "MC": 16,
+    "MORENA": 71
+  },
+  "tot": {
+    "PAN": 98,
+    "PRI": 63,
+    "PRD": 0,
+    "PVEM": 7,
+    "PT": 4,
+    "MC": 16,
+    "MORENA": 112
+  },
+  "ok": {
+    "PAN": true,
+    "PRI": true,
+    "PRD": false,
+    "PVEM": false,
+    "PT": false,
+    "MC": true,
+    "MORENA": true
+  },
+  "votos": {
+    "PAN": 13934451,
+    "PRI": 8361814,
+    "PRD": 1411734,
+    "PVEM": 1674649,
+    "PT": 1114527,
+    "MC": 5572637,
+    "MORENA": 25085442
+  },
+  "votos_ok": {
+    "PAN": 13934451,
+    "PRI": 8361814,
+    "PRD": 0,
+    "PVEM": 0,
+    "PT": 0,
+    "MC": 5572637,
+    "MORENA": 25085442
+  },
+  "meta": {
+    "VTE": 57155254,
+    "VVE": 57155254,
+    "ok_3pct": 

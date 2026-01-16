@@ -403,7 +403,7 @@ def aplicar_topes_nacionales(s_mr: np.ndarray, s_rp: np.ndarray, v_nacional: np.
     ok = v_nacional >= threshold
     
     # Límites por sobrerrepresentación (+8 pp)
-    # IMPORTANTE: Si max_pp es None, NO aplicar límite de sobrerrepresentación
+    # IMPORTANTE: Si max_pp es None, NO aplicar límite de %
     if max_pp is not None:
         # Aplicar cláusula de sobrerrepresentación - CORREGIDO: usar floor estricto
         cap_dist = np.floor((v_nacional + max_pp) * S).astype(int)

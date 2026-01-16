@@ -1,0 +1,11 @@
+================================================================================
+Traceback (most recent call last):
+  File "C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\test_escenario_150_150.py", line 347, in <module>
+    resultado = probar_escenario_150_150()
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\pablo\OneDrive\Documentos\GitHub\back_electoral\test_escenario_150_150.py", line 153, in probar_escenario_150_150
+    print("\U0001f9ea PRUEBA ESCENARIO PERSONALIZADO: 150 MR + 150 RP SIN TOPES")
+  File "C:\Users\pablo\AppData\Local\Programs\Python\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\U0001f9ea' in position 0: character maps to <undefined>
