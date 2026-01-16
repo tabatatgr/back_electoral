@@ -2267,6 +2267,37 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
         except Exception:
             pass
 
+        # 📊 NUEVO: Calcular distribución geográfica MR por estado y partido
+        mr_por_estado_partido = {}
+        distritos_por_estado = {}  # Total de distritos por estado
+        try:
+            if 'recomposed' in locals() and recomposed is not None and 'ENTIDAD' in recomposed.columns:
+                # Crear estructura: {estado: {partido: count}}
+                estados_unicos = recomposed['ENTIDAD'].unique()
+                
+                for estado in estados_unicos:
+                    mr_por_estado_partido[estado] = {p: 0 for p in partidos_base}
+                    df_estado = recomposed[recomposed['ENTIDAD'] == estado]
+                    
+                    # Contar total de distritos en este estado
+                    distritos_por_estado[estado] = len(df_estado)
+                    
+                    for _, distrito in df_estado.iterrows():
+                        # Determinar ganador del distrito
+                        votos_distrito = {}
+                        for partido in partidos_base:
+                            votos_distrito[partido] = float(distrito.get(partido, 0) or 0)
+                        
+                        if votos_distrito:
+                            ganador = max(votos_distrito, key=votos_distrito.get)
+                            mr_por_estado_partido[estado][ganador] += 1
+                
+                meta_out['mr_por_estado'] = mr_por_estado_partido
+                meta_out['distritos_por_estado'] = distritos_por_estado
+        except Exception as e:
+            if print_debug:
+                _maybe_log(f"Error calculando mr_por_estado: {e}", 'warn', print_debug)
+
         return {
             'mr': mr_dict,
             'pm': pm_dict,  # Nueva clave para PM

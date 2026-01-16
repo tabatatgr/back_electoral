@@ -1168,6 +1168,32 @@ async def calcular_mayoria_forzada_endpoint(
         total_escanos = escanos_totales if escanos_totales is not None else (mr_total + rp_total)
         umbral = (total_escanos // 2) + 1 if tipo_mayoria == "simple" else int(total_escanos * 2 / 3) + 1
         
+        # Extraer distribución geográfica del resultado original (no del transformado)
+        # Necesitamos acceder al resultado_dict original antes de transformación
+        from engine.procesar_diputados_v2 import procesar_diputados_v2
+        
+        # Re-ejecutar pero ahora capturando resultado directo sin transformar
+        resultado_dict_raw = procesar_diputados_v2(
+            path_parquet=f"data/computos_diputados_{anio}.parquet",
+            anio=anio,
+            max_seats=escanos_totales if escanos_totales else (mr_total + rp_total),
+            sistema=sistema if sistema else 'mixto',
+            mr_seats=mr_total,
+            rp_seats=rp_total,
+            umbral=0.03,
+            aplicar_topes=aplicar_topes,
+            usar_coaliciones=True,
+            votos_redistribuidos=config.get('votos_custom'),
+            mr_ganados_geograficos=config.get('mr_distritos_manuales'),
+            print_debug=False
+        )
+        
+        mr_por_estado = resultado_dict_raw.get('meta', {}).get('mr_por_estado')
+        distritos_por_estado = resultado_dict_raw.get('meta', {}).get('distritos_por_estado')
+        
+        # Extraer KPIs del resultado transformado
+        kpis = resultado_data.get('kpis', {})
+        
         return {
             "viable": True,
             "diputados_necesarios": umbral,
@@ -1183,7 +1209,15 @@ async def calcular_mayoria_forzada_endpoint(
             "seat_chart": seat_chart,
             
             # 🔑 CRÍTICO: KPIs recalculados (están en la raíz, NO en mayorias)
-            "kpis": resultado_data.get('kpis', {}),
+            "kpis": kpis,
+            
+            # 📊 NUEVO: Distribución geográfica de MR por estado y partido
+            # Estructura: { "AGUASCALIENTES": { "PAN": 2, "MORENA": 1, ... }, ... }
+            "mr_por_estado": mr_por_estado,
+            
+            # 📍 NUEVO: Total de distritos por estado (para mostrar "3/3" en el frontend)
+            # Estructura: { "AGUASCALIENTES": 3, "BAJA CALIFORNIA": 8, ... }
+            "distritos_por_estado": distritos_por_estado,
             
             # Información adicional
             "advertencias": config.get('advertencias', []),

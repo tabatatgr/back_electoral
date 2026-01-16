@@ -397,7 +397,8 @@ def calcular_mayoria_forzada(
             "pct_votos": pct_votos_necesario
         },
         "advertencias": advertencias,
-        "metodo": "Redistritación geográfica realista (Hare + eficiencia 1.1)" if REDISTRITACION_DISPONIBLE else "Método simplificado"
+        "metodo": "Redistritación geográfica realista (Hare + eficiencia 1.1)" if REDISTRITACION_DISPONIBLE else "Método simplificado",
+        "mr_por_estado": mr_por_estado_partido if 'mr_por_estado_partido' in locals() else None  # Distribución geográfica del partido objetivo
     }
 
 
