@@ -2286,6 +2286,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
             # Usar el tracking geográfico que ya se construyó durante el cálculo de MR
             if 'mr_por_estado_raw' in locals() and mr_por_estado_raw:
                 mr_por_estado_partido = mr_por_estado_raw.copy()
+                _maybe_log(f"[mr_por_estado] Usando mr_por_estado_raw (tracking geográfico)", 'debug', print_debug)
                 
                 # Calcular distritos por estado
                 if 'recomposed' in locals() and recomposed is not None and 'ENTIDAD' in recomposed.columns:
@@ -2306,6 +2307,8 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
             
             # FALLBACK: Si no hay mr_por_estado_raw, usar distribución proporcional pura
             elif mr_dict and mr_seats and mr_seats > 0:
+                _maybe_log("[mr_por_estado] FALLBACK: Distribuyendo MR finales por estado usando Hare", 'info', print_debug)
+                _maybe_log(f"[mr_por_estado] mr_dict={mr_dict}, mr_seats={mr_seats}", 'debug', print_debug)
                 if print_debug:
                     _maybe_log("[mr_por_estado] Distribuyendo MR finales por estado usando Hare", 'debug', print_debug)
                     _maybe_log(f"[mr_por_estado] MR finales a distribuir: {mr_dict}", 'debug', print_debug)
@@ -2388,12 +2391,26 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                             _maybe_log(f"[mr_por_estado] Ajustando {partido}: {total_asignado} → {objetivo} (dif: {diferencia_partido:+d})", 'debug', print_debug)
                         
                         # Ajustar estado por estado hasta cuadrar
-                        while diferencia_partido != 0:
+                        intentos_maximos = 1000  # Evitar loops infinitos
+                        while diferencia_partido != 0 and intentos_maximos > 0:
+                            intentos_maximos -= 1
+                            
                             # Ordenar estados por mayor residuo acumulado de este partido
                             if diferencia_partido > 0:
                                 # Necesitamos agregar: buscar estado donde este partido tiene más peso proporcional
+                                # PERO que NO haya alcanzado su límite de distritos
+                                estados_disponibles = [
+                                    e for e in mr_por_estado_partido.keys()
+                                    if sum(mr_por_estado_partido[e].values()) < distritos_por_estado.get(e, 0)
+                                ]
+                                
+                                if not estados_disponibles:
+                                    if print_debug:
+                                        _maybe_log(f"[mr_por_estado] ⚠️  No hay estados disponibles para agregar MR de {partido} (todos en límite)", 'warn', print_debug)
+                                    break  # No podemos agregar más sin violar límites
+                                
                                 estado_a_ajustar = max(
-                                    mr_por_estado_partido.keys(),
+                                    estados_disponibles,
                                     key=lambda e: (mr_dict.get(partido, 0) / total_mr_nacional * distritos_por_estado[e]) if total_mr_nacional > 0 else 0
                                 )
                                 mr_por_estado_partido[estado_a_ajustar][partido] += 1
