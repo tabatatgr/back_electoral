@@ -1147,25 +1147,34 @@ async def calcular_mayoria_forzada_endpoint(
         
         # PASO 3: Extraer datos del partido objetivo
         # El seat_chart está en la raíz, NO en mayorias
-        seat_chart = resultado_data['seat_chart']
+        seat_chart = resultado_data.get('seat_chart', [])
+        
+        if not seat_chart:
+            raise HTTPException(
+                status_code=500,
+                detail=f"No se pudo obtener seat_chart del resultado. Keys disponibles: {list(resultado_data.keys())}"
+            )
+        
         partido_data = next((p for p in seat_chart if p['party'] == partido), None)
         
         if not partido_data:
             raise HTTPException(
                 status_code=500,
-                detail=f"Partido {partido} no encontrado en resultado"
+                detail=f"Partido {partido} no encontrado en seat_chart. Partidos disponibles: {[p['party'] for p in seat_chart]}"
             )
         
         # PASO 4: Construir respuesta completa
-        umbral = 251 if tipo_mayoria == "simple" else 334
+        # Calcular umbral dinámicamente basado en escaños totales
+        total_escanos = escanos_totales if escanos_totales is not None else (mr_total + rp_total)
+        umbral = (total_escanos // 2) + 1 if tipo_mayoria == "simple" else int(total_escanos * 2 / 3) + 1
         
         return {
             "viable": True,
             "diputados_necesarios": umbral,
-            "diputados_obtenidos": partido_data['seats'],
+            "diputados_obtenidos": partido_data.get('seats', 0),
             "votos_porcentaje": round(config['detalle']['pct_votos'], 2),
-            "mr_asignados": partido_data['mr_seats'],
-            "rp_asignados": partido_data['rp_seats'],
+            "mr_asignados": partido_data.get('mr_seats', partido_data.get('mr', 0)),
+            "rp_asignados": partido_data.get('rp_seats', partido_data.get('rp', 0)),
             "partido": partido,
             "plan": plan,
             "tipo_mayoria": tipo_mayoria,

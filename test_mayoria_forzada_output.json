@@ -1,0 +1,108 @@
+{
+  "viable": true,
+  "diputados_necesarios": 65,
+  "diputados_obtenidos": 68,
+  "votos_porcentaje": 55.0,
+  "mr_asignados": 32,
+  "rp_asignados": 36,
+  "partido": "MORENA",
+  "plan": "personalizado",
+  "tipo_mayoria": "simple",
+  "seat_chart": [
+    {
+      "party": "PAN",
+      "seats": 23,
+      "color": "#0055A5",
+      "percent": 15.58,
+      "votes": 9130314,
+      "mr": 13,
+      "pm": 0,
+      "rp": 10
+    },
+    {
+      "party": "PRI",
+      "seats": 17,
+      "color": "#0D7137",
+      "percent": 12.74,
+      "votes": 7463566,
+      "mr": 8,
+      "pm": 0,
+      "rp": 9
+    },
+    {
+      "party": "PRD",
+      "seats": 0,
+      "color": "#FFCC00",
+      "percent": 2.47,
+      "votes": 1449655,
+      "mr": 0,
+      "pm": 0,
+      "rp": 0
+    },
+    {
+      "party": "PVEM",
+      "seats": 6,
+      "color": "#1E9F00",
+      "percent": 4.25,
+      "votes": 2489298,
+      "mr": 3,
+      "pm": 0,
+      "rp": 3
+    },
+    {
+      "party": "PT",
+      "seats": 2,
+      "color": "#D52B1E",
+      "percent": 2.83,
+      "votes": 1658089,
+      "mr": 2,
+      "pm": 0,
+      "rp": 0
+    },
+    {
+      "party": "MC",
+      "seats": 12,
+      "color": "#F58025",
+      "percent": 8.5,
+      "votes": 4978597,
+      "mr": 6,
+      "pm": 0,
+      "rp": 6
+    },
+    {
+      "party": "MORENA",
+      "seats": 68,
+      "color": "#8B2231",
+      "percent": 53.64,
+      "votes": 31435391,
+      "mr": 32,
+      "pm": 0,
+      "rp": 36
+    }
+  ],
+  "kpis": {
+    "total_votos": 58604910,
+    "total_escanos": 128,
+    "gallagher": 2.735189939916076,
+    "mae_votos_vs_escanos": 0.4645,
+    "ratio_promedio": 0.8492,
+    "desviacion_proporcionalidad": 0.3944,
+    "partidos_con_escanos": 6,
+    "_debug": {
+      "n_parties": 7,
+      "diffs_percentage_points": [
+        -2.389315,
+        -0.545856,
+        2.473607,
+        -0.439907,
+        1.266766,
+        -0.879812,
+        0.514518
+      ],
+      "gallagher_raw": 2.735189939916076,
+      "gallagher_pct": 273.518994
+    }
+  },
+  "advertencias": [],
+  "metodo": "Redistritación geográfica realista (Hare + eficiencia 1.1)"
+}

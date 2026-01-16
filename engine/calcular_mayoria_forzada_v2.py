@@ -258,50 +258,53 @@ def calcular_mayoria_forzada(
             mr_objetivo = 130
             rp_esperado = 72
         else:
-            # Estimación genérica basada en umbral (50% + margen)
-            # Para cualquier configuración personalizada
+            # BÚSQUEDA ITERATIVA para encontrar % exacto
+            # Para configuraciones personalizadas, usar búsqueda binaria
             umbral_mayorias = (total_escanos // 2) + 1  # Mayoría simple = 50% + 1
             
-            # Calcular % necesario considerando:
-            # 1. Sistema mixto: MR tienen eficiencia geográfica variable
-            # 2. RP son proporcionales
-            # 3. Topes del 8% si aplican
-            
-            if aplicar_topes:
-                # Con topes del 8%: máximo 58% de escaños
-                max_escanos_posible = int(total_escanos * 0.58)
-                
-                if umbral_mayorias > max_escanos_posible:
-                    # Imposible alcanzar mayoría con topes
-                    return {
-                        "viable": False,
-                        "razon": f"Mayoría simple ({umbral_mayorias} escaños) IMPOSIBLE con topes del 8%. "
-                                f"Máximo alcanzable: {max_escanos_posible} escaños.",
-                        "sugerencia": "Desactivar topes o aumentar escaños totales",
-                        "max_posible": max_escanos_posible
-                    }
-                
-                # Calcular % necesario: necesita alcanzar el umbral respetando tope
-                # Con eficiencia 1.1 en MR, aproximadamente:
-                # escaños_totales = (pct * mr_total * 1.1) + (pct * rp_total)
-                # umbral = pct * (mr_total * 1.1 + rp_total)
-                # pct = umbral / (mr_total * 1.1 + rp_total)
-                
-                pct_votos_necesario = (umbral_mayorias / (mr_total * 1.1 + rp_total)) * 100
-                pct_votos_necesario = min(pct_votos_necesario, 50.0)  # Cap al 50% (tope efectivo)
-                
-            else:
-                # Sin topes: cálculo más simple
-                # pct = umbral / (mr_total * 1.1 + rp_total)
-                pct_votos_necesario = (umbral_mayorias / (mr_total * 1.1 + rp_total)) * 100
-            
-            # Estimar distribución MR/RP
-            mr_objetivo = int(mr_total * (pct_votos_necesario / 100) * 1.1)  # Con eficiencia
-            mr_objetivo = min(mr_objetivo, mr_total)  # No exceder total MR
-            rp_esperado = umbral_mayorias - mr_objetivo
-            
             print(f"[DEBUG] Mayoría forzada genérica: total={total_escanos}, umbral={umbral_mayorias}")
-            print(f"[DEBUG] Estimación: {pct_votos_necesario:.1f}% votos → {mr_objetivo} MR + {rp_esperado} RP = {mr_objetivo + rp_esperado} escaños")
+            print(f"[DEBUG] Usando búsqueda iterativa para encontrar % exacto...")
+            
+            # Búsqueda binaria: empezar entre 40% y 70%
+            pct_min = 40.0
+            pct_max = 70.0
+            pct_votos_necesario = 50.0  # Valor inicial
+            
+            # Iteraciones de búsqueda
+            for _ in range(20):  # Máximo 20 iteraciones
+                pct_actual = (pct_min + pct_max) / 2
+                
+                # Estimar escaños con este porcentaje
+                # MR: usar eficiencia conservadora (0.9 para configs pequeñas)
+                eficiencia_mr = 0.9 if mr_total < 100 else 1.1
+                mr_estimado = int(mr_total * (pct_actual / 100) * eficiencia_mr)
+                mr_estimado = min(mr_estimado, mr_total)
+                
+                # RP: proporcional directo
+                rp_estimado = int(rp_total * (pct_actual / 100))
+                
+                total_estimado = mr_estimado + rp_estimado
+                
+                # Ajustar rango de búsqueda
+                if total_estimado < umbral_mayorias:
+                    pct_min = pct_actual  # Necesita más %
+                elif total_estimado >= umbral_mayorias + 5:
+                    pct_max = pct_actual  # Demasiado %
+                else:
+                    # Encontrado rango aceptable
+                    pct_votos_necesario = pct_actual
+                    mr_objetivo = mr_estimado
+                    rp_esperado = rp_estimado
+                    break
+            else:
+                # Si no converge, usar valor medio
+                pct_votos_necesario = (pct_min + pct_max) / 2
+                eficiencia_mr = 0.9 if mr_total < 100 else 1.1
+                mr_objetivo = int(mr_total * (pct_votos_necesario / 100) * eficiencia_mr)
+                mr_objetivo = min(mr_objetivo, mr_total)
+                rp_esperado = umbral_mayorias - mr_objetivo
+            
+            print(f"[DEBUG] Resultado búsqueda: {pct_votos_necesario:.1f}% votos → {mr_objetivo} MR + {rp_esperado} RP = {mr_objetivo + rp_esperado} escaños")
             
     else:
         # Mayoría calificada (solo sin topes, ya validado arriba)
