@@ -2271,7 +2271,92 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
         mr_por_estado_partido = {}
         distritos_por_estado = {}  # Total de distritos por estado
         try:
-            if 'recomposed' in locals() and recomposed is not None and 'ENTIDAD' in recomposed.columns:
+            # CASO 1: Si hay mr_ganados_geograficos, distribuir por estado usando Hare
+            if mr_ganados_geograficos is not None and mr_seats and mr_seats > 0:
+                if print_debug:
+                    _maybe_log("[mr_por_estado] Usando mr_ganados_geograficos para distribución geográfica", 'debug', print_debug)
+                
+                try:
+                    from redistritacion.modulos.reparto_distritos import repartir_distritos_hare
+                    from redistritacion.modulos.distritacion import cargar_secciones_ine
+                    
+                    # Cargar población por estado
+                    secciones = cargar_secciones_ine()
+                    poblacion_por_estado = secciones.groupby('ENTIDAD')['POBTOT'].sum().to_dict()
+                    
+                    # Repartir distritos usando Hare
+                    asignacion_distritos = repartir_distritos_hare(
+                        poblacion_estados=poblacion_por_estado,
+                        n_distritos=mr_seats,
+                        piso_constitucional=2
+                    )
+                    
+                    # Mapeo de IDs a nombres
+                    estado_nombres = {
+                        1: 'AGUASCALIENTES', 2: 'BAJA CALIFORNIA', 3: 'BAJA CALIFORNIA SUR',
+                        4: 'CAMPECHE', 5: 'CHIAPAS', 6: 'CHIHUAHUA', 7: 'COAHUILA',
+                        8: 'COLIMA', 9: 'CIUDAD DE MEXICO', 10: 'DURANGO', 11: 'GUANAJUATO',
+                        12: 'GUERRERO', 13: 'HIDALGO', 14: 'JALISCO', 15: 'MEXICO',
+                        16: 'MICHOACAN', 17: 'MORELOS', 18: 'NAYARIT', 19: 'NUEVO LEON',
+                        20: 'OAXACA', 21: 'PUEBLA', 22: 'QUERETARO', 23: 'QUINTANA ROO',
+                        24: 'SAN LUIS POTOSI', 25: 'SINALOA', 26: 'SONORA', 27: 'TABASCO',
+                        28: 'TAMAULIPAS', 29: 'TLAXCALA', 30: 'VERACRUZ', 31: 'YUCATAN',
+                        32: 'ZACATECAS'
+                    }
+                    
+                    # Calcular % nacional de cada partido (de votos o votos_redistribuidos)
+                    porcentajes_partidos = {}
+                    if votos_redistribuidos:
+                        # Usar porcentajes redistribuidos
+                        porcentajes_partidos = votos_redistribuidos
+                    else:
+                        # Calcular de votos reales
+                        total_votos = sum(votos_partido.values())
+                        if total_votos > 0:
+                            for p in partidos_base:
+                                porcentajes_partidos[p] = (votos_partido.get(p, 0) / total_votos) * 100
+                    
+                    # Distribuir MR de cada partido por estado
+                    for estado_id, nombre_estado in estado_nombres.items():
+                        distritos_totales = asignacion_distritos.get(estado_id, 0)
+                        distritos_por_estado[nombre_estado] = distritos_totales
+                        mr_por_estado_partido[nombre_estado] = {p: 0 for p in partidos_base}
+                        
+                        # Calcular cuántos MR le tocan a cada partido en este estado
+                        # Proporcionalmente a sus MR nacionales y los distritos del estado
+                        total_mr_nacional = sum(mr_ganados_geograficos.values())
+                        
+                        if total_mr_nacional > 0 and distritos_totales > 0:
+                            for partido in partidos_base:
+                                mr_partido_nacional = mr_ganados_geograficos.get(partido, 0)
+                                # Proporción: (MR_partido / MR_total) * distritos_estado
+                                mr_partido_estado = int(round((mr_partido_nacional / total_mr_nacional) * distritos_totales))
+                                mr_por_estado_partido[nombre_estado][partido] = mr_partido_estado
+                            
+                            # Ajustar para que sume exactamente distritos_totales
+                            suma_actual = sum(mr_por_estado_partido[nombre_estado].values())
+                            if suma_actual != distritos_totales:
+                                # Dar el residuo al partido con más MR nacional
+                                partido_mayor = max(partidos_base, key=lambda p: mr_ganados_geograficos.get(p, 0))
+                                diferencia = distritos_totales - suma_actual
+                                mr_por_estado_partido[nombre_estado][partido_mayor] += diferencia
+                    
+                    if print_debug:
+                        _maybe_log(f"[mr_por_estado] Distribución calculada con mr_ganados_geograficos", 'debug', print_debug)
+                        _maybe_log(f"[mr_por_estado] Total distritos: {sum(distritos_por_estado.values())}", 'debug', print_debug)
+                    
+                except Exception as e_geo:
+                    if print_debug:
+                        _maybe_log(f"[mr_por_estado] Error distribuyendo con mr_ganados_geograficos: {e_geo}", 'warn', print_debug)
+                    # Caer al método tradicional (distrito por distrito)
+                    mr_por_estado_partido = {}
+                    distritos_por_estado = {}
+            
+            # CASO 2: Método tradicional - calcular distrito por distrito desde recomposed
+            if not mr_por_estado_partido and 'recomposed' in locals() and recomposed is not None and 'ENTIDAD' in recomposed.columns:
+                if print_debug:
+                    _maybe_log("[mr_por_estado] Calculando distrito por distrito desde recomposed", 'debug', print_debug)
+                    
                 # Crear estructura: {estado: {partido: count}}
                 estados_unicos = recomposed['ENTIDAD'].unique()
                 
@@ -2291,9 +2376,15 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                         if votos_distrito:
                             ganador = max(votos_distrito, key=votos_distrito.get)
                             mr_por_estado_partido[estado][ganador] += 1
-                
+            
+            # Guardar en meta solo si hay datos
+            if mr_por_estado_partido:
                 meta_out['mr_por_estado'] = mr_por_estado_partido
                 meta_out['distritos_por_estado'] = distritos_por_estado
+                
+                if print_debug:
+                    _maybe_log(f"[mr_por_estado] ✅ Datos guardados en meta", 'debug', print_debug)
+                    
         except Exception as e:
             if print_debug:
                 _maybe_log(f"Error calculando mr_por_estado: {e}", 'warn', print_debug)
