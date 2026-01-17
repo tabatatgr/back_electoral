@@ -2463,9 +2463,85 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     for estado in recomposed['ENTIDAD'].unique():
                         distritos_por_estado[estado] = len(recomposed[recomposed['ENTIDAD'] == estado])
                 
+                # 🔥 CRÍTICO: RECONSTRUIR mr_por_estado usando EXACTAMENTE mr_dict (seat_chart)
+                # Esto asegura que la tabla de distritos coincida EXACTAMENTE con el seat_chart
+                total_mr_desglosado = sum(sum(partidos.values()) for partidos in mr_por_estado_partido.values())
+                total_mr_dict = sum(mr_dict.values()) if mr_dict else 0
+                
+                # Verificar si mr_dict tiene valores diferentes a mr_por_estado_partido
+                mr_dict_actual = {}
+                for estado, partidos_estado in mr_por_estado_partido.items():
+                    for partido, mr in partidos_estado.items():
+                        mr_dict_actual[partido] = mr_dict_actual.get(partido, 0) + mr
+                
+                necesita_reconstruccion = False
+                if mr_dict:
+                    for partido, mr_final in mr_dict.items():
+                        if mr_final != mr_dict_actual.get(partido, 0):
+                            necesita_reconstruccion = True
+                            break
+                
+                if necesita_reconstruccion and mr_dict:
+                    _maybe_log(f"[mr_por_estado] 🔄 RECONSTRUYENDO con valores EXACTOS de seat_chart", 'info', print_debug)
+                    
+                    # ESTRATEGIA: Distribuir los MR de cada partido entre sus estados con mayor fuerza histórica
+                    import math
+                    mr_por_estado_final = {estado: {p: 0 for p in partidos_base} for estado in mr_por_estado_partido.keys()}
+                    
+                    for partido, mr_final_partido in mr_dict.items():
+                        if mr_final_partido == 0:
+                            continue
+                        
+                        # Calcular "fuerza" del partido en cada estado (basado en mr_por_estado_partido histórico)
+                        fuerza_por_estado = []
+                        total_fuerza = 0
+                        
+                        for estado, partidos_estado in mr_por_estado_partido.items():
+                            fuerza = partidos_estado.get(partido, 0)
+                            if fuerza > 0:
+                                fuerza_por_estado.append((estado, fuerza))
+                                total_fuerza += fuerza
+                        
+                        if total_fuerza == 0:
+                            # Si el partido no tiene fuerza histórica, distribuir equitativamente
+                            estados = list(mr_por_estado_partido.keys())
+                            mr_por_estado_base = mr_final_partido // len(estados)
+                            sobrantes = mr_final_partido % len(estados)
+                            
+                            for i, estado in enumerate(estados):
+                                mr_por_estado_final[estado][partido] = mr_por_estado_base + (1 if i < sobrantes else 0)
+                        else:
+                            # Distribuir proporcionalmente a la fuerza histórica
+                            asignados = {}
+                            residuos = []
+                            
+                            for estado, fuerza in fuerza_por_estado:
+                                proporcion_exacta = (fuerza / total_fuerza) * mr_final_partido
+                                mr_floor = math.floor(proporcion_exacta)
+                                residuo = proporcion_exacta - mr_floor
+                                
+                                asignados[estado] = mr_floor
+                                if residuo > 0:
+                                    residuos.append((estado, residuo))
+                            
+                            # Distribuir residuos (largest remainder)
+                            total_asignado = sum(asignados.values())
+                            faltantes = mr_final_partido - total_asignado
+                            
+                            if faltantes > 0 and residuos:
+                                residuos.sort(key=lambda x: x[1], reverse=True)
+                                for i in range(min(faltantes, len(residuos))):
+                                    estado, _ = residuos[i]
+                                    asignados[estado] += 1
+                            
+                            # Aplicar asignaciones
+                            for estado, mr_asignado in asignados.items():
+                                mr_por_estado_final[estado][partido] = mr_asignado
+                    
+                    mr_por_estado_partido = mr_por_estado_final
+                    total_mr_desglosado = sum(sum(p.values()) for p in mr_por_estado_partido.values())
+                
                 if print_debug:
-                    total_mr_desglosado = sum(sum(partidos.values()) for partidos in mr_por_estado_partido.values())
-                    total_mr_dict = sum(mr_dict.values()) if mr_dict else 0
                     _maybe_log(f"[mr_por_estado] ✅ Desglosados {total_mr_desglosado}/{total_mr_dict} MR en {len(mr_por_estado_partido)} estados", 'debug', print_debug)
                     
                     # Validación: verificar que cada estado no exceda sus distritos
