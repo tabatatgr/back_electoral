@@ -2592,6 +2592,62 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                         max_distritos = distritos_por_estado.get(estado, 0)
                         if total_estado > max_distritos:
                             _maybe_log(f"[mr_por_estado] ⚠️  {estado}: {total_estado} MR > {max_distritos} distritos!", 'error', print_debug)
+                
+                # 🔥 CRÍTICO: Ajustar mr_por_estado para que cada estado respete su límite de distritos
+                # Esto previene casos como Campeche con MC=1 + MORENA=2 = 3 cuando solo tiene 1 distrito
+                for estado, partidos_estado in list(mr_por_estado_partido.items()):
+                    total_estado = sum(partidos_estado.values())
+                    max_distritos = distritos_por_estado.get(estado, 0)
+                    
+                    # Caso especial: Estado con 0 distritos escalados
+                    if total_estado > 0 and max_distritos == 0:
+                        _maybe_log(f"[mr_por_estado] 🔧 AJUSTANDO {estado}: {total_estado} MR → 0 distritos (escalado a 0)", 'info', print_debug)
+                        mr_por_estado_partido[estado] = {partido: 0 for partido in partidos_estado.keys()}
+                        continue
+                    
+                    # Caso normal: Estado excede su límite de distritos
+                    if total_estado > max_distritos and max_distritos > 0:
+                        _maybe_log(f"[mr_por_estado] 🔧 AJUSTANDO {estado}: {total_estado} MR → {max_distritos} distritos (exceso: {total_estado - max_distritos})", 'info', print_debug)
+                        
+                        # Estrategia: Reducir proporcionalmente manteniendo distribución relativa
+                        import math
+                        partidos_ajustados = {}
+                        partidos_con_residuos = []
+                        
+                        for partido, mr_actual in partidos_estado.items():
+                            if mr_actual == 0:
+                                partidos_ajustados[partido] = 0
+                                continue
+                            
+                            # Calcular proporción ajustada
+                            mr_ajustado_exacto = (mr_actual / total_estado) * max_distritos
+                            mr_floor = math.floor(mr_ajustado_exacto)
+                            residuo = mr_ajustado_exacto - mr_floor
+                            
+                            partidos_ajustados[partido] = mr_floor
+                            
+                            if residuo > 0:
+                                partidos_con_residuos.append((partido, residuo))
+                        
+                        # Distribuir residuos para llegar exactamente a max_distritos
+                        total_asignado = sum(partidos_ajustados.values())
+                        faltantes = max_distritos - total_asignado
+                        
+                        if faltantes > 0 and partidos_con_residuos:
+                            partidos_con_residuos.sort(key=lambda x: x[1], reverse=True)
+                            for i in range(min(faltantes, len(partidos_con_residuos))):
+                                partido, _ = partidos_con_residuos[i]
+                                partidos_ajustados[partido] += 1
+                        
+                        # Reemplazar con versión ajustada
+                        mr_por_estado_partido[estado] = partidos_ajustados
+                        
+                        if print_debug:
+                            nuevo_total = sum(partidos_ajustados.values())
+                            _maybe_log(f"[mr_por_estado]   ✅ {estado} ajustado: {nuevo_total}/{max_distritos} distritos", 'debug', print_debug)
+                            for partido, mr in sorted(partidos_ajustados.items(), key=lambda x: x[1], reverse=True):
+                                if mr > 0:
+                                    _maybe_log(f"[mr_por_estado]      {partido}: {partidos_estado.get(partido, 0)} → {mr}", 'debug', print_debug)
             
             # FALLBACK: Si no hay mr_por_estado_raw, usar distribución proporcional pura
             elif mr_dict and mr_seats and mr_seats > 0:
