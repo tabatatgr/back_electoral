@@ -1260,6 +1260,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
     # Calcular MR por distrito considerando coaliciones
         # NUEVO: Si se proporciona mr_ganados_geograficos, usar esos valores directamente
         # (evita el cálculo distrito por distrito usando redistritación geográfica real)
+        mr_son_manuales = False  # 🔥 Bandera para evitar reescalar MR manuales del frontend
         if mr_ganados_geograficos is not None:
             if print_debug:
                 _maybe_log("Usando MR geográficos proporcionados (redistritación geográfica real)", 'info', print_debug)
@@ -1268,6 +1269,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
             # Asegurar que todos los partidos base están representados
             mr_aligned = {p: int(mr_ganados_geograficos.get(p, 0)) for p in partidos_base}
             indep_mr = 0
+            mr_son_manuales = True  # ✅ Marcar que estos MR vienen del frontend (no reescalar)
             
             total_mr_geograficos = sum(mr_aligned.values())
             if print_debug:
@@ -1922,7 +1924,19 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     _maybe_log(f"usar_coaliciones={usar_coaliciones}, coaliciones_detectadas={bool(coaliciones_detectadas)}", 'debug', print_debug)
                 # Ajustar MR calculado para que sume exactamente mr_seats
                 total_mr_actual = sum(mr_aligned.values())
-                if total_mr_actual != mr_seats:
+                
+                # 🔥 CRÍTICO: NO ajustar si los MR son manuales del frontend (mr_ganados_geograficos)
+                # El frontend ya envió los valores exactos que quiere, NO deben reescalarse
+                if mr_son_manuales:
+                    if print_debug:
+                        _maybe_log(f"✅ MR manuales del frontend ({total_mr_actual}) - NO se reescalarán", 'info', print_debug)
+                        _maybe_log(f"   Valores recibidos: {mr_aligned}", 'debug', print_debug)
+                    # Actualizar mr_seats para reflejar el total real de MR manuales
+                    # Esto permite que el resto del código funcione correctamente
+                    mr_seats = total_mr_actual
+                    if print_debug:
+                        _maybe_log(f"   mr_seats actualizado a {mr_seats} para coincidir con MR manuales", 'debug', print_debug)
+                elif total_mr_actual != mr_seats:
                     if print_debug:
                         _maybe_log(f"Ajustando MR de {total_mr_actual} a {mr_seats}", 'debug', print_debug)
                     

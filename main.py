@@ -2694,6 +2694,12 @@ async def procesar_diputados(
             divisor_method_final = None
             sistema_final = "mixto"
             
+            # 🔥 EXCEPCIÓN: Si hay mr_distritos_por_estado (sliders micro), setear mr_seats_final=300
+            # para que se procese correctamente
+            if mr_distritos_por_estado:
+                mr_seats_final = 300
+                print(f"[DEBUG] 🎯 Sliders MICRO detectados en plan vigente → mr_seats_final=300")
+            
         elif plan_normalizado == "plan_a":
             # PLAN A: 300 total (0 MR + 300 RP), umbral 3%, sin tope, SIN PM
             # Ignorar cualquier escanos_totales enviado desde el frontend: plan_a es RP puro 300
@@ -2944,11 +2950,18 @@ async def procesar_diputados(
         # que los MR se calculen correctamente en todos los casos
         
         mr_ganados_geograficos = None
+        mr_por_estado_manual = None  # 🔥 Inicializar aquí para que esté disponible después
+        
         if redistritacion_geografica and mr_seats_final and mr_seats_final > 0:
+            
+            # DEBUG: Verificar parámetros recibidos
+            print(f"[DEBUG] 🔍 Verificando parámetros de distribución:")
+            print(f"[DEBUG]   mr_distritos_manuales: {mr_distritos_manuales[:100] if mr_distritos_manuales else None}")
+            print(f"[DEBUG]   mr_distritos_por_estado: {mr_distritos_por_estado[:100] if mr_distritos_por_estado else None}")
             
             # PRIORIDAD 1: Si hay distribución por estado, convertirla a MR manuales totales
             if mr_distritos_por_estado:
-                print(f"[DEBUG] Procesando distribución por estado: {mr_distritos_por_estado}")
+                print(f"[DEBUG] 🎯 Procesando distribución MICRO por estado: {mr_distritos_por_estado[:200]}")
                 try:
                     from redistritacion.modulos.reparto_distritos import repartir_distritos_hare
                     from redistritacion.modulos.distritacion import cargar_secciones_ine
@@ -2956,49 +2969,42 @@ async def procesar_diputados(
                     # Parsear JSON
                     distribucion_estados = json.loads(mr_distritos_por_estado)
                     
-                    # Cargar distribución Hare real para validación
-                    secciones = cargar_secciones_ine()
-                    poblacion_por_estado = secciones.groupby('ENTIDAD')['POBTOT'].sum().to_dict()
+                    # 🔥 CRÍTICO: GUARDAR desglose por estado para devolverlo en respuesta
+                    # Esto permite que los sliders micro funcionen correctamente
+                    mr_por_estado_manual = {}
                     
-                    # Usar total_distritos si fue especificado, sino usar mr_seats_final
-                    n_distritos_param = total_distritos if total_distritos is not None else mr_seats_final
-                    print(f"[DEBUG] Distribución Hare con {n_distritos_param} distritos (total_distritos={total_distritos}, mr_seats={mr_seats_final})")
+                    # Mapeo de IDs a nombres de estados
+                    ID_A_NOMBRE_ESTADO = {
+                        1: "AGUASCALIENTES", 2: "BAJA CALIFORNIA", 3: "BAJA CALIFORNIA SUR",
+                        4: "CAMPECHE", 5: "COAHUILA", 6: "COLIMA", 7: "CHIAPAS", 8: "CHIHUAHUA",
+                        9: "CIUDAD DE MEXICO", 10: "DURANGO", 11: "GUANAJUATO",
+                        12: "GUERRERO", 13: "HIDALGO", 14: "JALISCO", 15: "MEXICO",
+                        16: "MICHOACAN", 17: "MORELOS", 18: "NAYARIT", 19: "NUEVO LEON",
+                        20: "OAXACA", 21: "PUEBLA", 22: "QUERETARO", 23: "QUINTANA ROO",
+                        24: "SAN LUIS POTOSI", 25: "SINALOA", 26: "SONORA", 27: "TABASCO",
+                        28: "TAMAULIPAS", 29: "TLAXCALA", 30: "VERACRUZ", 31: "YUCATAN",
+                        32: "ZACATECAS"
+                    }
                     
-                    asignacion_hare = repartir_distritos_hare(
-                        poblacion_estados=poblacion_por_estado,
-                        n_distritos=n_distritos_param,
-                        piso_constitucional=2
-                    )
-                    
-                    # Validar y sumar
-                    totales_por_partido = {}
+                    # Convertir IDs a nombres y almacenar
                     for estado_id_str, partidos_dict in distribucion_estados.items():
                         estado_id = int(estado_id_str)
-                        
-                        # Validar que el estado existe en la distribución Hare
-                        if estado_id not in asignacion_hare:
-                            raise HTTPException(
-                                status_code=400,
-                                detail=f"Estado {estado_id} no válido (rango: 1-32)"
-                            )
-                        
-                        # Validar que la suma de partidos = distritos asignados al estado
-                        distritos_esperados = asignacion_hare[estado_id]
-                        distritos_asignados = sum(partidos_dict.values())
-                        
-                        if distritos_asignados != distritos_esperados:
-                            raise HTTPException(
-                                status_code=400,
-                                detail=f"Estado {estado_id}: suma de distritos ({distritos_asignados}) != esperados ({distritos_esperados})"
-                            )
-                        
-                        # Sumar a totales
+                        nombre_estado = ID_A_NOMBRE_ESTADO.get(estado_id, f"ESTADO_{estado_id}")
+                        mr_por_estado_manual[nombre_estado] = partidos_dict.copy()
+                    
+                    print(f"[DEBUG] 🎯 SLIDERS MICRO: {len(mr_por_estado_manual)} estados con ajustes manuales")
+                    print(f"[DEBUG] Estados ajustados: {list(mr_por_estado_manual.keys())}")
+                    
+                    # Sumar totales para mr_distritos_manuales
+                    totales_por_partido = {}
+                    for partidos_dict in distribucion_estados.values():
                         for partido, distritos in partidos_dict.items():
                             totales_por_partido[partido] = totales_por_partido.get(partido, 0) + distritos
                     
-                    # Convertir a mr_distritos_manuales (para que la lógica existente lo procese)
+                    # Convertir a mr_distritos_manuales
                     mr_distritos_manuales = json.dumps(totales_por_partido)
-                    print(f"[DEBUG] Distribución por estado convertida a MR manuales: {mr_distritos_manuales}")
+                    print(f"[DEBUG] ✅ MR manuales parciales: {mr_distritos_manuales}")
+                    print(f"[DEBUG] Total MR: {sum(totales_por_partido.values())} de {len(mr_por_estado_manual)} estados")
                     
                 except json.JSONDecodeError:
                     raise HTTPException(status_code=400, detail="mr_distritos_por_estado debe ser un JSON válido")
@@ -3472,6 +3478,29 @@ async def procesar_diputados(
                 resultado_formateado['meta']['trace'] = trace
         except Exception as _e:
             print(f"[WARN] No se pudo añadir trace meta en diputados: {_e}")
+
+        # 🔥 NUEVO: Si hay distribución manual por estado (sliders micro), incluirla en meta
+        try:
+            if 'mr_por_estado_manual' in locals() and mr_por_estado_manual:
+                if 'meta' not in resultado_formateado:
+                    resultado_formateado['meta'] = {}
+                
+                # SOBRESCRIBIR mr_por_estado con los valores manuales del frontend
+                # Esto asegura que los sliders micro se reflejen correctamente
+                meta_actual = resultado_formateado.get('meta', {})
+                mr_por_estado_calculado = meta_actual.get('mr_por_estado', {})
+                
+                # Merge: estados manuales sobrescriben calculados
+                mr_por_estado_final = mr_por_estado_calculado.copy()
+                mr_por_estado_final.update(mr_por_estado_manual)
+                
+                resultado_formateado['meta']['mr_por_estado'] = mr_por_estado_final
+                
+                print(f"[DEBUG] ✅ Incluyendo {len(mr_por_estado_manual)} estados con ajustes manuales en meta.mr_por_estado")
+                for estado_nombre in mr_por_estado_manual.keys():
+                    print(f"[DEBUG]   - {estado_nombre}: {mr_por_estado_manual[estado_nombre]}")
+        except Exception as _e:
+            print(f"[WARN] No se pudo añadir mr_por_estado_manual en meta: {_e}")
 
         # Preparar headers; añadir X-Redistrib-Trace para diagnóstico en production si existe parquet
         headers = {
