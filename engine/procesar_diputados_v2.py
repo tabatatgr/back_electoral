@@ -2413,6 +2413,51 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                 mr_por_estado_partido = mr_por_estado_raw.copy()
                 _maybe_log(f"[mr_por_estado] Usando mr_por_estado_raw (tracking geográfico)", 'debug', print_debug)
                 
+                # 🔥 CRÍTICO: Escalar mr_por_estado cuando mr_seats < total histórico
+                # Esto pasa en modo personalizado cuando el usuario pide 64 MR en lugar de 300
+                total_historico = sum(sum(partidos.values()) for partidos in mr_por_estado_partido.values())
+                if mr_seats and total_historico > 0 and mr_seats != total_historico:
+                    _maybe_log(f"[mr_por_estado] 📊 Escalando distribución geográfica: {total_historico} → {mr_seats} MR", 'info', print_debug)
+                    
+                    # Escalar proporcionalmente manteniendo distribución geográfica
+                    import math
+                    mr_por_estado_escalado = {}
+                    celdas_con_residuos = []  # Lista de (estado, partido, residuo)
+                    
+                    for estado, partidos in mr_por_estado_partido.items():
+                        mr_por_estado_escalado[estado] = {}
+                        for partido, mr_hist in partidos.items():
+                            # Calcular proporción escalada
+                            mr_escalado_exacto = (mr_hist / total_historico) * mr_seats
+                            mr_floor = math.floor(mr_escalado_exacto)
+                            residuo = mr_escalado_exacto - mr_floor
+                            
+                            mr_por_estado_escalado[estado][partido] = mr_floor
+                            
+                            # Guardar residuo para largest remainder
+                            if residuo > 0:
+                                celdas_con_residuos.append((estado, partido, residuo))
+                    
+                    # Distribuir residuos usando largest remainder
+                    total_asignado = sum(sum(partidos.values()) for partidos in mr_por_estado_escalado.values())
+                    faltantes = mr_seats - total_asignado
+                    
+                    if faltantes > 0:
+                        # Ordenar celdas por residuo descendente
+                        celdas_con_residuos.sort(key=lambda x: x[2], reverse=True)
+                        
+                        # Asignar los faltantes a las celdas con mayor residuo
+                        for i in range(min(faltantes, len(celdas_con_residuos))):
+                            estado, partido, _ = celdas_con_residuos[i]
+                            mr_por_estado_escalado[estado][partido] += 1
+                    
+                    # Reemplazar con versión escalada
+                    mr_por_estado_partido = mr_por_estado_escalado
+                    
+                    if print_debug:
+                        total_final = sum(sum(partidos.values()) for partidos in mr_por_estado_partido.values())
+                        _maybe_log(f"[mr_por_estado] ✅ Escalado completo: {total_final}/{mr_seats} MR", 'debug', print_debug)
+                
                 # Calcular distritos por estado
                 if 'recomposed' in locals() and recomposed is not None and 'ENTIDAD' in recomposed.columns:
                     for estado in recomposed['ENTIDAD'].unique():
