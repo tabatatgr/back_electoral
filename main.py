@@ -2360,8 +2360,8 @@ async def procesar_diputados(
         print(f"[DEBUG] - mr_seats: {mr_seats}")
         print(f"[DEBUG] - rp_seats: {rp_seats}")
         print(f"[DEBUG] - total_distritos: {total_distritos}")  # ← NUEVO
-        print(f"[DEBUG] 🎚️ mr_distritos_manuales (inicial): {mr_distritos_manuales[:100] if isinstance(mr_distritos_manuales, str) and mr_distritos_manuales else mr_distritos_manuales}")
-        print(f"[DEBUG] 🗺️ mr_distritos_por_estado (inicial): {mr_distritos_por_estado[:100] if isinstance(mr_distritos_por_estado, str) and mr_distritos_por_estado else mr_distritos_por_estado}")
+        print(f"[DEBUG] [MR MANUAL] mr_distritos_manuales (inicial): {mr_distritos_manuales[:100] if isinstance(mr_distritos_manuales, str) and mr_distritos_manuales else mr_distritos_manuales}")
+        print(f"[DEBUG] [MR ESTADO] mr_distritos_por_estado (inicial): {mr_distritos_por_estado[:100] if isinstance(mr_distritos_por_estado, str) and mr_distritos_por_estado else mr_distritos_por_estado}")
 
         # FORZAR redistritación geográfica SIEMPRE activa
         # Esto garantiza que los MR se calculen correctamente en todos los casos
@@ -2970,6 +2970,134 @@ async def procesar_diputados(
                         )
                     
                     print(f"[DEBUG] ✅ MR manuales validados: {mr_ganados_geograficos} (total={total_mr_manuales}/{mr_seats_final})")
+                    
+                    # ========================================================================
+                    # AJUSTE DE VOTOS PARA MR MANUALES (REGLA DE TRES INVERSA)
+                    # ========================================================================
+                    # Cuando el usuario usa sliders para especificar MR manualmente, necesitamos
+                    # ajustar los porcentajes de votos para que sean consistentes con esos MR.
+                    # 
+                    # Algoritmo:
+                    # 1. Calcular MR BASE (sin sliders) usando datos históricos
+                    # 2. Para cada partido: nuevo_% = (MR_manual / MR_base) * %_base
+                    # 3. Renormalizar para que sumen 100%
+                    # 4. Generar parquet ajustado con simular_escenario_electoral
+                    # 5. Usar ese parquet para el resto del cálculo
+                    #
+                    print(f"[DEBUG] 🔄 Iniciando ajuste de votos para MR manuales...")
+                    
+                    try:
+                        from engine.procesar_diputados_v2 import procesar_diputados_v2
+                        import pandas as pd
+                        import uuid
+                        
+                        # PASO 1: Calcular MR BASE (históricos) usando el motor SIN sliders
+                        print(f"[DEBUG] 📊 Calculando MR base históricos desde {path_parquet}...")
+                        
+                        resultado_base = procesar_diputados_v2(
+                            path_parquet=path_parquet,
+                            anio=anio,
+                            max_seats=max_seats,
+                            sistema=sistema_final,
+                            mr_seats=mr_seats_final,
+                            rp_seats=rp_seats_final,
+                            pm_seats=pm_seats_final,
+                            umbral=umbral_final,
+                            max_seats_per_party=None,  # Sin topes para obtener valores reales
+                            sobrerrepresentacion=None,
+                            aplicar_topes=False,  # Sin topes para cálculo base
+                            quota_method=quota_method_final,
+                            divisor_method=divisor_method_final,
+                            usar_coaliciones=usar_coaliciones,
+                            votos_redistribuidos=None,  # Sin redistribución
+                            seed=seed_value,
+                            print_debug=False,  # Sin debug para no contaminar logs
+                            mr_ganados_geograficos=None  # ← SIN sliders (calcular base real)
+                        )
+                        
+                        mr_base = resultado_base.get('mr', {})
+                        votos_base = resultado_base.get('votos', {})
+                        total_votos_base = sum(votos_base.values())
+                        
+                        print(f"[DEBUG] MR base calculados: {mr_base}")
+                        print(f"[DEBUG] Votos base: {votos_base}")
+                        
+                        # PASO 2: Calcular porcentajes ajustados usando regla de tres
+                        porcentajes_ajustados = {}
+                        
+                        for partido, mr_manual in mr_ganados_geograficos.items():
+                            mr_historico = mr_base.get(partido, 0)
+                            votos_historicos = votos_base.get(partido, 0)
+                            pct_historico = (votos_historicos / total_votos_base * 100) if total_votos_base > 0 else 0
+                            
+                            if mr_historico > 0:
+                                # Regla de tres: si con X% sacaba Y distritos, con Z distritos necesita...
+                                # nuevo_% = (mr_manual / mr_historico) * pct_historico
+                                pct_ajustado = (mr_manual / mr_historico) * pct_historico
+                            else:
+                                # Si el partido no tenía MR históricos pero ahora tiene manuales,
+                                # asignar un porcentaje proporcional mínimo
+                                pct_ajustado = (mr_manual / total_mr_manuales) * 3.0 if total_mr_manuales > 0 else 0
+                            
+                            porcentajes_ajustados[partido] = pct_ajustado
+                            print(f"[DEBUG] {partido}: {pct_historico:.2f}% ({mr_historico} MR) → {pct_ajustado:.2f}% ({mr_manual} MR)")
+                        
+                        # PASO 3: Renormalizar para que sumen 100%
+                        total_ajustado = sum(porcentajes_ajustados.values())
+                        if total_ajustado > 0:
+                            factor = 100.0 / total_ajustado
+                            porcentajes_ajustados = {
+                                partido: pct * factor 
+                                for partido, pct in porcentajes_ajustados.items()
+                            }
+                            print(f"[DEBUG] Porcentajes renormalizados (total=100%): {porcentajes_ajustados}")
+                        
+                        # PASO 4: Generar parquet ajustado con simular_escenario_electoral
+                        print(f"[DEBUG] 📝 Generando parquet con votos ajustados...")
+                        
+                        df_redistribuido, porcentajes_finales = simular_escenario_electoral(
+                            path_parquet,
+                            porcentajes_objetivo=porcentajes_ajustados,
+                            partidos_fijos={},
+                            overrides_pool={},
+                            mantener_geografia=True
+                        )
+                        
+                        # PASO 5: Guardar parquet temporal
+                        tmp_name = f"outputs/tmp_mr_ajustado_{uuid.uuid4().hex}.parquet"
+                        os.makedirs(os.path.dirname(tmp_name), exist_ok=True)
+                        
+                        # Convertir a formato ancho si es necesario
+                        tmp_to_save = df_redistribuido
+                        if 'PARTIDO' in df_redistribuido.columns and 'VOTOS_CALCULADOS' in df_redistribuido.columns:
+                            id_cols = [c for c in ['ENTIDAD', 'DISTRITO', 'TOTAL_BOLETAS', 'CI'] if c in df_redistribuido.columns]
+                            df_wide = df_redistribuido.pivot_table(
+                                index=id_cols, 
+                                columns='PARTIDO', 
+                                values='VOTOS_CALCULADOS', 
+                                aggfunc='sum'
+                            ).reset_index()
+                            df_wide.columns.name = None
+                            tmp_to_save = df_wide
+                            print(f"[DEBUG] Parquet convertido a formato ancho")
+                        
+                        tmp_to_save.to_parquet(tmp_name, index=False)
+                        print(f"[DEBUG] ✅ Parquet ajustado guardado en: {tmp_name}")
+                        
+                        # PASO 6: Usar el parquet ajustado para el resto del procesamiento
+                        path_parquet = tmp_name
+                        print(f"[INFO] 🎯 MR manuales + votos ajustados: sistema recalculará RP con porcentajes consistentes")
+                        
+                    except Exception as e_ajuste:
+                        print(f"[ERROR] ❌ Error ajustando votos para MR manuales: {e_ajuste}")
+                        import traceback
+                        traceback.print_exc()
+                        # Continuar sin ajuste (usar datos originales)
+                        print(f"[WARN] Continuando sin ajuste de votos (puede haber inconsistencias)")
+                    
+                    # ========================================================================
+                    # FIN AJUSTE DE VOTOS
+                    # ========================================================================
                 
                 except json.JSONDecodeError:
                     raise HTTPException(status_code=400, detail="mr_distritos_manuales debe ser un JSON válido")
