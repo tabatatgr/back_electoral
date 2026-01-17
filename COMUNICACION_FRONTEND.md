@@ -177,39 +177,62 @@ POST /procesar/diputados
 
 ---
 
-## 📊 ESTRUCTURA DE RESPUESTA (Sin cambios)
+## 📊 ESTRUCTURA DE RESPUESTA (✅ VERIFICADA CON EL CÓDIGO REAL)
 
-La respuesta sigue teniendo la misma estructura:
+La respuesta tiene esta estructura **EXACTA** (confirmada ejecutando el backend):
 
 ```javascript
 {
-  "seat_chart": {
-    "data": [
-      {
-        "partido": "MORENA",
-        "mr": 51,        // ✅ Ahora respeta tus valores
-        "rp": 87,
-        "total": 138,
-        "color": "#A4193D"
-      },
-      ...
-    ]
+  "seat_chart": [              // ⚠️ Es un ARRAY directamente (no objeto con "data")
+    {
+      "party": "MORENA",       // ⚠️ Se llama "party" (NO "partido")
+      "seats": 138,            // ⚠️ Se llama "seats" (NO "total")
+      "mr": 51,                // ✅ Ahora respeta tus valores
+      "pm": 0,                 // Primera minoría
+      "rp": 87,                // Representación proporcional
+      "color": "#A4193D",
+      "percent": 35.2,         // % de votos
+      "votes": 15234567
+    },
+    {
+      "party": "PAN",
+      "seats": 120,
+      "mr": 45,
+      "pm": 0,
+      "rp": 75,
+      "color": "#0066CC",
+      "percent": 28.1,
+      "votes": 12123456
+    }
+    // ... resto de partidos
+  ],
+  "kpis": {
+    "total_votos": 43234567,
+    "total_escanos": 500,
+    "gallagher": 0.123,
+    "partidos_con_escanos": 7
   },
-  "kpis": {...},
   "meta": {
-    "mr_por_estado": {     // ✅ Ahora escala correctamente
+    "mr_por_estado": {         // ✅ Ahora escala correctamente
       "AGUASCALIENTES": {"PAN": 2, "MORENA": 1, ...},
       "JALISCO": {"MORENA": 13, "PAN": 7, ...},  // ✅ Refleja cambios micro
-      ...
+      // ... 32 estados
     },
     "distritos_por_estado": {  // ✅ Ahora escala según plan
       "AGUASCALIENTES": 3,     // (o 1 si plan tiene 60 MR)
       "JALISCO": 20,           // (o 4 si plan tiene 60 MR)
-      ...
+      // ... suma = mr_seats total
     }
-  }
+  },
+  "timestamp": "2026-01-17T14:23:45.123456"
 }
 ```
+
+**🔍 IMPORTANTE - Nombres de campos confirmados:**
+- ✅ `seat_chart` es un **ARRAY** (no objeto con `.data`)
+- ✅ Campo del partido: `"party"` (NO `"partido"`)
+- ✅ Campo de escaños totales: `"seats"` (NO `"total"`)
+- ✅ Desglose: `"mr"`, `"pm"`, `"rp"` (nombres cortos)
 
 ---
 
@@ -220,7 +243,8 @@ La respuesta sigue teniendo la misma estructura:
 1. **Test de sliders MR totales:**
    - Subir MORENA a 51 en sliders principales
    - Hacer POST con `mr_distritos_manuales`
-   - Verificar que `seat_chart.data[].mr` devuelve 51 (no 247) ✅
+   - Verificar que `seat_chart[0].mr` devuelve 51 (no 247) ✅
+   - **Nota:** `seat_chart` es un array, NO tiene `.data`
 
 2. **Test de tabla geográfica:**
    - Seleccionar plan con 60 MR (ej: "personalizado")

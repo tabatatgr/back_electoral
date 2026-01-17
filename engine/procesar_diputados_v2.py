@@ -363,7 +363,8 @@ def aplicar_topes_nacionales(s_mr: np.ndarray, s_rp: np.ndarray, v_nacional: np.
                            max_seats_per_party: Optional[int] = None,
                            threshold: float = 0.03,  # Umbral de 3% para filtrar partidos
                            iter_max: int = 16,
-                           partidos_nombres: Optional[List[str]] = None) -> Dict[str, np.ndarray]:
+                           partidos_nombres: Optional[List[str]] = None,
+                           mr_son_manuales: bool = False) -> Dict[str, np.ndarray]:
     """
     Aplica topes constitucionales de forma iterativa con bloqueo de partidos capados
     
@@ -377,6 +378,7 @@ def aplicar_topes_nacionales(s_mr: np.ndarray, s_rp: np.ndarray, v_nacional: np.
     - max_seats_per_party: tope absoluto de escaños por partido (si se especifica, anula max_seats)
     - threshold: umbral de 3% sobre votos válidos (default 0.03)
     - iter_max: máximo de iteraciones
+    - mr_son_manuales: True si los MR vienen del frontend (no deben recortarse, solo RP)
     
     Retorna:
     - Dict con 's_rp' (RP ajustado) y 's_tot' (total ajustado)
@@ -470,31 +472,47 @@ def aplicar_topes_nacionales(s_mr: np.ndarray, s_rp: np.ndarray, v_nacional: np.
     for p in range(N):
         cap_eff = lim_max[p]
         if s_tot[p] > cap_eff:
-            # El tope constitucional es ABSOLUTO
-            # Si MR + RP > tope, recortar en este orden:
-            # 1. Primero quitar todo el RP posible
-            # 2. Si aún excede, quitar MR (esto es controversial pero constitucional)
-            excess = s_tot[p] - cap_eff
-            
-            # Primero intentar quitar RP
-            cut_rp = min(excess, s_rp[p])
-            s_rp[p] -= cut_rp
-            s_tot[p] -= cut_rp
-            sobrantes += cut_rp
-            excess -= cut_rp
-            
-            # Si aún excede después de quitar todo el RP, quitar MR
-            if excess > 0:
-                cut_mr = min(excess, s_mr[p])
-                s_mr[p] -= cut_mr
-                s_tot[p] -= cut_mr
-                sobrantes += cut_mr
-            else:
+            # 🔥 CRÍTICO: Si los MR son manuales del frontend, NO recortarlos
+            # Solo recortar RP en este caso
+            if mr_son_manuales:
+                # MR manuales: solo quitar RP, NUNCA tocar MR
+                excess = s_tot[p] - cap_eff
+                cut_rp = min(excess, s_rp[p])
+                s_rp[p] -= cut_rp
+                s_tot[p] -= cut_rp
+                sobrantes += cut_rp
                 cut_mr = 0
-            
-            # Bloquear partido para no recibir más RP
-            if s_tot[p] >= cap_eff:
-                capped[p] = True
+                
+                # Bloquear si está al tope
+                if s_tot[p] >= cap_eff:
+                    capped[p] = True
+                    
+                if debug_morena:
+                    nombre = partidos_nombres[p] if partidos_nombres else f"partido_{p}"
+                    print(f"[DEBUG MR MANUALES - {nombre}] Recorte: -RP={cut_rp}, MR preservados={s_mr[p]}, Total={s_tot[p]}")
+            else:
+                # MR calculados: aplicar tope normal (primero RP, luego MR si excede)
+                excess = s_tot[p] - cap_eff
+                
+                # Primero intentar quitar RP
+                cut_rp = min(excess, s_rp[p])
+                s_rp[p] -= cut_rp
+                s_tot[p] -= cut_rp
+                sobrantes += cut_rp
+                excess -= cut_rp
+                
+                # Si aún excede después de quitar todo el RP, quitar MR
+                if excess > 0:
+                    cut_mr = min(excess, s_mr[p])
+                    s_mr[p] -= cut_mr
+                    s_tot[p] -= cut_mr
+                    sobrantes += cut_mr
+                else:
+                    cut_mr = 0
+                
+                # Bloquear partido para no recibir más RP
+                if s_tot[p] >= cap_eff:
+                    capped[p] = True
                 
             # DEBUG: Imprimir info después del recorte
             if debug_morena:
@@ -872,6 +890,7 @@ def asignadip_v2(x: np.ndarray, ssd: np.ndarray,
                  divisor_method: Optional[str] = None,
                  seed: Optional[int] = None,
                  partidos_base: Optional[List[str]] = None,
+                 mr_son_manuales: bool = False,  # 🔥 NUEVO: Flag para MR manuales del frontend
                  print_debug: bool = False) -> Dict:
     """
     Asignación de diputaciones versión 2 (basada en R)
@@ -889,6 +908,7 @@ def asignadip_v2(x: np.ndarray, ssd: np.ndarray,
     - max_pp: sobrerrepresentación máxima (+8 pp)
     - max_seats_per_party: tope absoluto de escaños por partido (anula max_seats si se especifica)
     - apply_caps: aplicar topes constitucionales
+    - mr_son_manuales: True si los MR vienen del frontend (sliders), no deben recortarse
     - seed: semilla para desempates
     - print_debug: imprimir información de depuración
     
@@ -947,7 +967,8 @@ def asignadip_v2(x: np.ndarray, ssd: np.ndarray,
             S=S, max_pp=max_pp, max_seats=max_seats,
             max_seats_per_party=max_seats_per_party,
             threshold=threshold,  # Pasar umbral del 3% para filtrado correcto
-            partidos_nombres=partidos_base
+            partidos_nombres=partidos_base,
+            mr_son_manuales=mr_son_manuales  # 🔥 CRÍTICO: Preservar MR manuales del frontend
         )
         s_tot = resultado_topes['s_tot']
         s_rp_final = resultado_topes['s_rp']
@@ -1893,6 +1914,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     divisor_method=divisor_method,
                     seed=seed,
                     partidos_base=partidos_base,
+                    mr_son_manuales=False,  # RP-only: no aplica MR manuales
                     print_debug=print_debug
                 )
             except Exception as e:
@@ -2168,6 +2190,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     divisor_method=divisor_method,
                     seed=seed,
                     partidos_base=partidos_base,
+                    mr_son_manuales=mr_son_manuales,  # 🔥 CRÍTICO: Preservar MR manuales del frontend
                     print_debug=print_debug
                 )
             except Exception as e:
@@ -2824,6 +2847,55 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     # Caer al método tradicional (distrito por distrito)
                     mr_por_estado_partido = {}
                     distritos_por_estado = {}
+            
+            # 🔥 VALIDACIÓN CRÍTICA: Asegurar que totales por partido coincidan EXACTAMENTE con mr_dict
+            if mr_por_estado_partido and mr_dict:
+                for partido in partidos_base:
+                    total_distribuido = sum(mr_por_estado_partido.get(estado, {}).get(partido, 0) for estado in mr_por_estado_partido)
+                    mr_esperado = mr_dict.get(partido, 0)
+                    
+                    if total_distribuido != mr_esperado:
+                        diferencia = mr_esperado - total_distribuido
+                        
+                        if print_debug:
+                            _maybe_log(f"[mr_por_estado] ⚠️ AJUSTANDO {partido}: distribuido={total_distribuido}, esperado={mr_esperado}, diff={diferencia}", 'warn', print_debug)
+                        
+                        # Ajustar la diferencia distribuyendo/quitando de estados con mayor residuo
+                        if diferencia > 0:
+                            # Necesitamos agregar MR: buscar estados con capacidad disponible
+                            for _ in range(abs(diferencia)):
+                                # Buscar estado con espacio disponible (suma < max_distritos)
+                                mejor_estado = None
+                                for estado in mr_por_estado_partido:
+                                    max_distritos = distritos_por_estado.get(estado, 0)
+                                    suma_actual = sum(mr_por_estado_partido[estado].values())
+                                    if suma_actual < max_distritos:
+                                        mejor_estado = estado
+                                        break
+                                
+                                if mejor_estado:
+                                    mr_por_estado_partido[mejor_estado][partido] += 1
+                                    if print_debug:
+                                        _maybe_log(f"[mr_por_estado]   +1 MR de {partido} en {mejor_estado}", 'debug', print_debug)
+                                else:
+                                    if print_debug:
+                                        _maybe_log(f"[mr_por_estado]   ❌ No hay estados disponibles para agregar +1 MR de {partido}", 'warn', print_debug)
+                                    break
+                        else:
+                            # Necesitamos quitar MR: buscar estados con MR de este partido
+                            for _ in range(abs(diferencia)):
+                                # Buscar estado con MR de este partido
+                                estados_con_mr = [e for e in mr_por_estado_partido if mr_por_estado_partido[e].get(partido, 0) > 0]
+                                if estados_con_mr:
+                                    # Quitar del estado con más MR de este partido
+                                    mejor_estado = max(estados_con_mr, key=lambda e: mr_por_estado_partido[e][partido])
+                                    mr_por_estado_partido[mejor_estado][partido] -= 1
+                                    if print_debug:
+                                        _maybe_log(f"[mr_por_estado]   -1 MR de {partido} en {mejor_estado}", 'debug', print_debug)
+                                else:
+                                    if print_debug:
+                                        _maybe_log(f"[mr_por_estado]   ❌ No hay estados con MR de {partido} para quitar", 'warn', print_debug)
+                                    break
             
             # Guardar en meta solo si hay datos
             if mr_por_estado_partido:

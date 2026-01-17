@@ -3003,8 +3003,20 @@ async def procesar_diputados(
                     
                     # Convertir a mr_distritos_manuales
                     mr_distritos_manuales = json.dumps(totales_por_partido)
+                    total_mr_estados = sum(totales_por_partido.values())
                     print(f"[DEBUG] ✅ MR manuales parciales: {mr_distritos_manuales}")
-                    print(f"[DEBUG] Total MR: {sum(totales_por_partido.values())} de {len(mr_por_estado_manual)} estados")
+                    print(f"[DEBUG] Total MR: {total_mr_estados} de {len(mr_por_estado_manual)} estados")
+                    
+                    # 🔥 VALIDACIÓN: Si todos los estados tienen 0, es un error del frontend
+                    if total_mr_estados == 0 and len(mr_por_estado_manual) > 0:
+                        print(f"[ERROR] ❌ TODOS LOS ESTADOS TIENEN 0 DISTRITOS")
+                        print(f"[ERROR] ❌ El frontend está enviando mr_por_estado con todos los valores en 0")
+                        print(f"[ERROR] ❌ Desglose recibido: {mr_por_estado_manual}")
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Error en mr_por_estado: todos los estados tienen 0 distritos. "
+                                   "Verifica que el frontend esté enviando los valores correctos de la tabla geográfica."
+                        )
                     
                 except json.JSONDecodeError:
                     raise HTTPException(status_code=400, detail="mr_distritos_por_estado debe ser un JSON válido")
