@@ -2462,6 +2462,48 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                 if 'recomposed' in locals() and recomposed is not None and 'ENTIDAD' in recomposed.columns:
                     for estado in recomposed['ENTIDAD'].unique():
                         distritos_por_estado[estado] = len(recomposed[recomposed['ENTIDAD'] == estado])
+                    
+                    # 🔥 CRÍTICO: Escalar distritos_por_estado cuando mr_seats < total histórico (300)
+                    # Esto es necesario para planes personalizados (ej: 64 MR en lugar de 300)
+                    total_historico_distritos = sum(distritos_por_estado.values())
+                    if mr_seats and total_historico_distritos > 0 and mr_seats != total_historico_distritos:
+                        _maybe_log(f"[distritos_por_estado] 📊 Escalando totales: {total_historico_distritos} → {mr_seats} MR", 'info', print_debug)
+                        
+                        import math
+                        distritos_escalados = {}
+                        estados_con_residuos = []
+                        
+                        for estado, distritos_hist in distritos_por_estado.items():
+                            # Calcular proporción escalada
+                            distritos_escalado_exacto = (distritos_hist / total_historico_distritos) * mr_seats
+                            distritos_floor = math.floor(distritos_escalado_exacto)
+                            residuo = distritos_escalado_exacto - distritos_floor
+                            
+                            distritos_escalados[estado] = distritos_floor
+                            
+                            # Guardar residuo para largest remainder
+                            if residuo > 0:
+                                estados_con_residuos.append((estado, residuo))
+                        
+                        # Distribuir residuos usando largest remainder
+                        total_asignado = sum(distritos_escalados.values())
+                        faltantes = mr_seats - total_asignado
+                        
+                        if faltantes > 0:
+                            # Ordenar estados por residuo descendente
+                            estados_con_residuos.sort(key=lambda x: x[1], reverse=True)
+                            
+                            # Asignar los faltantes a los estados con mayor residuo
+                            for i in range(min(faltantes, len(estados_con_residuos))):
+                                estado, _ = estados_con_residuos[i]
+                                distritos_escalados[estado] += 1
+                        
+                        # Reemplazar con versión escalada
+                        distritos_por_estado = distritos_escalados
+                        
+                        if print_debug:
+                            total_final_distritos = sum(distritos_por_estado.values())
+                            _maybe_log(f"[distritos_por_estado] ✅ Escalado completo: {total_final_distritos}/{mr_seats} distritos totales", 'debug', print_debug)
                 
                 # 🔥 CRÍTICO: RECONSTRUIR mr_por_estado usando EXACTAMENTE mr_dict (seat_chart)
                 # Esto asegura que la tabla de distritos coincida EXACTAMENTE con el seat_chart

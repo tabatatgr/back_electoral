@@ -2324,6 +2324,56 @@ async def procesar_diputados(
             porcentajes_partidos = body_obj.get('porcentajes_partidos', porcentajes_partidos)
             mr_distritos_manuales = body_obj.get('mr_distritos_manuales', mr_distritos_manuales)  # ← FIX CRÍTICO
             mr_distritos_por_estado = body_obj.get('mr_distritos_por_estado', mr_distritos_por_estado)  # ← FIX CRÍTICO
+            
+            # 🆕 ALIAS: El frontend envía "mr_por_estado" pero el backend espera "mr_distritos_por_estado"
+            if not mr_distritos_por_estado and 'mr_por_estado' in body_obj:
+                mr_por_estado_raw = body_obj.get('mr_por_estado')
+                
+                # El frontend puede enviar nombres de estados o IDs
+                # Necesitamos convertir nombres → IDs si es necesario
+                try:
+                    # Si viene como string JSON, parsearlo
+                    if isinstance(mr_por_estado_raw, str):
+                        mr_por_estado_parsed = json.loads(mr_por_estado_raw)
+                    else:
+                        mr_por_estado_parsed = mr_por_estado_raw
+                    
+                    # Mapeo de nombres de estados a IDs
+                    ESTADO_NOMBRE_A_ID = {
+                        "Aguascalientes": 1, "Baja California": 2, "Baja California Sur": 3,
+                        "Campeche": 4, "Coahuila": 5, "Colima": 6, "Chiapas": 7, "Chihuahua": 8,
+                        "Ciudad de México": 9, "CDMX": 9, "Durango": 10, "Guanajuato": 11, 
+                        "Guerrero": 12, "Hidalgo": 13, "Jalisco": 14, "México": 15, "Michoacán": 16,
+                        "Morelos": 17, "Nayarit": 18, "Nuevo León": 19, "Oaxaca": 20,
+                        "Puebla": 21, "Querétaro": 22, "Quintana Roo": 23, "San Luis Potosí": 24,
+                        "Sinaloa": 25, "Sonora": 26, "Tabasco": 27, "Tamaulipas": 28,
+                        "Tlaxcala": 29, "Veracruz": 30, "Yucatán": 31, "Zacatecas": 32
+                    }
+                    
+                    # Verificar si las claves son nombres o IDs
+                    primera_clave = next(iter(mr_por_estado_parsed.keys()))
+                    
+                    if primera_clave.isdigit() or isinstance(primera_clave, int):
+                        # Ya vienen como IDs, usar directamente
+                        mr_distritos_por_estado = mr_por_estado_raw if isinstance(mr_por_estado_raw, str) else json.dumps(mr_por_estado_raw)
+                        print(f"[DEBUG] ✅ mr_por_estado ya tiene IDs numéricos")
+                    else:
+                        # Convertir nombres → IDs
+                        mr_por_estado_con_ids = {}
+                        for nombre_estado, partidos in mr_por_estado_parsed.items():
+                            estado_id = ESTADO_NOMBRE_A_ID.get(nombre_estado)
+                            if estado_id:
+                                mr_por_estado_con_ids[str(estado_id)] = partidos
+                            else:
+                                print(f"[WARN] Estado '{nombre_estado}' no reconocido en mapeo")
+                        
+                        mr_distritos_por_estado = json.dumps(mr_por_estado_con_ids)
+                        print(f"[DEBUG] ✅ Convertido mr_por_estado de nombres → IDs: {len(mr_por_estado_con_ids)} estados")
+                
+                except Exception as e:
+                    print(f"[WARN] Error procesando mr_por_estado: {e}")
+                    mr_distritos_por_estado = mr_por_estado_raw if isinstance(mr_por_estado_raw, str) else json.dumps(mr_por_estado_raw)
+            
             # Soporte para payloads 'desnudos' como {"PRD":90, "PAN":5, ...}
             # Detectar si el body contiene solo claves de partidos en mayúsculas y valores numéricos
             try:
@@ -3758,6 +3808,262 @@ def normalizar_plan(plan: str) -> str:
     resultado = mapeo_planes.get(plan_lower, plan_lower)
     print(f"[DEBUG] Normalizando plan: '{plan}' -> '{resultado}'")
     return resultado
+
+
+# ==========================================
+# 🎯 ENDPOINT: AJUSTAR DISTRITO INDIVIDUAL
+# ==========================================
+
+class AjusteDistritoRequest(BaseModel):
+    """Request body para ajuste de distrito individual (flechitas ↑↓)"""
+    camara: str
+    anio: int
+    estado: str  # Nombre del estado (ej: "Jalisco", "Ciudad de México")
+    partido: str  # Partido a ajustar (ej: "MORENA", "PAN")
+    accion: str  # "incrementar" o "decrementar"
+    plan: str
+    aplicar_topes: bool
+    
+    # Distribución MR actual NACIONAL (para contexto y recalcular)
+    mr_nacional_actual: Dict[str, int]
+    
+    # Distribución MR actual del ESTADO específico (para ajustar)
+    mr_estado_actual: Dict[str, int]
+    
+    # Opcional: votos redistribuidos si aplica
+    votos_redistribuidos: Optional[str] = None
+    coaliciones_activas: Optional[str] = None
+
+
+@app.post("/ajustar/distrito-individual")
+async def ajustar_distrito_individual(request: AjusteDistritoRequest):
+    """
+    🎯 Ajusta MR de un partido en un estado específico usando flechitas (↑↓).
+    
+    **Lógica:**
+    - Incrementar: Suma 1 al partido objetivo, resta 1 al partido con MÁS distritos en ese estado
+    - Decrementar: Resta 1 al partido objetivo, suma 1 al partido con MÁS distritos en ese estado
+    - Siempre mantiene el total de distritos del estado constante
+    - Recalcula COMPLETO: RP, topes, KPIs, seat_chart
+    
+    **Ejemplo:**
+    ```
+    Estado: Jalisco (20 distritos)
+    Antes: MORENA=12, PAN=6, MC=2
+    Acción: Incrementar PAN (+1)
+    Después: MORENA=11 (le quitamos), PAN=7 (le sumamos), MC=2
+    ```
+    
+    **Returns:**
+    - mr_estado_nuevo: Distribución actualizada del estado
+    - mr_nacional_nuevo: Totales MR nacionales actualizados
+    - seat_chart: Resultados completos recalculados
+    - kpis: Métricas actualizadas
+    - ajuste_realizado: Info del cambio ejecutado
+    """
+    try:
+        print(f"\n{'='*80}")
+        print(f"🎯 AJUSTE DISTRITO INDIVIDUAL - {request.estado}")
+        print(f"{'='*80}")
+        print(f"Partido: {request.partido} | Acción: {request.accion}")
+        print(f"Estado actual: {request.mr_estado_actual}")
+        print(f"Nacional actual: {request.mr_nacional_actual}")
+        
+        # ========================================
+        # PASO 1: OBTENER TOTAL DE DISTRITOS DEL ESTADO
+        # ========================================
+        
+        # Mapeo de nombres de estados a distritos (plan vigente - 300 distritos)
+        # Basado en distribución poblacional actual
+        DISTRITOS_POR_ESTADO = {
+            "Aguascalientes": 3,
+            "Baja California": 8,
+            "Baja California Sur": 2,
+            "Campeche": 2,
+            "Coahuila": 7,
+            "Colima": 2,
+            "Chiapas": 13,
+            "Chihuahua": 9,
+            "Ciudad de México": 24,
+            "Durango": 4,
+            "Guanajuato": 15,
+            "Guerrero": 9,
+            "Hidalgo": 7,
+            "Jalisco": 20,
+            "México": 40,
+            "Michoacán": 12,
+            "Morelos": 5,
+            "Nayarit": 3,
+            "Nuevo León": 12,
+            "Oaxaca": 11,
+            "Puebla": 15,
+            "Querétaro": 5,
+            "Quintana Roo": 4,
+            "San Luis Potosí": 7,
+            "Sinaloa": 7,
+            "Sonora": 7,
+            "Tabasco": 6,
+            "Tamaulipas": 8,
+            "Tlaxcala": 3,
+            "Veracruz": 20,
+            "Yucatán": 5,
+            "Zacatecas": 4
+        }
+        
+        # Si el plan es personalizado, ajustar proporcionalmente
+        if request.plan == "personalizado":
+            # Calcular el total MR del plan actual
+            mr_total = sum(request.mr_nacional_actual.values())
+            
+            # Si mr_total != 300, escalar proporcionalmente
+            if mr_total != 300:
+                factor_escala = mr_total / 300
+                DISTRITOS_POR_ESTADO = {
+                    estado: max(1, round(distritos * factor_escala))
+                    for estado, distritos in DISTRITOS_POR_ESTADO.items()
+                }
+                print(f"⚠️  Plan personalizado con {mr_total} MR - Escalando distritos por estado (factor: {factor_escala:.3f})")
+        
+        distritos_totales_estado = DISTRITOS_POR_ESTADO.get(request.estado)
+        if not distritos_totales_estado:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Estado '{request.estado}' no reconocido. Verifica el nombre exacto."
+            )
+        
+        print(f"📊 Distritos totales en {request.estado}: {distritos_totales_estado}")
+        
+        # ========================================
+        # PASO 2: VALIDAR OPERACIÓN
+        # ========================================
+        
+        mr_estado_nuevo = request.mr_estado_actual.copy()
+        mr_nacional_nuevo = request.mr_nacional_actual.copy()
+        
+        if request.accion == "incrementar":
+            # Verificar que haya partidos con distritos para quitar
+            partidos_con_mr = {p: v for p, v in request.mr_estado_actual.items() if v > 0 and p != request.partido}
+            if not partidos_con_mr:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"No hay partidos con distritos disponibles para redistribuir en {request.estado}"
+                )
+            
+            # PASO 2A: Incrementar partido objetivo
+            mr_estado_nuevo[request.partido] = mr_estado_nuevo.get(request.partido, 0) + 1
+            mr_nacional_nuevo[request.partido] = mr_nacional_nuevo.get(request.partido, 0) + 1
+            
+            # PASO 2B: Quitar 1 distrito del partido con MÁS distritos (excluyendo el que incrementamos)
+            partido_a_decrementar = max(partidos_con_mr, key=partidos_con_mr.get)
+            mr_estado_nuevo[partido_a_decrementar] -= 1
+            mr_nacional_nuevo[partido_a_decrementar] -= 1
+            
+            ajuste_info = {
+                "partido_incrementado": request.partido,
+                "partido_decrementado": partido_a_decrementar,
+                "cambio": +1
+            }
+            print(f"✅ Incremento: {request.partido} +1, {partido_a_decrementar} -1")
+        
+        elif request.accion == "decrementar":
+            # Verificar que el partido tenga al menos 1 distrito en este estado
+            if request.mr_estado_actual.get(request.partido, 0) == 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{request.partido} no tiene distritos en {request.estado} para decrementar"
+                )
+            
+            # PASO 2A: Decrementar partido objetivo
+            mr_estado_nuevo[request.partido] = mr_estado_nuevo.get(request.partido, 0) - 1
+            mr_nacional_nuevo[request.partido] = mr_nacional_nuevo.get(request.partido, 0) - 1
+            
+            # PASO 2B: Sumar 1 distrito al partido con MÁS distritos (excluyendo el que decrementamos)
+            candidatos = {p: v for p, v in mr_estado_nuevo.items() if p != request.partido}
+            partido_a_incrementar = max(candidatos, key=candidatos.get)
+            
+            mr_estado_nuevo[partido_a_incrementar] += 1
+            mr_nacional_nuevo[partido_a_incrementar] += 1
+            
+            ajuste_info = {
+                "partido_incrementado": partido_a_incrementar,
+                "partido_decrementado": request.partido,
+                "cambio": -1
+            }
+            print(f"✅ Decremento: {request.partido} -1, {partido_a_incrementar} +1")
+        
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Acción inválida: '{request.accion}'. Debe ser 'incrementar' o 'decrementar'"
+            )
+        
+        # Validar que totales sumen correctamente
+        total_estado_nuevo = sum(mr_estado_nuevo.values())
+        if total_estado_nuevo != distritos_totales_estado:
+            print(f"⚠️  WARNING: Total estado = {total_estado_nuevo}, esperado = {distritos_totales_estado}")
+        
+        print(f"Estado nuevo: {mr_estado_nuevo}")
+        print(f"Nacional nuevo: {mr_nacional_nuevo}")
+        
+        # ========================================
+        # PASO 3: RECALCULAR SISTEMA COMPLETO
+        # ========================================
+        
+        print(f"\n🔄 Recalculando sistema completo con nuevos MR...")
+        
+        # Convertir mr_nacional_nuevo a formato esperado por procesar_diputados
+        mr_distritos_manuales = json.dumps(mr_nacional_nuevo)
+        
+        # Llamar a procesar_diputados con MR manuales
+        resultado = await procesar_diputados(
+            anio=request.anio,
+            plan=request.plan,
+            aplicar_topes=request.aplicar_topes,
+            mr_distritos_manuales=mr_distritos_manuales,
+            votos_custom=request.votos_redistribuidos  # Usar votos_custom, no votos_redistribuidos
+        )
+        
+        # Parsear resultado
+        if hasattr(resultado, 'body'):
+            resultado_dict = json.loads(resultado.body.decode())
+        else:
+            resultado_dict = resultado
+        
+        # ========================================
+        # PASO 4: CONSTRUIR RESPUESTA
+        # ========================================
+        
+        respuesta = {
+            "success": True,
+            "mr_estado_nuevo": mr_estado_nuevo,
+            "mr_nacional_nuevo": mr_nacional_nuevo,
+            "seat_chart": resultado_dict.get('seat_chart', []),
+            "kpis": resultado_dict.get('kpis', {}),
+            "resultados": resultado_dict.get('resultados', []),
+            "meta": resultado_dict.get('meta', {}),
+            "ajuste_realizado": {
+                "estado": request.estado,
+                "distritos_totales": distritos_totales_estado,
+                **ajuste_info
+            }
+        }
+        
+        print(f"\n✅ AJUSTE COMPLETADO")
+        print(f"{'='*80}\n")
+        
+        return JSONResponse(content=respuesta)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"\n❌ ERROR en ajuste distrito individual:")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error procesando ajuste: {str(e)}"
+        )
+
 
 if __name__ == "__main__":
     import uvicorn
