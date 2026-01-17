@@ -2987,7 +2987,6 @@ async def procesar_diputados(
                     print(f"[DEBUG] 🔄 Iniciando ajuste de votos para MR manuales...")
                     
                     try:
-                        from engine.procesar_diputados_v2 import procesar_diputados_v2
                         import pandas as pd
                         import uuid
                         
