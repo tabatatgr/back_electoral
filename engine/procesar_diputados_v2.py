@@ -1288,10 +1288,18 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                 # Determinar total de distritos MR a distribuir
                 total_mr_a_distribuir = total_mr_geograficos if total_mr_geograficos > 0 else mr_seats
                 
+                # VALIDACIÓN CRÍTICA: Si total_mr_a_distribuir < 64 (mínimo constitucional)
+                # usar mr_seats como base para la distribución Hare
+                # Esto evita el error cuando el usuario envía MR manuales con total < 64
+                n_distritos_para_hare = max(total_mr_a_distribuir, 64)
+                
+                if print_debug and total_mr_a_distribuir < 64:
+                    _maybe_log(f"[mr_por_estado_raw] Total MR manuales ({total_mr_a_distribuir}) < 64, usando {n_distritos_para_hare} para Hare", 'warn', print_debug)
+                
                 # Repartir distritos usando Hare
                 asignacion_distritos = repartir_distritos_hare(
                     poblacion_estados=poblacion_por_estado,
-                    n_distritos=total_mr_a_distribuir,
+                    n_distritos=n_distritos_para_hare,
                     piso_constitucional=2
                 )
                 
@@ -2496,13 +2504,30 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                             if suma_actual != distritos_totales:
                                 # Método Hare: dar residuos a partidos con mayor fracción EN ESTE ESTADO
                                 diferencia = distritos_totales - suma_actual
-                                partidos_ordenados = sorted(
-                                    partidos_base,
-                                    key=lambda p: (mr_dict.get(p, 0) * proporcion_poblacional) % 1,
-                                    reverse=True
-                                )
-                                for i in range(abs(diferencia)):
-                                    mr_por_estado_partido[nombre_estado][partidos_ordenados[i]] += 1 if diferencia > 0 else -1
+                                
+                                if diferencia > 0:
+                                    # Agregar distritos: ordenar por mayor residuo
+                                    partidos_ordenados = sorted(
+                                        partidos_base,
+                                        key=lambda p: (mr_dict.get(p, 0) * proporcion_poblacional) % 1,
+                                        reverse=True
+                                    )
+                                    for i in range(abs(diferencia)):
+                                        if i < len(partidos_ordenados):
+                                            mr_por_estado_partido[nombre_estado][partidos_ordenados[i]] += 1
+                                else:
+                                    # Quitar distritos: SOLO de partidos con MR > 0 en este estado
+                                    partidos_con_mr = [p for p in partidos_base if mr_por_estado_partido[nombre_estado][p] > 0]
+                                    if partidos_con_mr:
+                                        # Ordenar por menor residuo (quitar de los menos "merecidos")
+                                        partidos_ordenados = sorted(
+                                            partidos_con_mr,
+                                            key=lambda p: (mr_dict.get(p, 0) * proporcion_poblacional) % 1,
+                                            reverse=False
+                                        )
+                                        for i in range(min(abs(diferencia), len(partidos_ordenados))):
+                                            if mr_por_estado_partido[nombre_estado][partidos_ordenados[i]] > 0:
+                                                mr_por_estado_partido[nombre_estado][partidos_ordenados[i]] -= 1
                     
                     # PASO 2: Verificar y ajustar totales por partido para que coincidan con mr_dict
                     for partido in partidos_base:

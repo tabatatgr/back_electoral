@@ -2878,6 +2878,17 @@ async def procesar_diputados(
         print(f"[DEBUG] redistritacion_geografica: {redistritacion_geografica} (SIEMPRE True)")
         print(f"[DEBUG] =============================================")
         
+        # 🔥 FIX CRÍTICO: Si hay mr_distritos_manuales y mr_seats_final es None, calcularlo
+        # Esto es necesario porque plan="vigente" pone mr_seats_final=None por defecto
+        if mr_distritos_manuales and (mr_seats_final is None or mr_seats_final == 0):
+            try:
+                mr_temp = json.loads(mr_distritos_manuales) if isinstance(mr_distritos_manuales, str) else mr_distritos_manuales
+                total_mr_temp = sum(mr_temp.values())
+                mr_seats_final = total_mr_temp
+                print(f"[DEBUG] 🔧 mr_seats_final calculado desde mr_distritos_manuales: {mr_seats_final}")
+            except Exception as e:
+                print(f"[DEBUG] ⚠️  No se pudo calcular mr_seats_final desde mr_distritos_manuales: {e}")
+        
         # APLICAR REDISTRITACIÓN GEOGRÁFICA (siempre activa)
         # La redistritación geográfica está SIEMPRE activada para garantizar
         # que los MR se calculen correctamente en todos los casos
