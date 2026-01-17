@@ -2969,8 +2969,18 @@ async def procesar_diputados(
                     # Parsear JSON
                     distribucion_estados = json.loads(mr_distritos_por_estado)
                     
-                    # 🔥 CRÍTICO: GUARDAR desglose por estado para devolverlo en respuesta
-                    # Esto permite que los sliders micro funcionen correctamente
+                    # 🔥 VALIDACIÓN CRÍTICA: El frontend DEBE mandar TODOS los estados (32)
+                    # No solo los que modificaron con flechitas
+                    num_estados_recibidos = len(distribucion_estados)
+                    print(f"[DEBUG] Recibidos {num_estados_recibidos} estados en mr_por_estado")
+                    
+                    if num_estados_recibidos < 32:
+                        print(f"[WARN] ⚠️  Solo se recibieron {num_estados_recibidos}/32 estados")
+                        print(f"[WARN] ⚠️  El frontend debería enviar TODOS los estados, no solo los modificados")
+                        print(f"[WARN] Estados recibidos: {list(distribucion_estados.keys())}")
+                    
+                    # 🔥 CRÍTICO: GUARDAR desglose por estado EXACTAMENTE como lo envió el frontend
+                    # NO recalcular nada, NO redistribuir, solo preservar
                     mr_por_estado_manual = {}
                     
                     # Mapeo de IDs a nombres de estados
@@ -2986,14 +2996,13 @@ async def procesar_diputados(
                         32: "ZACATECAS"
                     }
                     
-                    # Convertir IDs a nombres y almacenar
+                    # Convertir IDs a nombres y almacenar EXACTAMENTE como viene
                     for estado_id_str, partidos_dict in distribucion_estados.items():
                         estado_id = int(estado_id_str)
                         nombre_estado = ID_A_NOMBRE_ESTADO.get(estado_id, f"ESTADO_{estado_id}")
                         mr_por_estado_manual[nombre_estado] = partidos_dict.copy()
                     
-                    print(f"[DEBUG] 🎯 SLIDERS MICRO: {len(mr_por_estado_manual)} estados con ajustes manuales")
-                    print(f"[DEBUG] Estados ajustados: {list(mr_por_estado_manual.keys())}")
+                    print(f"[DEBUG] 🎯 mr_por_estado_manual preservado con {len(mr_por_estado_manual)} estados")
                     
                     # Sumar totales para mr_distritos_manuales
                     totales_por_partido = {}
@@ -3004,14 +3013,13 @@ async def procesar_diputados(
                     # Convertir a mr_distritos_manuales
                     mr_distritos_manuales = json.dumps(totales_por_partido)
                     total_mr_estados = sum(totales_por_partido.values())
-                    print(f"[DEBUG] ✅ MR manuales parciales: {mr_distritos_manuales}")
-                    print(f"[DEBUG] Total MR: {total_mr_estados} de {len(mr_por_estado_manual)} estados")
+                    print(f"[DEBUG] ✅ Totales por partido: {mr_distritos_manuales}")
+                    print(f"[DEBUG] Total MR: {total_mr_estados}")
                     
                     # 🔥 VALIDACIÓN: Si todos los estados tienen 0, es un error del frontend
                     if total_mr_estados == 0 and len(mr_por_estado_manual) > 0:
                         print(f"[ERROR] ❌ TODOS LOS ESTADOS TIENEN 0 DISTRITOS")
                         print(f"[ERROR] ❌ El frontend está enviando mr_por_estado con todos los valores en 0")
-                        print(f"[ERROR] ❌ Desglose recibido: {mr_por_estado_manual}")
                         raise HTTPException(
                             status_code=400,
                             detail="Error en mr_por_estado: todos los estados tienen 0 distritos. "
@@ -3491,28 +3499,26 @@ async def procesar_diputados(
         except Exception as _e:
             print(f"[WARN] No se pudo añadir trace meta en diputados: {_e}")
 
-        # 🔥 NUEVO: Si hay distribución manual por estado (sliders micro), incluirla en meta
+        # 🔥 NUEVO: Si hay distribución manual por estado (sliders micro), devolverla
         try:
             if 'mr_por_estado_manual' in locals() and mr_por_estado_manual:
                 if 'meta' not in resultado_formateado:
                     resultado_formateado['meta'] = {}
                 
-                # SOBRESCRIBIR mr_por_estado con los valores manuales del frontend
-                # Esto asegura que los sliders micro se reflejen correctamente
-                meta_actual = resultado_formateado.get('meta', {})
-                mr_por_estado_calculado = meta_actual.get('mr_por_estado', {})
+                # SIMPLE: El frontend envió TODOS los estados → Devolver exactamente eso
+                # NO hacer merge, NO recalcular, solo devolver lo que enviaron
+                print(f"[DEBUG] 🎯 Devolviendo mr_por_estado_manual con {len(mr_por_estado_manual)} estados")
+                resultado_formateado['meta']['mr_por_estado'] = mr_por_estado_manual
                 
-                # Merge: estados manuales sobrescriben calculados
-                mr_por_estado_final = mr_por_estado_calculado.copy()
-                mr_por_estado_final.update(mr_por_estado_manual)
-                
-                resultado_formateado['meta']['mr_por_estado'] = mr_por_estado_final
-                
-                print(f"[DEBUG] ✅ Incluyendo {len(mr_por_estado_manual)} estados con ajustes manuales en meta.mr_por_estado")
-                for estado_nombre in mr_por_estado_manual.keys():
-                    print(f"[DEBUG]   - {estado_nombre}: {mr_por_estado_manual[estado_nombre]}")
+                # Si el frontend envió menos de 32 estados, avisar en logs (pero no fallar)
+                if len(mr_por_estado_manual) < 32:
+                    print(f"[WARN] ⚠️  Solo {len(mr_por_estado_manual)}/32 estados en respuesta")
+                    print(f"[WARN] ⚠️  Recomendación: Frontend debería enviar todos los estados")
+                    
         except Exception as _e:
-            print(f"[WARN] No se pudo añadir mr_por_estado_manual en meta: {_e}")
+            print(f"[WARN] No se pudo incluir mr_por_estado_manual en respuesta: {_e}")
+            import traceback
+            traceback.print_exc()
 
         # Preparar headers; añadir X-Redistrib-Trace para diagnóstico en production si existe parquet
         headers = {
