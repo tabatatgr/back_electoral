@@ -4105,6 +4105,42 @@ async def procesar_diputados(
             print(f"[WARN] No se pudo incluir mr_por_estado en respuesta: {_e}")
             import traceback
             traceback.print_exc()
+
+        # 🔥 VERIFICAR Y AGREGAR distritos_por_estado a la respuesta
+        try:
+            if 'resultado' in locals() and isinstance(resultado, dict):
+                meta_motor = resultado.get('meta', {})
+                if isinstance(meta_motor, dict) and 'distritos_por_estado' in meta_motor:
+                    distritos_por_estado_dict = meta_motor['distritos_por_estado']
+                    
+                    # Convertir nombres de estado a IDs para consistencia con frontend
+                    NOMBRE_A_ID_ESTADO = {
+                        "AGUASCALIENTES": 1, "BAJA CALIFORNIA": 2, "BAJA CALIFORNIA SUR": 3,
+                        "CAMPECHE": 4, "COAHUILA": 5, "COLIMA": 6, "CHIAPAS": 7, "CHIHUAHUA": 8,
+                        "CIUDAD DE MEXICO": 9, "DURANGO": 10, "GUANAJUATO": 11,
+                        "GUERRERO": 12, "HIDALGO": 13, "JALISCO": 14, "MEXICO": 15,
+                        "MICHOACAN": 16, "MORELOS": 17, "NAYARIT": 18, "NUEVO LEON": 19,
+                        "OAXACA": 20, "PUEBLA": 21, "QUERETARO": 22, "QUINTANA ROO": 23,
+                        "SAN LUIS POTOSI": 24, "SINALOA": 25, "SONORA": 26, "TABASCO": 27,
+                        "TAMAULIPAS": 28, "TLAXCALA": 29, "VERACRUZ": 30, "YUCATAN": 31,
+                        "ZACATECAS": 32
+                    }
+                    
+                    distritos_por_estado_ids = {}
+                    for nombre_estado, total_distritos in distritos_por_estado_dict.items():
+                        estado_id = NOMBRE_A_ID_ESTADO.get(nombre_estado.upper())
+                        if estado_id:
+                            distritos_por_estado_ids[str(estado_id)] = total_distritos
+                    
+                    resultado_formateado.setdefault('meta', {})
+                    resultado_formateado['meta']['distritos_por_estado'] = distritos_por_estado_ids
+                    
+                    total_distritos = sum(distritos_por_estado_ids.values())
+                    print(f"[DEBUG] ✅ distritos_por_estado agregado a respuesta: {total_distritos} distritos totales")
+                else:
+                    print(f"[WARN] ⚠️  Motor no devolvió distritos_por_estado en meta")
+        except Exception as _e:
+            print(f"[WARN] No se pudo incluir distritos_por_estado en respuesta: {_e}")
             import traceback
             traceback.print_exc()
 
