@@ -1035,7 +1035,7 @@ def asignadip_v2(x: np.ndarray, ssd: np.ndarray,
         'meta': {
             'VTE': VTE,
             'VVE': VVE,
-            'ok_3pct': ok,
+            'ok_3pct': ok.tolist(),  # Convertir ndarray a lista para JSON
             'params': {
                 'm': m, 'threshold': threshold, 'max_pp': max_pp,
                 'max_seats': max_seats, 'S': S, 'seed': seed,
