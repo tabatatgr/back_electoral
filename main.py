@@ -450,7 +450,7 @@ async def get_data_options():
                 "diputados": sorted(anos_diputados, reverse=True),
                 "senado": sorted(anos_senado, reverse=True)
             },
-            "planes": ["vigente", "actual", "personalizado"],
+            "planes": ["vigente", "plan_a", "plan_c", "300_100_con_topes", "300_100_sin_topes", "200_200_sin_topes", "personalizado"],
             "default_config": {
                 "camara": "diputados",
                 "ano": 2024,
@@ -554,6 +554,207 @@ async def options_procesar_senado():
             "Access-Control-Allow-Headers": "*",
         }
     )
+
+@app.get("/data/escenarios")
+async def get_escenarios_predeterminados():
+    """
+    Devuelve la lista completa de escenarios predeterminados disponibles
+    con sus características detalladas para poblar el selector del frontend
+    """
+    return {
+        "diputados": [
+            {
+                "id": "vigente",
+                "nombre": "Sistema Vigente",
+                "descripcion": "300 MR + 200 RP = 500 (con topes)",
+                "categoria": "oficial",
+                "icon": "⚖️",
+                "detalles": {
+                    "total": 500,
+                    "mr": 300,
+                    "rp": 200,
+                    "pm": 0,
+                    "umbral": 0.03,
+                    "tope_max": 300,
+                    "aplicar_topes": True,
+                    "sistema": "mixto",
+                    "metodo": "hare"
+                }
+            },
+            {
+                "id": "plan_a",
+                "nombre": "Plan A - Solo RP",
+                "descripcion": "300 RP puro (sin mayorías)",
+                "categoria": "reforma",
+                "icon": "📊",
+                "detalles": {
+                    "total": 300,
+                    "mr": 0,
+                    "rp": 300,
+                    "pm": 0,
+                    "umbral": 0.03,
+                    "tope_max": None,
+                    "aplicar_topes": False,
+                    "sistema": "rp",
+                    "metodo": "hare"
+                }
+            },
+            {
+                "id": "plan_c",
+                "nombre": "Plan C - Solo MR",
+                "descripcion": "300 MR puro (sin proporcionales)",
+                "categoria": "reforma",
+                "icon": "🗳️",
+                "detalles": {
+                    "total": 300,
+                    "mr": 300,
+                    "rp": 0,
+                    "pm": 0,
+                    "umbral": 0.0,
+                    "tope_max": None,
+                    "aplicar_topes": False,
+                    "sistema": "mr",
+                    "metodo": None
+                }
+            },
+            {
+                "id": "300_100_con_topes",
+                "nombre": "300-100 con Topes",
+                "descripcion": "300 MR + 100 RP = 400 (tope 300)",
+                "categoria": "nuevo",
+                "icon": "🆕",
+                "badge": "NUEVO",
+                "detalles": {
+                    "total": 400,
+                    "mr": 300,
+                    "rp": 100,
+                    "pm": 0,
+                    "umbral": 0.03,
+                    "tope_max": 300,
+                    "aplicar_topes": True,
+                    "sistema": "mixto",
+                    "metodo": "hare"
+                }
+            },
+            {
+                "id": "300_100_sin_topes",
+                "nombre": "300-100 sin Topes",
+                "descripcion": "300 MR + 100 RP = 400 (sin tope)",
+                "categoria": "nuevo",
+                "icon": "🆕",
+                "badge": "NUEVO",
+                "detalles": {
+                    "total": 400,
+                    "mr": 300,
+                    "rp": 100,
+                    "pm": 0,
+                    "umbral": 0.03,
+                    "tope_max": None,
+                    "aplicar_topes": False,
+                    "sistema": "mixto",
+                    "metodo": "hare"
+                }
+            },
+            {
+                "id": "200_200_sin_topes",
+                "nombre": "200-200 Balanceado",
+                "descripcion": "200 MR + 200 RP = 400 (50-50)",
+                "categoria": "nuevo",
+                "icon": "⚖️",
+                "badge": "NUEVO",
+                "detalles": {
+                    "total": 400,
+                    "mr": 200,
+                    "rp": 200,
+                    "pm": 0,
+                    "umbral": 0.03,
+                    "tope_max": None,
+                    "aplicar_topes": False,
+                    "sistema": "mixto",
+                    "metodo": "hare"
+                }
+            },
+            {
+                "id": "personalizado",
+                "nombre": "Personalizado",
+                "descripcion": "Configura tus propios parámetros",
+                "categoria": "custom",
+                "icon": "⚙️",
+                "detalles": {
+                    "requiere_parametros": True,
+                    "parametros_disponibles": [
+                        "sistema", "escanos_totales", "mr_seats", "rp_seats", "pm_seats",
+                        "umbral", "max_seats_per_party", "sobrerrepresentacion",
+                        "aplicar_topes", "reparto_mode", "reparto_method"
+                    ]
+                }
+            }
+        ],
+        "senado": [
+            {
+                "id": "vigente",
+                "nombre": "Sistema Vigente",
+                "descripcion": "64 MR + 32 PM + 32 RP = 128",
+                "categoria": "oficial",
+                "icon": "⚖️",
+                "detalles": {
+                    "total": 128,
+                    "mr": 64,
+                    "pm": 32,
+                    "rp": 32,
+                    "umbral": 0.03,
+                    "sistema": "mixto",
+                    "metodo": "hare"
+                }
+            },
+            {
+                "id": "plan_a",
+                "nombre": "Plan A - Solo RP",
+                "descripcion": "96 RP puro",
+                "categoria": "reforma",
+                "icon": "📊",
+                "detalles": {
+                    "total": 96,
+                    "mr": 0,
+                    "pm": 0,
+                    "rp": 96,
+                    "umbral": 0.03,
+                    "sistema": "rp",
+                    "metodo": "hare"
+                }
+            },
+            {
+                "id": "plan_c",
+                "nombre": "Plan C - Solo MR+PM",
+                "descripcion": "32 MR + 32 PM = 64",
+                "categoria": "reforma",
+                "icon": "🗳️",
+                "detalles": {
+                    "total": 64,
+                    "mr": 32,
+                    "pm": 32,
+                    "rp": 0,
+                    "umbral": 0.0,
+                    "sistema": "mr",
+                    "metodo": None
+                }
+            },
+            {
+                "id": "personalizado",
+                "nombre": "Personalizado",
+                "descripcion": "Configura tus propios parámetros",
+                "categoria": "custom",
+                "icon": "⚙️",
+                "detalles": {
+                    "requiere_parametros": True,
+                    "parametros_disponibles": [
+                        "sistema", "mr_seats", "pm_seats", "rp_seats",
+                        "umbral", "reparto_mode", "reparto_method"
+                    ]
+                }
+            }
+        ]
+    }
 
 @app.post("/procesar/senado")
 async def procesar_senado(
