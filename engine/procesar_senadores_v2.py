@@ -8,6 +8,8 @@ import numpy as np
 import unicodedata
 import re
 import os
+import json
+from .core import assign_senadores, SenParams
 from typing import Dict, List, Tuple, Optional
 from .recomposicion import recompose_coalitions, parties_for
 
@@ -525,7 +527,9 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
                           max_seats: int = 128, umbral: float = 0.03,
                           sistema: str = "mixto", mr_seats: int = None, rp_seats: int = None,
                           pm_seats: int = 0, quota_method: str = "hare", 
-                          divisor_method: str = "dhondt", usar_coaliciones: bool = True) -> Dict:
+                          divisor_method: str = "dhondt", usar_coaliciones: bool = True,
+                          mr_distritos_manuales: Optional[dict] = None,
+                          mr_distritos_por_estado: Optional[dict] = None) -> Dict:
     """
     Procesador principal de senadores V2 - traducción directa del R
     
@@ -580,6 +584,73 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
             partidos_base = ["PAN","PRI","PRD","PVEM","PT","MC","MORENA"]
         else:
             partidos_base = parties_for(anio)
+
+    # ------------------------------------------------------------------
+    # Soporte de override manual (entrada externa)
+    # - mr_distritos_manuales: dict partido -> total MR (MR+PM) nacional
+    # - mr_distritos_por_estado: dict estado_name_or_id -> {partido: n, ...}
+    # Si se provee cualquiera, forzamos ssd más adelante en lugar de calcularlo.
+    manual_override = False
+    manual_ssd = None
+    manual_mr_por_estado_input = None
+    try:
+        if mr_distritos_por_estado:
+            # Normalizar si vienen como JSON-string
+            if isinstance(mr_distritos_por_estado, str):
+                try:
+                    mr_distritos_por_estado = json.loads(mr_distritos_por_estado)
+                except Exception:
+                    pass
+            manual_mr_por_estado_input = mr_distritos_por_estado
+            # Sumar por partido para obtener ssd
+            tmp_ssd = {p: 0 for p in partidos_base}
+            # Mapeo id->nombre usado en fallback
+            estado_nombres = {
+                1: 'AGUASCALIENTES', 2: 'BAJA CALIFORNIA', 3: 'BAJA CALIFORNIA SUR',
+                4: 'CAMPECHE', 5: 'CHIAPAS', 6: 'CHIHUAHUA', 7: 'COAHUILA',
+                8: 'COLIMA', 9: 'CIUDAD DE MEXICO', 10: 'DURANGO', 11: 'GUANAJUATO',
+                12: 'GUERRERO', 13: 'HIDALGO', 14: 'JALISCO', 15: 'MEXICO',
+                16: 'MICHOACAN', 17: 'MORELOS', 18: 'NAYARIT', 19: 'NUEVO LEON',
+                20: 'OAXACA', 21: 'PUEBLA', 22: 'QUERETARO', 23: 'QUINTANA ROO',
+                24: 'SAN LUIS POTOSI', 25: 'SINALOA', 26: 'SONORA', 27: 'TABASCO',
+                28: 'TAMAULIPAS', 29: 'TLAXCALA', 30: 'VERACRUZ', 31: 'YUCATAN',
+                32: 'ZACATECAS'
+            }
+            for k, v in (mr_distritos_por_estado or {}).items():
+                # k puede ser id (int or numeric string) o nombre
+                try:
+                    kid = int(k)
+                    nombre = estado_nombres.get(kid, str(k))
+                except Exception:
+                    nombre = str(k).upper()
+
+                if isinstance(v, str):
+                    try:
+                        v = json.loads(v)
+                    except Exception:
+                        continue
+
+                if isinstance(v, dict):
+                    for partido, cnt in v.items():
+                        if partido in tmp_ssd:
+                            tmp_ssd[partido] += int(cnt)
+            manual_ssd = tmp_ssd
+            manual_override = True
+        elif mr_distritos_manuales:
+            if isinstance(mr_distritos_manuales, str):
+                try:
+                    manual_ssd = json.loads(mr_distritos_manuales)
+                except Exception:
+                    manual_ssd = None
+            else:
+                manual_ssd = mr_distritos_manuales
+            # Asegurar claves para todos los partidos
+            if manual_ssd and isinstance(manual_ssd, dict):
+                for p in partidos_base:
+                    manual_ssd.setdefault(p, 0)
+                manual_override = True
+    except Exception as e:
+        print(f"[WARN] Error procesando overrides manuales en senado: {e}")
     
     try:
         # 1) Leer datos de boletas
@@ -824,9 +895,64 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
             else:
                 print(f"[DEBUG] No se pudo identificar coalición para desagregar en {anio}")
         
-        if escanos_rp > 0:
-            rp_result = asigna_senado_RP(votos_nacionales, threshold=umbral, escanos_rp=escanos_rp)
-            print(f"[DEBUG] RP resultado: {rp_result}")
+        if escanos_mr_total > 0:
+            # Si el usuario proporcionó un override manual de MR nacional, usarlo
+            use_manual_override_now = False
+            if manual_override and manual_ssd is not None:
+                # Validar que la suma de los totales manuales coincide con el MR total esperado
+                try:
+                    suma_manual = sum(int(manual_ssd.get(p, 0)) for p in partidos_base)
+                except Exception:
+                    suma_manual = None
+
+                if suma_manual is None:
+                    print(f"[WARN] Override manual proporcionado pero no se pudo interpretar los totales: {manual_ssd}")
+                elif suma_manual == escanos_mr_total:
+                    print(f"[INFO] Aplicando override manual MR nacional: {manual_ssd}")
+                    ssd = {p: int(manual_ssd.get(p, 0)) for p in partidos_base}
+                    indep_mr_pm = 0
+                    use_manual_override_now = True
+                else:
+                    # No aplicar override nacional si es parcial (por ejemplo solo 2/32 estados)
+                    print(f"[WARN] mr_distritos_por_estado provisto pero la suma nacional ({suma_manual}) != MR_total esperado ({escanos_mr_total}). Ignorando override nacional. Se preservará el desglose por estado en meta.")
+            else:
+                # mrpm_result debería existir si se calculó antes; si no, calcular aquí
+                if 'mrpm_result' not in locals() or mrpm_result is None:
+                    mrpm_result = conteo_senado_MR_PM_sigladoF(
+                        df_boleta_est=recomposed,
+                        df_acred_est=df_acred_est,
+                        partidos_base=partidos_base,
+                        gp_long=gp_long,
+                        anio=anio,
+                        escanos_mr_efectivos=escanos_mr_efectivos,
+                        escanos_pm=escanos_pm,
+                        siglado_map=siglado_map
+                    )
+                ssd = mrpm_result.get('ssd_partidos', {p: 0 for p in partidos_base})
+                indep_mr_pm = mrpm_result.get('indep_mr_pm', 0)
+
+            # Preparar asignación de RP (umbral, votos válidos)
+            if umbral is None:
+                umbral = 0.03
+            if umbral >= 1:
+                umbral = umbral / 100.0
+
+            total_votos_validos = sum(votos_nacionales.values()) if votos_nacionales else 0
+            votos_ok = {p: int(votos_nacionales.get(p, 0)) if total_votos_validos > 0 and (votos_nacionales.get(p, 0) / total_votos_validos) >= umbral else 0 for p in partidos_base}
+
+            # Determinar RP usando assign_senadores si hay escaños disponibles
+            rp_result = {p: 0 for p in partidos_base}
+            if escanos_rp > 0 and sum(votos_ok.values()) > 0:
+                params = SenParams(
+                    S=max_seats,
+                    threshold=umbral,
+                    quota_method=quota_method,
+                    divisor_method=divisor_method,
+                    use_divisor_for_rp=True
+                )
+                votos_series = pd.Series(votos_ok)
+                rp_calc = assign_senadores(votos_series, escanos_rp, params)
+                rp_result = {p: int(rp_calc.get(p, 0)) for p in partidos_base}
         else:
             rp_result = {p: 0 for p in partidos_base}
         
@@ -835,19 +961,36 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
         votos_ok = {}
         ok_dict = {}
         
+        # 7) Totales por partido (MR+PM + RP) y dict de umbral
+        total_votos_validos = sum(votos_nacionales.values()) if votos_nacionales else 0
+        ok_dict = {}
+        votos_ok_out = {}
+
         for p in partidos_base:
-            mr_pm = ssd.get(p, 0)
-            rp = rp_result.get(p, 0)
-            total = mr_pm + rp
-            votos = votos_nacionales.get(p, 0)
-            
-            # Determinar si supera umbral
-            total_votos_validos = sum(votos_nacionales.values())
-            supera_umbral = total_votos_validos > 0 and (votos / total_votos_validos) >= umbral
-            
-            totales[p] = total
-            votos_ok[p] = votos if supera_umbral else 0
+            if not manual_override and 'mrpm_result' in locals() and mrpm_result is not None:
+                ssd = mrpm_result.get('ssd_partidos', ssd)
+                indep_mr_pm = mrpm_result.get('indep_mr_pm', indep_mr_pm if 'indep_mr_pm' in locals() else 0)
+                print(f"[DEBUG] MR+PM por partido: {ssd}")
+                print(f"[DEBUG] Independientes MR+PM: {indep_mr_pm}")
+            else:
+                print(f"[DEBUG] MR+PM establecidos por override manual: {ssd}")
+
+            mr_pm = int(ssd.get(p, 0))
+            rp_p = int(rp_result.get(p, 0)) if 'rp_result' in locals() else 0
+
+            totales[p] = mr_pm + rp_p
+
+            # Umbral/ok: usar votos_nacionales
+            votos_partido = int(votos_nacionales.get(p, 0)) if votos_nacionales else 0
+            supera_umbral = False
+            if total_votos_validos > 0:
+                supera_umbral = (votos_partido / total_votos_validos) >= (umbral if umbral is not None else 0.03)
+
+            votos_ok_out[p] = votos_partido if supera_umbral else 0
             ok_dict[p] = supera_umbral
+
+        # Reescribir votos_ok para salida consistente
+        votos_ok = votos_ok_out
         
         # 8) Construir seat_chart
         seat_chart = []
@@ -889,9 +1032,58 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
         senadores_por_estado = {}
         
         try:
-            # Si tenemos recomposed Y ssd, distribuir los senadores finales geográficamente
-            if 'recomposed' in locals() and recomposed is not None and 'ENTIDAD' in recomposed.columns and ssd:
-                print(f"[DEBUG] 📍 Distribuyendo senadores FINALES geográficamente: {ssd}")
+            # PRIORIDAD: Si el cliente envió mr_distritos_por_estado (manual_mr_por_estado_input),
+            # usar ESE desglose geográfico directamente en lugar de recalcularlo
+            if manual_mr_por_estado_input and isinstance(manual_mr_por_estado_input, dict):
+                print(f"[INFO] ✅ Usando mr_por_estado manual del cliente (micro-ediciones por estado)")
+                
+                # Mapeo de IDs a nombres de estado
+                estado_nombres = {
+                    1: 'AGUASCALIENTES', 2: 'BAJA CALIFORNIA', 3: 'BAJA CALIFORNIA SUR',
+                    4: 'CAMPECHE', 5: 'CHIAPAS', 6: 'CHIHUAHUA', 7: 'COAHUILA',
+                    8: 'COLIMA', 9: 'CIUDAD DE MEXICO', 10: 'DURANGO', 11: 'GUANAJUATO',
+                    12: 'GUERRERO', 13: 'HIDALGO', 14: 'JALISCO', 15: 'MEXICO',
+                    16: 'MICHOACAN', 17: 'MORELOS', 18: 'NAYARIT', 19: 'NUEVO LEON',
+                    20: 'OAXACA', 21: 'PUEBLA', 22: 'QUERETARO', 23: 'QUINTANA ROO',
+                    24: 'SAN LUIS POTOSI', 25: 'SINALOA', 26: 'SONORA', 27: 'TABASCO',
+                    28: 'TAMAULIPAS', 29: 'TLAXCALA', 30: 'VERACRUZ', 31: 'YUCATAN',
+                    32: 'ZACATECAS'
+                }
+                
+                # Convertir la entrada del cliente a mr_por_estado normalizado
+                for k, v in manual_mr_por_estado_input.items():
+                    # Normalizar clave: puede venir como ID numérico o nombre de estado
+                    try:
+                        estado_id = int(k)
+                        estado_nombre = estado_nombres.get(estado_id, str(k).upper())
+                    except (ValueError, TypeError):
+                        estado_nombre = str(k).upper()
+                    
+                    # Normalizar valor: debe ser dict {partido: count}
+                    if isinstance(v, str):
+                        try:
+                            v = json.loads(v)
+                        except Exception:
+                            continue
+                    
+                    if isinstance(v, dict):
+                        # Asegurar que todos los partidos estén presentes
+                        partidos_estado = {p: 0 for p in partidos_base}
+                        for partido, cnt in v.items():
+                            partido_norm = str(partido).upper()
+                            if partido_norm in partidos_estado:
+                                partidos_estado[partido_norm] = int(cnt)
+                        
+                        mr_por_estado[estado_nombre] = partidos_estado
+                        senadores_por_estado[estado_nombre] = 3  # Cada estado tiene 3 senadores
+                
+                print(f"[DEBUG] mr_por_estado manual cargado: {len(mr_por_estado)} estados")
+                for estado, partidos_dict in list(mr_por_estado.items())[:3]:
+                    print(f"  {estado}: {partidos_dict}")
+            
+            # Si NO hay override manual, calcular mr_por_estado usando eficiencias geográficas
+            elif 'recomposed' in locals() and recomposed is not None and 'ENTIDAD' in recomposed.columns and ssd:
+                print(f"[DEBUG] Distribuyendo senadores FINALES geográficamente: {ssd}")
                 
                 estados_unicos = recomposed['ENTIDAD'].unique()
                 
@@ -968,7 +1160,7 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
                     elif senadores_final > 0 and base_partido == 0:
                         # Caso especial: partido tiene senadores finales pero no ganó estados
                         # Distribuir uniformemente
-                        print(f"[DEBUG] ⚠️  {partido} tiene {senadores_final} senadores pero 0 base - distribuyendo uniformemente")
+                        print(f"[DEBUG] ADVERTENCIA: {partido} tiene {senadores_final} senadores pero 0 base - distribuyendo uniformemente")
                         
                         asignados_total = 0
                         residuos = []
@@ -993,12 +1185,12 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
                 
                 total_senadores = sum(sum(partidos.values()) for partidos in mr_por_estado.values())
                 total_ssd = sum(ssd.values())
-                print(f"[DEBUG] ✅ Desglosados {total_senadores}/{total_ssd} senadores en {len(mr_por_estado)} estados")
+                print(f"[DEBUG] Desglosados {total_senadores}/{total_ssd} senadores en {len(mr_por_estado)} estados")
             
             # FALLBACK: Distribución proporcional si no hay datos de votos
             else:
                 import math
-                print(f"[DEBUG] 📐 FALLBACK: Distribución proporcional (sin datos de votos)")
+                print(f"[DEBUG] FALLBACK: Distribución proporcional (sin datos de votos)")
                 
                 # Nombres de estados
                 estado_nombres = {
@@ -1080,7 +1272,9 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
                     print(f"[DEBUG] Distribución geográfica (fallback) calculada para {len(mr_por_estado)} estados")
         
         except Exception as e:
-            print(f"[ERROR] Error calculando mr_por_estado: {e}")
+            # Use repr(e) to avoid printing raw Unicode characters (e.g., emojis)
+            # which on some Windows terminals (charmap) raise a codec error.
+            print(f"[ERROR] Error calculando mr_por_estado: {repr(e)}")
             # Crear estructura vacía para evitar errores
             mr_por_estado = {}
             senadores_por_estado = {}
@@ -1096,7 +1290,14 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
             'seat_chart': seat_chart,
             'meta': {
                 'mr_por_estado': mr_por_estado,
-                'senadores_por_estado': senadores_por_estado
+                'senadores_por_estado': senadores_por_estado,
+                # Añadir información de diagnóstico sobre overrides manuales recibidos
+                'manual_mr_por_estado_input': manual_mr_por_estado_input,
+                'manual_ssd': manual_ssd,
+                'suma_manual': sum(manual_ssd.values()) if manual_ssd and isinstance(manual_ssd, dict) else None,
+                'escanos_mr_total': escanos_mr_total if 'escanos_mr_total' in locals() else None,
+                'manual_override_provided': bool(manual_override),
+                'manual_override_applied': bool(locals().get('use_manual_override_now', False))
             }
         }
         

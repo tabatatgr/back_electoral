@@ -1,0 +1,16 @@
+{
+  "anio": 2024,
+  "plan": "vigente",
+  "mr_por_estado": {
+    "Jalisco": {
+      "MORENA": 12,
+      "PAN": 6,
+      "MC": 2
+    },
+    "Ciudad de México": {
+      "MORENA": 10,
+      "PAN": 5,
+      "PRD": 3
+    }
+  }
+}

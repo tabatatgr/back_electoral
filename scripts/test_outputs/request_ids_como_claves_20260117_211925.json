@@ -1,0 +1,14 @@
+{
+  "anio": 2024,
+  "plan": "vigente",
+  "mr_por_estado": {
+    "14": {
+      "MORENA": 12,
+      "PAN": 6
+    },
+    "9": {
+      "MORENA": 10,
+      "PAN": 5
+    }
+  }
+}

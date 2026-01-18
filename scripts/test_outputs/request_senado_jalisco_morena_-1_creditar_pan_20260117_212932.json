@@ -1,0 +1,294 @@
+{
+  "anio": 2024,
+  "plan": "vigente",
+  "mr_por_estado": {
+    "AGUASCALIENTES": {
+      "PAN": 7,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "BAJA CALIFORNIA": {
+      "PAN": 4,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 2
+    },
+    "BAJA CALIFORNIA SUR": {
+      "PAN": 4,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 2
+    },
+    "CAMPECHE": {
+      "PAN": 0,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 1,
+      "MORENA": 2
+    },
+    "CHIAPAS": {
+      "PAN": 0,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 1,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 2
+    },
+    "CHIHUAHUA": {
+      "PAN": 3,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 2
+    },
+    "CIUDAD DE MEXICO": {
+      "PAN": 3,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "COAHUILA": {
+      "PAN": 0,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "COLIMA": {
+      "PAN": 0,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 1,
+      "MORENA": 1
+    },
+    "DURANGO": {
+      "PAN": 0,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "GUANAJUATO": {
+      "PAN": 7,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "GUERRERO": {
+      "PAN": 0,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "HIDALGO": {
+      "PAN": 0,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "JALISCO": {
+      "PAN": 1,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 0
+    },
+    "MEXICO": {
+      "PAN": 0,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "MICHOACAN": {
+      "PAN": 3,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "MORELOS": {
+      "PAN": 3,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "NAYARIT": {
+      "PAN": 0,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "NUEVO LEON": {
+      "PAN": 0,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 1,
+      "MORENA": 1
+    },
+    "OAXACA": {
+      "PAN": 0,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 1,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "PUEBLA": {
+      "PAN": 3,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "QUERETARO": {
+      "PAN": 7,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "QUINTANA ROO": {
+      "PAN": 0,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "SAN LUIS POTOSI": {
+      "PAN": 0,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 1,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "SINALOA": {
+      "PAN": 0,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "SONORA": {
+      "PAN": 0,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "TABASCO": {
+      "PAN": 0,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "TAMAULIPAS": {
+      "PAN": 3,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "TLAXCALA": {
+      "PAN": 0,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "VERACRUZ": {
+      "PAN": 3,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "YUCATAN": {
+      "PAN": 3,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    },
+    "ZACATECAS": {
+      "PAN": 0,
+      "PRI": 0,
+      "PRD": 0,
+      "PVEM": 0,
+      "PT": 0,
+      "MC": 0,
+      "MORENA": 1
+    }
+  }
+}

@@ -211,21 +211,16 @@ def transformar_resultado_a_formato_frontend(resultado_dict: Dict, plan: str) ->
             "cache_buster": datetime.now().timestamp()
         }
 
-        # Incluir metadatos completos (trazabilidad + distribución geográfica)
+        # Incluir metadatos completos (trazabilidad + distribución geográfica).
+        # Copiar todo lo que venga en resultado['meta'] para facilitar debugging
         try:
             meta = resultado_dict.get('meta', {}) if isinstance(resultado_dict, dict) else {}
             if meta and isinstance(meta, dict):
-                out['meta'] = {}
-                
-                # Incluir scaled_info si existe
-                if 'scaled_info' in meta:
-                    out['meta']['scaled_info'] = meta.get('scaled_info')
-                
-                # 📍 NUEVO: Incluir distribución geográfica de MR por estado
+                # Hacer copia superficial de meta para exponerla en la salida formateada
+                out['meta'] = meta.copy()
+                # Mantener compatibilidad con keys esperadas por el frontend
                 if 'mr_por_estado' in meta:
                     out['meta']['mr_por_estado'] = meta.get('mr_por_estado')
-                
-                # 📍 NUEVO: Incluir total de distritos por estado
                 if 'distritos_por_estado' in meta:
                     out['meta']['distritos_por_estado'] = meta.get('distritos_por_estado')
         except Exception as e:
@@ -562,6 +557,7 @@ async def options_procesar_senado():
 
 @app.post("/procesar/senado")
 async def procesar_senado(
+    request: Request,
     anio: int,
     plan: str = "vigente",
     escanos_totales: Optional[int] = None,
@@ -594,6 +590,127 @@ async def procesar_senado(
         # Normalizar el nombre del plan para compatibilidad con frontend
         plan_normalizado = normalizar_plan(plan)
         print(f"[DEBUG] Senado - Plan original: '{plan}' -> Plan normalizado: '{plan_normalizado}'")
+
+        # Parsear body JSON para detectar overrides manuales (mr_distritos_manuales / mr_distritos_por_estado)
+        raw_body_parsed = False
+        mr_distritos_manuales = None
+        mr_distritos_por_estado = None
+        try:
+            raw_body = await request.json()
+            raw_body_parsed = True
+            mr_distritos_manuales = raw_body.get('mr_distritos_manuales')
+            mr_distritos_por_estado = raw_body.get('mr_distritos_por_estado')
+            if mr_distritos_manuales:
+                print(f"[DEBUG] Se detectó mr_distritos_manuales en el body: keys={list(mr_distritos_manuales.keys()) if isinstance(mr_distritos_manuales, dict) else 'str'}")
+            if mr_distritos_por_estado:
+                print(f"[DEBUG] Se detectó mr_distritos_por_estado en el body: sample={list(mr_distritos_por_estado.keys())[:5] if isinstance(mr_distritos_por_estado, dict) else 'str'}")
+        except Exception:
+            # No body JSON o parseo falló; continuar sin overrides
+            raw_body_parsed = False
+
+        # Alias: aceptar también 'mr_por_estado' (frontend). Si se envía, convertirlo
+        # a 'mr_distritos_por_estado' para pasarlo al motor y además preservar su desglose
+        # para devolverlo en meta.
+        mr_por_estado_manual = None
+        try:
+            # Si el frontend envió 'mr_por_estado' con nombres de estados, convertir
+            # a IDs (json string) para mr_distritos_por_estado si no se proporcionó ya.
+            if not mr_distritos_por_estado and raw_body_parsed and 'mr_por_estado' in raw_body:
+                mr_por_estado_raw = raw_body.get('mr_por_estado')
+                try:
+                    mr_por_estado_parsed = json.loads(mr_por_estado_raw) if isinstance(mr_por_estado_raw, str) else mr_por_estado_raw
+                except Exception:
+                    mr_por_estado_parsed = mr_por_estado_raw
+
+                # Mapeo de nombres de estado a ID (defensivo, soporta variantes)
+                ESTADO_NOMBRE_A_ID_RAW = {
+                    "Aguascalientes": 1, "Baja California": 2, "Baja California Sur": 3,
+                    "Campeche": 4, "Coahuila": 5, "Colima": 6, "Chiapas": 7, "Chihuahua": 8,
+                    "Ciudad de México": 9, "CDMX": 9, "Durango": 10, "Guanajuato": 11,
+                    "Guerrero": 12, "Hidalgo": 13, "Jalisco": 14, "México": 15, "Michoacán": 16,
+                    "Morelos": 17, "Nayarit": 18, "Nuevo León": 19, "Oaxaca": 20,
+                    "Puebla": 21, "Querétaro": 22, "Quintana Roo": 23, "San Luis Potosí": 24,
+                    "Sinaloa": 25, "Sonora": 26, "Tabasco": 27, "Tamaulipas": 28,
+                    "Tlaxcala": 29, "Veracruz": 30, "Yucatán": 31, "Zacatecas": 32
+                }
+
+                import unicodedata
+                def _norm(s: str) -> str:
+                    if not isinstance(s, str):
+                        return ''
+                    s2 = s.strip().lower()
+                    s2 = unicodedata.normalize('NFKD', s2)
+                    s2 = ''.join(ch for ch in s2 if not unicodedata.combining(ch))
+                    s2 = ' '.join(s2.split())
+                    return s2
+
+                ESTADO_NOMBRE_A_ID = {}
+                for nombre, _id in ESTADO_NOMBRE_A_ID_RAW.items():
+                    ESTADO_NOMBRE_A_ID[_norm(nombre)] = _id
+                    ESTADO_NOMBRE_A_ID[_norm(nombre).replace(' ', '')] = _id
+
+                # Determinar si ya vienen como IDs
+                primera_clave = None
+                try:
+                    primera_clave = next(iter(mr_por_estado_parsed.keys()))
+                except Exception:
+                    primera_clave = None
+
+                if primera_clave is not None and (str(primera_clave).isdigit() or isinstance(primera_clave, int)):
+                    # Ya vienen como IDs (usar tal cual)
+                    mr_distritos_por_estado = mr_por_estado_raw if isinstance(mr_por_estado_raw, str) else json.dumps(mr_por_estado_raw)
+                    print(f"[DEBUG] ✅ mr_por_estado ya viene con IDs numéricos; usando directamente para mr_distritos_por_estado")
+                else:
+                    # Convertir nombres → IDs
+                    mr_por_estado_con_ids = {}
+                    if isinstance(mr_por_estado_parsed, dict):
+                        for nombre_estado, partidos in mr_por_estado_parsed.items():
+                            nid = ESTADO_NOMBRE_A_ID.get(_norm(nombre_estado))
+                            if not nid:
+                                nid = ESTADO_NOMBRE_A_ID.get(_norm(nombre_estado).replace(' ', ''))
+                            if nid:
+                                mr_por_estado_con_ids[str(nid)] = partidos
+                            else:
+                                print(f"[WARN] Estado '{nombre_estado}' no reconocido en mapeo (intentadas: '{_norm(nombre_estado)}')")
+
+                    mr_distritos_por_estado = json.dumps(mr_por_estado_con_ids)
+                    print(f"[DEBUG] ✅ Convertido mr_por_estado de nombres → IDs: {len(mr_por_estado_con_ids)} estados")
+
+        except Exception as _e:
+            print(f"[WARN] Error procesando alias mr_por_estado en senado: {_e}")
+
+        # Si el frontend envió mr_distritos_por_estado (sliders micro), preservar su desglose
+        try:
+            if mr_distritos_por_estado:
+                # Aceptar tanto string JSON como dict
+                try:
+                    distribucion_estados = json.loads(mr_distritos_por_estado) if isinstance(mr_distritos_por_estado, str) else mr_distritos_por_estado
+                except Exception:
+                    distribucion_estados = mr_distritos_por_estado if isinstance(mr_distritos_por_estado, dict) else None
+
+                if distribucion_estados and isinstance(distribucion_estados, dict):
+                    ID_A_NOMBRE_ESTADO = {
+                        1: "AGUASCALIENTES", 2: "BAJA CALIFORNIA", 3: "BAJA CALIFORNIA SUR",
+                        4: "CAMPECHE", 5: "COAHUILA", 6: "COLIMA", 7: "CHIAPAS", 8: "CHIHUAHUA",
+                        9: "CIUDAD DE MEXICO", 10: "DURANGO", 11: "GUANAJUATO",
+                        12: "GUERRERO", 13: "HIDALGO", 14: "JALISCO", 15: "MEXICO",
+                        16: "MICHOACAN", 17: "MORELOS", 18: "NAYARIT", 19: "NUEVO LEON",
+                        20: "OAXACA", 21: "PUEBLA", 22: "QUERETARO", 23: "QUINTANA ROO",
+                        24: "SAN LUIS POTOSI", 25: "SINALOA", 26: "SONORA", 27: "TABASCO",
+                        28: "TAMAULIPAS", 29: "TLAXCALA", 30: "VERACRUZ", 31: "YUCATAN",
+                        32: "ZACATECAS"
+                    }
+                    mr_por_estado_manual = {}
+                    for estado_id_str, partidos_dict in distribucion_estados.items():
+                        try:
+                            estado_id = int(estado_id_str)
+                            nombre_estado = ID_A_NOMBRE_ESTADO.get(estado_id, f"ESTADO_{estado_id}")
+                        except Exception:
+                            nombre_estado = str(estado_id_str).upper()
+                        mr_por_estado_manual[nombre_estado] = partidos_dict.copy() if isinstance(partidos_dict, dict) else {}
+                    print(f"[DEBUG] Senado: mr_por_estado_manual preservado con {len(mr_por_estado_manual)} estados")
+        except Exception as _e:
+            print(f"[WARN] No se pudo parsear mr_distritos_por_estado en senado: {_e}")
         
         if anio not in [2018, 2024]:
             raise HTTPException(status_code=400, detail="Año no soportado. Use 2018 o 2024")
@@ -703,11 +820,108 @@ async def procesar_senado(
             pm_seats=pm_escanos,  # ⬅️ AGREGAR PARÁMETRO PM
             quota_method=quota_method_final,
             divisor_method=divisor_method_final,
-            usar_coaliciones=usar_coaliciones  # ⬅️ NUEVO: toggle coaliciones
+            usar_coaliciones=usar_coaliciones,  # ⬅️ NUEVO: toggle coaliciones
+            mr_distritos_manuales=mr_distritos_manuales,
+            mr_distritos_por_estado=mr_distritos_por_estado
         )
         
         # Transformar al formato esperado por el frontend con colores
         resultado_formateado = transformar_resultado_a_formato_frontend(resultado, plan)
+
+        # Si el frontend envió un desglose por estado (mr_por_estado_manual) y suma
+        # nacionalmente al total de MR esperado, aplicarlo de forma autoritativa:
+        try:
+            # Si por alguna razón no se construyó mr_por_estado_manual a partir
+            # de mr_distritos_por_estado, intentar construirlo directamente desde
+            # raw_body['mr_por_estado'] (nombres de estado) para máxima robustez.
+            if (('mr_por_estado_manual' not in locals() or not mr_por_estado_manual)
+                    and raw_body_parsed and isinstance(raw_body, dict) and 'mr_por_estado' in raw_body):
+                try:
+                    candidate = raw_body.get('mr_por_estado')
+                    if isinstance(candidate, str):
+                        candidate = json.loads(candidate)
+                    if isinstance(candidate, dict):
+                        mr_por_estado_manual = {str(k).upper(): (v.copy() if isinstance(v, dict) else {}) for k, v in candidate.items()}
+                        print(f"[DEBUG] Senado: Construido mr_por_estado_manual directamente desde raw_body (claves: {len(mr_por_estado_manual)})")
+                except Exception as _e:
+                    print(f"[WARN] No se pudo construir mr_por_estado_manual desde raw_body: {_e}")
+
+            if 'mr_por_estado_manual' in locals() and mr_por_estado_manual:
+                # Calcular ssd (MR nacional por partido) desde el desglose por estado
+                manual_ssd = {}
+                for estado, partidos_dict in mr_por_estado_manual.items():
+                    if isinstance(partidos_dict, dict):
+                        for partido, cnt in partidos_dict.items():
+                            try:
+                                # Normalizar claves de partido a MAYÚSCULAS para evitar
+                                # desajustes entre nombres (e.g., 'Morena' vs 'MORENA')
+                                key_norm = str(partido).upper()
+                                manual_ssd[key_norm] = manual_ssd.get(key_norm, 0) + int(cnt)
+                            except Exception:
+                                key_norm = str(partido).upper()
+                                manual_ssd[key_norm] = manual_ssd.get(key_norm, 0) + 0
+
+                suma_manual = sum(manual_ssd.values())
+                print(f"[DEBUG] manual_ssd calculado (por partido, MAYUS): {manual_ssd}")
+                # Determinar MR total esperado según configuración usada arriba
+                try:
+                    expected_mr_total = mr_seats_final
+                except Exception:
+                    expected_mr_total = None
+
+                if expected_mr_total is None:
+                    # Fallback: sumar MR actuales en resultado_formateado
+                    try:
+                        expected_mr_total = sum(r.get('mr', 0) for r in resultado_formateado.get('resultados', []))
+                    except Exception:
+                        expected_mr_total = None
+
+                if suma_manual and expected_mr_total and suma_manual == expected_mr_total:
+                    print(f"[INFO] Aplicando mr_por_estado_manual enviado por cliente (suma={suma_manual})")
+                    print(f"[DEBUG] expected_mr_total={expected_mr_total}")
+                    # Mostrar partidos actuales en resultado_formateado para depuración
+                    try:
+                        existentes = [r.get('partido') for r in resultado_formateado.get('resultados', [])]
+                        print(f"[DEBUG] Partidos en resultado_formateado (orden): {existentes}")
+                    except Exception:
+                        pass
+                    # Actualizar MR nacionales en resultados y en seat_chart
+                    # Construir mapping rp existentes por partido
+                    rp_map = {}
+                    for item in resultado_formateado.get('seat_chart', []):
+                        rp_map[item.get('party')] = item.get('rp', 0) if item.get('rp') is not None else 0
+
+                    # Actualizar resultados list (formato: lista de dicts con 'partido','mr','rp','total')
+                    for row in resultado_formateado.get('resultados', []):
+                        p = row.get('partido')
+                        p_norm = str(p).upper()
+                        new_mr = int(manual_ssd.get(p_norm, 0))
+                        if p_norm not in manual_ssd and p in manual_ssd:
+                            new_mr = int(manual_ssd.get(p, 0))
+                        row['mr'] = new_mr
+                        row['total'] = new_mr + int(rp_map.get(p, 0))
+
+                    # Actualizar seat_chart también
+                    for sc in resultado_formateado.get('seat_chart', []):
+                        p = sc.get('party')
+                        p_norm = str(p).upper()
+                        new_mr = int(manual_ssd.get(p_norm, 0))
+                        sc['mr'] = new_mr
+                        sc['seats'] = new_mr + int(rp_map.get(p, 0))
+
+                    # Marcar meta indicando que se aplicó override manual por estado
+                    resultado_formateado.setdefault('meta', {})
+                    resultado_formateado['meta']['override_aplicado'] = True
+                    resultado_formateado['meta']['override_reason'] = 'mr_por_estado_cliente_aplicado'
+                    # También devolver el mr_por_estado_manual tal cual para trazabilidad
+                    resultado_formateado['meta']['mr_por_estado'] = mr_por_estado_manual
+                else:
+                    # No aplicar; dejar engine decidir. Registrar meta que no se aplicó
+                    resultado_formateado.setdefault('meta', {})
+                    resultado_formateado['meta']['override_aplicado'] = False
+                    resultado_formateado['meta']['override_reason'] = 'suma_manual_no_coincide' if suma_manual else 'no_manual'
+        except Exception as _e:
+            print(f"[WARN] No se pudo aplicar mr_por_estado_manual: {_e}")
         
         # ============================================================================
         # DETECCIÓN AUTOMÁTICA DE MAYORÍAS (SENADO)
@@ -836,13 +1050,101 @@ async def procesar_senado(
                 trace['raw_body_parsed'] = False
 
             if trace:
-                if 'meta' not in resultado_formateado:
-                    resultado_formateado['meta'] = {}
+                resultado_formateado.setdefault('meta', {})
                 resultado_formateado['meta']['trace'] = trace
         except Exception as _e:
             print(f"[WARN] No se pudo añadir trace meta: {_e}")
 
         # Retornar con headers anti-caché para evitar problemas de actualización
+        # Si el frontend envió distribución manual por estado para Senado, devolverla tal cual
+        try:
+            # Prioridad: si el cliente envió 'mr_por_estado' en el body, parsearlo y
+            # devolverlo en meta tal cual para trazabilidad. Además, si la suma
+            # nacional de ese desglose coincide con el MR esperado, aplicarlo
+            # forzosamente en la salida (actualizar 'resultados' y 'seat_chart').
+            client_mr = None
+            if raw_body_parsed and isinstance(raw_body, dict) and 'mr_por_estado' in raw_body:
+                client_mr = raw_body.get('mr_por_estado')
+                # Normalizar si viene como JSON string
+                if isinstance(client_mr, str):
+                    try:
+                        client_mr = json.loads(client_mr)
+                    except Exception:
+                        pass
+                # Asegurar dict
+                if isinstance(client_mr, dict):
+                    # Normalizar claves a nombres en mayúsculas (por consistencia)
+                    client_mr_norm = {}
+                    for k, v in client_mr.items():
+                        key_norm = str(k).upper()
+                        client_mr_norm[key_norm] = v.copy() if isinstance(v, dict) else {}
+                    client_mr = client_mr_norm
+
+            # Registrar en meta el contenido EXACTO que vino en el body bajo 'mr_por_estado'
+            # para facilitar trazabilidad/debug (no modificar la lógica si no se aplica override).
+            if raw_body_parsed and isinstance(raw_body, dict) and 'mr_por_estado' in raw_body:
+                resultado_formateado.setdefault('meta', {})
+                resultado_formateado['meta']['client_mr_por_estado_received'] = raw_body.get('mr_por_estado')
+
+            # Si tenemos un mr_por_estado (del cliente o construido antes), devolverlo
+            if client_mr:
+                resultado_formateado.setdefault('meta', {})
+                resultado_formateado['meta']['mr_por_estado'] = client_mr
+
+                # Intentar aplicar override si suma coincide con MR total esperado
+                try:
+                    # Calcular suma manual (normalizando partidos a MAYÚSCULAS)
+                    manual_ssd = {}
+                    for estado, partidos_dict in client_mr.items():
+                        if isinstance(partidos_dict, dict):
+                            for partido, cnt in partidos_dict.items():
+                                try:
+                                    key_norm = str(partido).upper()
+                                    manual_ssd[key_norm] = manual_ssd.get(key_norm, 0) + int(cnt)
+                                except Exception:
+                                    key_norm = str(partido).upper()
+                                    manual_ssd[key_norm] = manual_ssd.get(key_norm, 0) + 0
+
+                    suma_manual = sum(manual_ssd.values())
+                    print(f"[DEBUG] client_mr -> manual_ssd (MAYUS): {manual_ssd}")
+                    expected_mr_total = mr_seats_final if 'mr_seats_final' in locals() else None
+                    if expected_mr_total is None:
+                        expected_mr_total = sum(r.get('mr', 0) for r in resultado_formateado.get('resultados', []))
+
+                    if suma_manual and expected_mr_total and suma_manual == expected_mr_total:
+                        print(f"[INFO] Aplicando client_mr override (suma_manual={suma_manual}, expected={expected_mr_total})")
+                        # Aplicar: actualizar resultados y seat_chart
+                        rp_map = {it.get('party'): it.get('rp', 0) for it in resultado_formateado.get('seat_chart', [])}
+                        for row in resultado_formateado.get('resultados', []):
+                            p = row.get('partido')
+                            p_norm = str(p).upper()
+                            new_mr = int(manual_ssd.get(p_norm, 0))
+                            row['mr'] = new_mr
+                            row['total'] = new_mr + int(rp_map.get(p, 0))
+                        for sc in resultado_formateado.get('seat_chart', []):
+                            p = sc.get('party')
+                            p_norm = str(p).upper()
+                            new_mr = int(manual_ssd.get(p_norm, 0))
+                            sc['mr'] = new_mr
+                            sc['seats'] = new_mr + int(rp_map.get(p, 0))
+                        resultado_formateado['meta']['override_aplicado'] = True
+                        resultado_formateado['meta']['override_reason'] = 'mr_por_estado_cliente_aplicado'
+                    else:
+                        resultado_formateado['meta']['override_aplicado'] = False
+                        resultado_formateado['meta']['override_reason'] = 'suma_manual_no_coincide' if suma_manual else 'no_manual'
+                except Exception as _e:
+                    print(f"[WARN] Error procesando mr_por_estado cliente para devolver/aplicar override: {_e}")
+        except Exception as _e:
+            print(f"[WARN] No se pudo incluir mr_por_estado_manual en respuesta (senado): {_e}")
+
+        # Incluir meta retornada por el motor (para diagnóstico) sin sobreescribir
+        try:
+            engine_meta = resultado.get('meta', {}) if isinstance(resultado, dict) else {}
+            resultado_formateado.setdefault('meta', {})
+            resultado_formateado['meta']['engine_result_meta'] = engine_meta
+        except Exception as _e:
+            print(f"[WARN] No se pudo anexar engine_result_meta en la respuesta: {_e}")
+
         return JSONResponse(
             content=resultado_formateado,
             headers={
@@ -2338,35 +2640,56 @@ async def procesar_diputados(
                     else:
                         mr_por_estado_parsed = mr_por_estado_raw
                     
-                    # Mapeo de nombres de estados a IDs
-                    ESTADO_NOMBRE_A_ID = {
+                    # Mapeo de nombres de estados a IDs (soporta variantes en mayúsculas, tildes y abreviaturas)
+                    ESTADO_NOMBRE_A_ID_RAW = {
                         "Aguascalientes": 1, "Baja California": 2, "Baja California Sur": 3,
                         "Campeche": 4, "Coahuila": 5, "Colima": 6, "Chiapas": 7, "Chihuahua": 8,
-                        "Ciudad de México": 9, "CDMX": 9, "Durango": 10, "Guanajuato": 11, 
+                        "Ciudad de México": 9, "CDMX": 9, "Durango": 10, "Guanajuato": 11,
                         "Guerrero": 12, "Hidalgo": 13, "Jalisco": 14, "México": 15, "Michoacán": 16,
                         "Morelos": 17, "Nayarit": 18, "Nuevo León": 19, "Oaxaca": 20,
                         "Puebla": 21, "Querétaro": 22, "Quintana Roo": 23, "San Luis Potosí": 24,
                         "Sinaloa": 25, "Sonora": 26, "Tabasco": 27, "Tamaulipas": 28,
                         "Tlaxcala": 29, "Veracruz": 30, "Yucatán": 31, "Zacatecas": 32
                     }
-                    
+
+                    # Normalizar nombres (quitar tildes, case-insensitive, espacios extra)
+                    import unicodedata
+                    def _norm(s: str) -> str:
+                        if not isinstance(s, str):
+                            return ''
+                        s2 = s.strip().lower()
+                        s2 = unicodedata.normalize('NFKD', s2)
+                        s2 = ''.join(ch for ch in s2 if not unicodedata.combining(ch))
+                        s2 = ' '.join(s2.split())
+                        return s2
+
+                    # Construir mapa normalizado nombre -> id
+                    ESTADO_NOMBRE_A_ID = {}
+                    for nombre, _id in ESTADO_NOMBRE_A_ID_RAW.items():
+                        ESTADO_NOMBRE_A_ID[_norm(nombre)] = _id
+                        # también incluir la versión sin espacios para defensividad
+                        ESTADO_NOMBRE_A_ID[_norm(nombre).replace(' ', '')] = _id
+
                     # Verificar si las claves son nombres o IDs
                     primera_clave = next(iter(mr_por_estado_parsed.keys()))
-                    
-                    if primera_clave.isdigit() or isinstance(primera_clave, int):
+
+                    if str(primera_clave).isdigit() or isinstance(primera_clave, int):
                         # Ya vienen como IDs, usar directamente
                         mr_distritos_por_estado = mr_por_estado_raw if isinstance(mr_por_estado_raw, str) else json.dumps(mr_por_estado_raw)
                         print(f"[DEBUG] ✅ mr_por_estado ya tiene IDs numéricos")
                     else:
-                        # Convertir nombres → IDs
+                        # Convertir nombres → IDs con normalización robusta
                         mr_por_estado_con_ids = {}
                         for nombre_estado, partidos in mr_por_estado_parsed.items():
-                            estado_id = ESTADO_NOMBRE_A_ID.get(nombre_estado)
-                            if estado_id:
-                                mr_por_estado_con_ids[str(estado_id)] = partidos
+                            nid = ESTADO_NOMBRE_A_ID.get(_norm(nombre_estado))
+                            if not nid:
+                                # intentar sin espacios
+                                nid = ESTADO_NOMBRE_A_ID.get(_norm(nombre_estado).replace(' ', ''))
+                            if nid:
+                                mr_por_estado_con_ids[str(nid)] = partidos
                             else:
-                                print(f"[WARN] Estado '{nombre_estado}' no reconocido en mapeo")
-                        
+                                print(f"[WARN] Estado '{nombre_estado}' no reconocido en mapeo (intentadas: '{_norm(nombre_estado)}')")
+
                         mr_distritos_por_estado = json.dumps(mr_por_estado_con_ids)
                         print(f"[DEBUG] ✅ Convertido mr_por_estado de nombres → IDs: {len(mr_por_estado_con_ids)} estados")
                 
@@ -2966,8 +3289,13 @@ async def procesar_diputados(
                     from redistritacion.modulos.reparto_distritos import repartir_distritos_hare
                     from redistritacion.modulos.distritacion import cargar_secciones_ine
                     
-                    # Parsear JSON
-                    distribucion_estados = json.loads(mr_distritos_por_estado)
+                    # Parsear JSON o aceptar directamente dicts
+                    if isinstance(mr_distritos_por_estado, str):
+                        distribucion_estados = json.loads(mr_distritos_por_estado)
+                    elif isinstance(mr_distritos_por_estado, dict):
+                        distribucion_estados = mr_distritos_por_estado
+                    else:
+                        raise HTTPException(status_code=400, detail="mr_distritos_por_estado debe ser un JSON (string) o un objeto dict")
                     
                     # 🔥 VALIDACIÓN CRÍTICA: El frontend DEBE mandar TODOS los estados (32)
                     # No solo los que modificaron con flechitas
@@ -3493,8 +3821,7 @@ async def procesar_diputados(
                 trace['raw_body_parsed'] = False
 
             if trace:
-                if 'meta' not in resultado_formateado:
-                    resultado_formateado['meta'] = {}
+                resultado_formateado.setdefault('meta', {})
                 resultado_formateado['meta']['trace'] = trace
         except Exception as _e:
             print(f"[WARN] No se pudo añadir trace meta en diputados: {_e}")
@@ -3502,9 +3829,7 @@ async def procesar_diputados(
         # 🔥 NUEVO: Si hay distribución manual por estado (sliders micro), devolverla
         try:
             if 'mr_por_estado_manual' in locals() and mr_por_estado_manual:
-                if 'meta' not in resultado_formateado:
-                    resultado_formateado['meta'] = {}
-                
+                resultado_formateado.setdefault('meta', {})
                 # SIMPLE: El frontend envió TODOS los estados → Devolver exactamente eso
                 # NO hacer merge, NO recalcular, solo devolver lo que enviaron
                 print(f"[DEBUG] 🎯 Devolviendo mr_por_estado_manual con {len(mr_por_estado_manual)} estados")
