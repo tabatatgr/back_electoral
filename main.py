@@ -1596,6 +1596,7 @@ async def calcular_mayoria_forzada_endpoint(
     aplicar_topes: bool = True,
     votos_base: Optional[str] = None,
     anio: int = 2024,
+    solo_partido: bool = True,  # 🆕 NUEVO: Si true, solo cuenta el partido; si false, cuenta coalición
     # Parámetros para configuración personalizada
     escanos_totales: Optional[int] = None,
     mr_seats: Optional[int] = None,
@@ -1613,10 +1614,12 @@ async def calcular_mayoria_forzada_endpoint(
       (con topes del 8%, es matemáticamente imposible para un partido individual)
     
     Parameters:
-        - **partido**: Nombre del partido (MORENA, PAN, PRI, MC, PVEM, PT, etc.)
+        - **partido**: Nombre del partido (MORENA, PAN, PRI, MC, PVEM, PT, etc.) o coalición (MORENA+PT+PVEM)
         - **tipo_mayoria**: "simple" (251 dip) o "calificada" (334 dip)
         - **plan**: Plan electoral (vigente, plan_a, plan_c, 200_200_sin_topes, personalizado, etc.)
         - **aplicar_topes**: Si se aplican topes de sobrerrepresentación del 8%
+        - **solo_partido**: (bool, default=True) Si true, aplica mayoría SOLO al partido especificado.
+                          Si false, aplica mayoría a toda la coalición (MORENA+PT+PVEM)
         - **votos_base**: JSON opcional con distribución de votos base (ej: {"MORENA":38,"PAN":22,...})
         - **anio**: Año electoral (2018, 2021, 2024)
         - **escanos_totales**: Total de escaños (para plan personalizado)
@@ -1635,8 +1638,9 @@ async def calcular_mayoria_forzada_endpoint(
         - **kpis**: Gallagher, ratio, total_votos recalculados
     
     Ejemplo de uso:
-        GET /calcular/mayoria_forzada?partido=MORENA&tipo_mayoria=simple&plan=vigente&aplicar_topes=true
-        GET /calcular/mayoria_forzada?partido=MORENA&tipo_mayoria=simple&plan=personalizado&escanos_totales=128&mr_seats=64&rp_seats=64&sistema=mixto
+        GET /calcular/mayoria_forzada?partido=MORENA&tipo_mayoria=simple&plan=vigente&aplicar_topes=true&solo_partido=true
+        GET /calcular/mayoria_forzada?partido=MORENA+PT+PVEM&tipo_mayoria=calificada&plan=vigente&aplicar_topes=false&solo_partido=false
+        GET /calcular/mayoria_forzada?partido=MORENA&tipo_mayoria=simple&plan=personalizado&escanos_totales=128&mr_seats=64&rp_seats=64&sistema=mixto&solo_partido=true
     """
     try:
         from engine.calcular_mayoria_forzada_v2 import calcular_mayoria_forzada
@@ -1756,6 +1760,55 @@ async def calcular_mayoria_forzada_endpoint(
                 detail=f"Partido {partido} no encontrado en seat_chart. Partidos disponibles: {[p['party'] for p in seat_chart]}"
             )
         
+        # 🆕 PASO 3.5: Aplicar lógica de solo_partido vs coalición
+        # Si partido contiene "+", forzar solo_partido=False (es una coalición explícita)
+        es_coalicion_explicita = '+' in partido
+        if es_coalicion_explicita:
+            solo_partido = False
+            print(f"[DEBUG] Partido '{partido}' contiene '+', forzando solo_partido=False (coalición)")
+        
+        # Calcular escaños totales según solo_partido
+        if solo_partido:
+            # Contar SOLO el partido especificado
+            diputados_obtenidos = partido_data.get('seats', 0)
+            mr_asignados = partido_data.get('mr_seats', partido_data.get('mr', 0))
+            rp_asignados = partido_data.get('rp_seats', partido_data.get('rp', 0))
+            print(f"[DEBUG] solo_partido=True: Contando SOLO {partido}: {diputados_obtenidos} escaños")
+        else:
+            # Contar toda la coalición (MORENA + PT + PVEM si partido=MORENA)
+            # Detectar miembros de la coalición
+            coalicion_4t = ['MORENA', 'PT', 'PVEM']
+            coalicion_xm = ['PAN', 'PRI', 'PRD']
+            
+            if partido in coalicion_4t:
+                partidos_coalicion = coalicion_4t
+                nombre_coalicion = "4T (MORENA+PT+PVEM)"
+            elif partido in coalicion_xm:
+                partidos_coalicion = coalicion_xm
+                nombre_coalicion = "Fuerza y Corazón por México (PAN+PRI+PRD)"
+            elif es_coalicion_explicita:
+                # Coalición explícita (ej: MORENA+PT+PVEM)
+                partidos_coalicion = partido.split('+')
+                nombre_coalicion = partido
+            else:
+                # Partido sin coalición conocida, contar solo él
+                partidos_coalicion = [partido]
+                nombre_coalicion = partido
+            
+            # Sumar escaños de todos los miembros de la coalición
+            diputados_obtenidos = 0
+            mr_asignados = 0
+            rp_asignados = 0
+            
+            for p_coal in partidos_coalicion:
+                p_data = next((p for p in seat_chart if p['party'] == p_coal), None)
+                if p_data:
+                    diputados_obtenidos += p_data.get('seats', 0)
+                    mr_asignados += p_data.get('mr_seats', p_data.get('mr', 0))
+                    rp_asignados += p_data.get('rp_seats', p_data.get('rp', 0))
+            
+            print(f"[DEBUG] solo_partido=False: Contando coalición {nombre_coalicion}: {diputados_obtenidos} escaños totales")
+        
         # PASO 4: Construir respuesta completa
         # Calcular umbral dinámicamente basado en escaños totales
         total_escanos = escanos_totales if escanos_totales is not None else (mr_total + rp_total)
@@ -1790,13 +1843,14 @@ async def calcular_mayoria_forzada_endpoint(
         return {
             "viable": True,
             "diputados_necesarios": umbral,
-            "diputados_obtenidos": partido_data.get('seats', 0),
+            "diputados_obtenidos": diputados_obtenidos,  # 🆕 Usa variable calculada con solo_partido
             "votos_porcentaje": round(config['detalle']['pct_votos'], 2),
-            "mr_asignados": partido_data.get('mr_seats', partido_data.get('mr', 0)),
-            "rp_asignados": partido_data.get('rp_seats', partido_data.get('rp', 0)),
+            "mr_asignados": mr_asignados,  # 🆕 Usa variable calculada con solo_partido
+            "rp_asignados": rp_asignados,  # 🆕 Usa variable calculada con solo_partido
             "partido": partido,
             "plan": plan,
             "tipo_mayoria": tipo_mayoria,
+            "solo_partido": solo_partido,  # 🆕 Indicar si se contó solo el partido o coalición
             
             # 🔑 CRÍTICO: Seat chart completo RECALCULADO
             "seat_chart": seat_chart,
@@ -1828,7 +1882,8 @@ async def calcular_mayoria_forzada_senado_endpoint(
     tipo_mayoria: str = "simple",
     plan: str = "vigente",
     aplicar_topes: bool = True,
-    anio: int = 2024
+    anio: int = 2024,
+    solo_partido: bool = True  # 🆕 NUEVO: Si true, solo cuenta el partido; si false, cuenta coalición
 ):
     """
     Calcula y EJECUTA el sistema electoral completo para forzar mayoría en SENADO.
@@ -1836,7 +1891,7 @@ async def calcular_mayoria_forzada_senado_endpoint(
     Devuelve seat_chart completo + KPIs recalculados con TODOS los partidos ajustados.
     
     Parámetros:
-    - **partido**: Partido objetivo (MORENA, PAN, PRI, etc.)
+    - **partido**: Partido objetivo (MORENA, PAN, PRI, etc.) o coalición (MORENA+PT+PVEM)
     - **tipo_mayoria**: "simple" (>64 senadores) o "calificada" (>=86 senadores)
     - **plan**: Plan electoral
         - "vigente": 64 MR + 32 PM + 32 RP = 128 total
@@ -1844,6 +1899,8 @@ async def calcular_mayoria_forzada_senado_endpoint(
         - "plan_c": 64 MR+PM sin RP
     - **aplicar_topes**: Si aplica el tope del 8% de sobrerrepresentación
     - **anio**: Año electoral (2024, 2018)
+    - **solo_partido**: (bool, default=True) Si true, aplica mayoría SOLO al partido especificado.
+                      Si false, aplica mayoría a toda la coalición (MORENA+PT+PVEM)
     
     Returns:
         - viable: Si es posible alcanzar la mayoría
@@ -1858,7 +1915,8 @@ async def calcular_mayoria_forzada_senado_endpoint(
         - **kpis**: Datos recalculados
     
     Ejemplo:
-        GET /calcular/mayoria_forzada_senado?partido=MORENA&tipo_mayoria=simple&plan=vigente&aplicar_topes=true
+        GET /calcular/mayoria_forzada_senado?partido=MORENA&tipo_mayoria=simple&plan=vigente&aplicar_topes=true&solo_partido=true
+        GET /calcular/mayoria_forzada_senado?partido=MORENA+PT+PVEM&tipo_mayoria=calificada&plan=vigente&aplicar_topes=false&solo_partido=false
     """
     try:
         from engine.calcular_mayoria_forzada_senado import calcular_mayoria_forzada_senado
@@ -1903,21 +1961,74 @@ async def calcular_mayoria_forzada_senado_endpoint(
                 detail=f"Partido {partido} no encontrado en resultado Senado"
             )
         
+        # 🆕 PASO 3.5: Aplicar lógica de solo_partido vs coalición
+        # Si partido contiene "+", forzar solo_partido=False (es una coalición explícita)
+        es_coalicion_explicita = '+' in partido
+        if es_coalicion_explicita:
+            solo_partido = False
+            print(f"[DEBUG] Partido '{partido}' contiene '+', forzando solo_partido=False (coalición)")
+        
+        # Calcular senadores totales según solo_partido
+        if solo_partido:
+            # Contar SOLO el partido especificado
+            senadores_obtenidos = partido_data['seats']
+            mr_senadores = partido_data.get('mr_seats', 0)
+            pm_senadores = partido_data.get('pm_seats', 0)
+            rp_senadores = partido_data.get('rp_seats', 0)
+            print(f"[DEBUG] solo_partido=True: Contando SOLO {partido}: {senadores_obtenidos} senadores")
+        else:
+            # Contar toda la coalición (MORENA + PT + PVEM si partido=MORENA)
+            # Detectar miembros de la coalición
+            coalicion_4t = ['MORENA', 'PT', 'PVEM']
+            coalicion_xm = ['PAN', 'PRI', 'PRD']
+            
+            if partido in coalicion_4t:
+                partidos_coalicion = coalicion_4t
+                nombre_coalicion = "4T (MORENA+PT+PVEM)"
+            elif partido in coalicion_xm:
+                partidos_coalicion = coalicion_xm
+                nombre_coalicion = "Fuerza y Corazón por México (PAN+PRI+PRD)"
+            elif es_coalicion_explicita:
+                # Coalición explícita (ej: MORENA+PT+PVEM)
+                partidos_coalicion = partido.split('+')
+                nombre_coalicion = partido
+            else:
+                # Partido sin coalición conocida, contar solo él
+                partidos_coalicion = [partido]
+                nombre_coalicion = partido
+            
+            # Sumar senadores de todos los miembros de la coalición
+            senadores_obtenidos = 0
+            mr_senadores = 0
+            pm_senadores = 0
+            rp_senadores = 0
+            
+            for p_coal in partidos_coalicion:
+                p_data = next((p for p in seat_chart if p['party'] == p_coal), None)
+                if p_data:
+                    senadores_obtenidos += p_data['seats']
+                    mr_senadores += p_data.get('mr_seats', 0)
+                    pm_senadores += p_data.get('pm_seats', 0)
+                    rp_senadores += p_data.get('rp_seats', 0)
+            
+            print(f"[DEBUG] solo_partido=False: Contando coalición {nombre_coalicion}: {senadores_obtenidos} senadores totales")
+        
         # PASO 4: Construir respuesta completa
         umbral = 65 if tipo_mayoria == "simple" else 86
         
         return {
             "viable": True,
             "senadores_necesarios": umbral,
-            "senadores_obtenidos": partido_data['seats'],
+            "senadores_obtenidos": senadores_obtenidos,  # 🆕 Usa variable calculada con solo_partido
             "votos_porcentaje": round(config['detalle']['pct_votos'], 2),
             "estados_ganados": config['detalle'].get('estados_ganados', 0),
-            "mr_senadores": partido_data.get('mr_seats', 0),
-            "pm_senadores": partido_data.get('pm_seats', 0),
-            "rp_senadores": partido_data.get('rp_seats', 0),
+            "mr_senadores": mr_senadores,  # 🆕 Usa variable calculada con solo_partido
+            "pm_senadores": pm_senadores,  # 🆕 Usa variable calculada con solo_partido
+            "rp_senadores": rp_senadores,  # 🆕 Usa variable calculada con solo_partido
             "partido": partido,
             "plan": plan,
             "tipo_mayoria": tipo_mayoria,
+            "solo_partido": solo_partido,  # 🆕 Indicar si se contó solo el partido o coalición
             
             # 🔑 CRÍTICO: Seat chart completo RECALCULADO
             "seat_chart": seat_chart,
