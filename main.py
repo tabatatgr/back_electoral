@@ -1703,7 +1703,9 @@ async def calcular_mayoria_forzada_endpoint(
             mr_total=mr_total,
             rp_total=rp_total,
             aplicar_topes=aplicar_topes,
-            votos_base=votos_base_dict
+            votos_base=votos_base_dict,
+            solo_partido=solo_partido,  # 🆕 Pasar el parámetro al engine
+            anio=anio  # 🆕 Pasar año
         )
         
         # Si no es viable, devolver solo eso
@@ -1928,7 +1930,8 @@ async def calcular_mayoria_forzada_senado_endpoint(
             tipo_mayoria=tipo_mayoria,
             plan=plan,
             aplicar_topes=aplicar_topes,
-            anio=anio
+            anio=anio,
+            solo_partido=solo_partido
         )
         
         # Si no es viable, devolver solo eso

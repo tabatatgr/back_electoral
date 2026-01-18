@@ -210,7 +210,9 @@ def calcular_mayoria_forzada(
     mr_total: int = 300,
     rp_total: int = 100,
     aplicar_topes: bool = True,
-    votos_base: Optional[Dict[str, float]] = None
+    votos_base: Optional[Dict[str, float]] = None,
+    solo_partido: bool = True,  # 🆕 NUEVO: Si true, fuerza solo el partido; si false, fuerza la coalición
+    anio: int = 2024  # 🆕 NUEVO: Año electoral
 ) -> Dict:
     """
     Calcula configuración REALISTA para forzar mayoría.
@@ -224,6 +226,8 @@ def calcular_mayoria_forzada(
         rp_total: Total de escaños RP
         aplicar_topes: Si aplicar topes del 8%
         votos_base: Distribución actual de votos (opcional)
+        solo_partido: Si True, fuerza mayoría SOLO del partido; Si False, fuerza coalición completa
+        anio: Año electoral (2018, 2021, 2024)
     
     Returns:
         Dict con configuración y viabilidad
@@ -340,6 +344,96 @@ def calcular_mayoria_forzada(
         eficiencia=1.1  # +10% eficiencia geográfica realista
     )
     
+    # 🆕 PASO 3.5: Si solo_partido=True, redistribuir distritos MR de coalición
+    coalicion_4t = ['MORENA', 'PT', 'PVEM']
+    coalicion_xm = ['PAN', 'PRI', 'PRD']
+    
+    if solo_partido:
+        print(f"[DEBUG MR] solo_partido=True: Redistribuyendo distritos de coalición partners")
+        
+        # Identificar partidos de coalición
+        if partido in coalicion_4t:
+            partidos_coalicion = [p for p in coalicion_4t if p != partido]
+            todos_partidos = list(mr_distritos.keys())
+            print(f"[DEBUG MR] {partido} en 4T, partners: {partidos_coalicion}")
+        elif partido in coalicion_xm:
+            partidos_coalicion = [p for p in coalicion_xm if p != partido]
+            todos_partidos = list(mr_distritos.keys())
+            print(f"[DEBUG MR] {partido} en Fuerza y Corazón, partners: {partidos_coalicion}")
+        else:
+            partidos_coalicion = []
+            todos_partidos = list(mr_distritos.keys())
+            print(f"[DEBUG MR] {partido} sin coalición conocida")
+        
+        # Calcular cuántos distritos hay que redistribuir (de PT y PVEM)
+        mr_coalicion_total = 0
+        for p_coal in partidos_coalicion:
+            if p_coal in mr_distritos:
+                mr_previo = mr_distritos[p_coal]
+                mr_coalicion_total += mr_previo
+                print(f"[DEBUG MR]   {p_coal}: {mr_previo} distritos (se anularán)")
+        
+        if mr_coalicion_total > 0:
+            # Calcular total ANTES de anular coalición partners
+            total_mr_antes = sum(mr_distritos.values())
+            
+            # Anular coalición partners
+            for p_coal in partidos_coalicion:
+                mr_distritos[p_coal] = 0
+            
+            # Calcular proporción de cada partido (SIN coalición partners)
+            partidos_activos = [p for p in todos_partidos if p not in partidos_coalicion]
+            total_mr_activos = sum(mr_distritos.get(p, 0) for p in partidos_activos)
+            
+            print(f"[DEBUG MR] Redistribuyendo {mr_coalicion_total} distritos proporcionalmente:")
+            
+            # Redistribuir proporcionalmente entre TODOS (incluyendo partido objetivo)
+            distritos_redistribuidos = {}
+            for p in partidos_activos:
+                if p in mr_distritos and total_mr_activos > 0:
+                    proporcion = mr_distritos[p] / total_mr_activos
+                    distritos_extra = round(mr_coalicion_total * proporcion)
+                    distritos_redistribuidos[p] = distritos_extra
+            
+            # Ajustar para que sume exactamente mr_coalicion_total
+            suma_redistribuida = sum(distritos_redistribuidos.values())
+            diferencia = mr_coalicion_total - suma_redistribuida
+            
+            # Dar la diferencia al partido con más distritos
+            if diferencia != 0 and partidos_activos:
+                partido_mayor = max(partidos_activos, key=lambda p: mr_distritos.get(p, 0))
+                distritos_redistribuidos[partido_mayor] = distritos_redistribuidos.get(partido_mayor, 0) + diferencia
+            
+            # Aplicar redistribución
+            for p, extra in distritos_redistribuidos.items():
+                if extra > 0:
+                    mr_previo = mr_distritos[p]
+                    mr_distritos[p] = mr_previo + extra
+                    print(f"[DEBUG MR]   {p}: {mr_previo} → {mr_distritos[p]} (+{extra} redistribuidos)")
+            
+            # Verificar que el partido objetivo puede alcanzar mayoría
+            mr_partido_actual = mr_distritos.get(partido, 0)
+            print(f"[DEBUG MR] {partido} tiene ahora {mr_partido_actual} distritos MR")
+            
+            # Si el partido objetivo no alcanza suficientes MR para la mayoría, 
+            # necesitamos incrementar su porcentaje de votos
+            # Estimación: con mr_partido_actual MR y el RP proporcional, ¿alcanza?
+            escanos_estimados = mr_partido_actual + rp_esperado
+            
+            if escanos_estimados < objetivo:
+                # Necesita más votos - incrementar porcentaje
+                deficit = objetivo - escanos_estimados
+                pct_adicional = (deficit / rp_total) * 100  # Porcentaje extra en RP
+                pct_votos_necesario_nuevo = pct_votos_necesario + pct_adicional
+                
+                print(f"[DEBUG MR] ⚠️  Déficit: {deficit} escaños, incrementando votos de {pct_votos_necesario:.1f}% a {pct_votos_necesario_nuevo:.1f}%")
+                
+                # Recalcular RP esperado con nuevo porcentaje
+                rp_esperado = int(rp_total * (pct_votos_necesario_nuevo / 100))
+                
+                # Actualizar el porcentaje para usarlo en votos_custom más adelante
+                pct_votos_necesario = pct_votos_necesario_nuevo
+    
     # 4. CALCULAR distribución de votos
     if votos_base is None:
         # Distribución histórica 2024
@@ -358,14 +452,55 @@ def calcular_mayoria_forzada(
     votos_custom = votos_base_dist.copy()
     votos_custom[partido] = pct_votos_necesario
     
-    # Redistribuir el resto proporcionalmente
-    otros_total = 100 - pct_votos_necesario
-    otros_partidos = [p for p in votos_custom.keys() if p != partido]
-    suma_otros = sum(votos_base_dist[p] for p in otros_partidos)
-    
-    for p in otros_partidos:
-        proporcion = votos_base_dist[p] / suma_otros if suma_otros > 0 else 1.0 / len(otros_partidos)
-        votos_custom[p] = otros_total * proporcion
+    # 🆕 LÓGICA DE solo_partido
+    if solo_partido:
+        # Si solo_partido=True, los aliados del partido deben quedar en 0
+        # y sus votos se redistribuyen a la oposición
+        print(f"[DEBUG] solo_partido=True: Redistribuyendo votos de coalición a oposición")
+        
+        # Identificar partidos de la coalición del partido objetivo
+        if partido in coalicion_4t:
+            partidos_coalicion = [p for p in coalicion_4t if p != partido and p in votos_custom]
+            partidos_oposicion = [p for p in votos_custom.keys() if p not in coalicion_4t]
+        elif partido in coalicion_xm:
+            partidos_coalicion = [p for p in coalicion_xm if p != partido and p in votos_custom]
+            partidos_oposicion = [p for p in votos_custom.keys() if p not in coalicion_xm]
+        else:
+            # Partido sin coalición conocida, redistribuir entre todos los demás
+            partidos_coalicion = []
+            partidos_oposicion = [p for p in votos_custom.keys() if p != partido]
+        
+        # Sumar votos de los partidos de la coalición (que vamos a poner en 0)
+        votos_coalicion_total = sum(votos_base_dist.get(p, 0) for p in partidos_coalicion)
+        
+        # Poner partidos de la coalición en 0
+        for p in partidos_coalicion:
+            votos_custom[p] = 0.0
+        
+        # Calcular votos disponibles para redistribuir
+        # Total disponible = 100 - votos del partido objetivo
+        otros_total = 100 - pct_votos_necesario
+        
+        # Redistribuir SOLO entre la oposición (no incluye coalición)
+        suma_oposicion = sum(votos_base_dist.get(p, 0) for p in partidos_oposicion)
+        
+        if suma_oposicion > 0:
+            for p in partidos_oposicion:
+                proporcion = votos_base_dist.get(p, 0) / suma_oposicion
+                votos_custom[p] = otros_total * proporcion
+        
+        print(f"[DEBUG] Partidos coalición (0%): {partidos_coalicion}")
+        print(f"[DEBUG] Votos redistribuidos ({votos_coalicion_total:.2f}%) a oposición: {partidos_oposicion}")
+    else:
+        # Comportamiento original: redistribuir entre TODOS los demás partidos
+        print(f"[DEBUG] solo_partido=False: Redistribuyendo entre todos los partidos")
+        otros_total = 100 - pct_votos_necesario
+        otros_partidos = [p for p in votos_custom.keys() if p != partido]
+        suma_otros = sum(votos_base_dist.get(p, 0) for p in otros_partidos)
+        
+        for p in otros_partidos:
+            proporcion = votos_base_dist.get(p, 0) / suma_otros if suma_otros > 0 else 1.0 / len(otros_partidos)
+            votos_custom[p] = otros_total * proporcion
     
     # 5. ADVERTENCIAS
     advertencias = []
@@ -397,8 +532,7 @@ def calcular_mayoria_forzada(
             "pct_votos": pct_votos_necesario
         },
         "advertencias": advertencias,
-        "metodo": "Redistritación geográfica realista (Hare + eficiencia 1.1)" if REDISTRITACION_DISPONIBLE else "Método simplificado",
-        "mr_por_estado": mr_por_estado_partido if 'mr_por_estado_partido' in locals() else None  # Distribución geográfica del partido objetivo
+        "metodo": "Redistritación geográfica realista (Hare + eficiencia 1.1)" if REDISTRITACION_DISPONIBLE else "Método simplificado"
     }
 
 

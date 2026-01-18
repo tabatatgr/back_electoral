@@ -213,7 +213,8 @@ def calcular_mayoria_forzada_senado(
     tipo_mayoria: str = "simple",
     plan: str = "vigente",
     aplicar_topes: bool = True,
-    anio: int = 2024
+    anio: int = 2024,
+    solo_partido: bool = True
 ) -> Dict:
     """
     Calcula la configuración necesaria para que un partido alcance mayoría en el Senado
@@ -224,6 +225,8 @@ def calcular_mayoria_forzada_senado(
         plan: Plan electoral ("vigente", "plan_a", "plan_c")
         aplicar_topes: Si aplica el tope del 8% de sobrerrepresentación
         anio: Año electoral
+        solo_partido: Si True, fuerza SOLO el partido (coalición partners → 0%)
+                     Si False, permite coalición natural
         
     Returns:
         dict con la configuración necesaria y si es viable
@@ -347,6 +350,92 @@ def calcular_mayoria_forzada_senado(
         
         # ¿Alcanza la mayoría?
         if total_obtenidos >= senadores_necesarios:
+            # 🆕 CONSTRUIR votos_custom para redistribución
+            # Cargar votos base
+            import pandas as pd
+            path_parquet = f"data/computos_senado_{anio}.parquet"
+            df_votos = pd.read_parquet(path_parquet)
+            
+            # Calcular votos totales por partido a nivel nacional
+            votos_base = {}
+            partidos = ['PAN', 'PRI', 'PRD', 'PVEM', 'PT', 'MORENA', 'MC']
+            for p in partidos:
+                if p in df_votos.columns:
+                    votos_base[p] = int(df_votos[p].sum())
+                else:
+                    votos_base[p] = 0
+            
+            total_votos = sum(votos_base.values())
+            
+            # 🔑 LÓGICA DE solo_partido
+            coalicion_4t = ['MORENA', 'PT', 'PVEM']
+            coalicion_xm = ['PAN', 'PRI', 'PRD']
+            
+            # Identificar si el partido pertenece a una coalición
+            if partido in coalicion_4t:
+                coalicion_miembros = coalicion_4t
+                print(f"[DEBUG SENADO] {partido} es parte de coalición 4T: {coalicion_miembros}")
+            elif partido in coalicion_xm:
+                coalicion_miembros = coalicion_xm
+                print(f"[DEBUG SENADO] {partido} es parte de coalición Fuerza y Corazón: {coalicion_miembros}")
+            else:
+                coalicion_miembros = [partido]
+                print(f"[DEBUG SENADO] {partido} no está en coalición conocida")
+            
+            # Redistribuir votos
+            votos_custom = {}
+            
+            if solo_partido:
+                print(f"[DEBUG SENADO] solo_partido=True: Los compañeros de coalición deben quedar en 0%")
+                
+                # El partido objetivo se queda con votos_pct
+                votos_custom[partido] = votos_pct
+                
+                # Los compañeros de coalición van a 0%
+                votos_coalicion_a_redistribuir = 0.0
+                for p_coal in coalicion_miembros:
+                    if p_coal != partido and p_coal in votos_base:
+                        pct_original = votos_base[p_coal] / total_votos if total_votos > 0 else 0
+                        votos_coalicion_a_redistribuir += pct_original
+                        votos_custom[p_coal] = 0.0
+                        print(f"[DEBUG SENADO]   {p_coal}: {pct_original*100:.2f}% → 0.00% (coalición partner)")
+                
+                # Los votos de los partners se redistribuyen proporcionalmente
+                # SOLO entre los partidos de OPOSICIÓN (no coalición)
+                partidos_oposicion = [p for p in partidos if p not in coalicion_miembros]
+                total_votos_oposicion = sum(votos_base.get(p, 0) for p in partidos_oposicion)
+                
+                print(f"[DEBUG SENADO] Redistribuyendo {votos_coalicion_a_redistribuir*100:.2f}% entre oposición: {partidos_oposicion}")
+                
+                for p_opos in partidos_oposicion:
+                    if p_opos in votos_base and total_votos_oposicion > 0:
+                        proporcion_oposicion = votos_base[p_opos] / total_votos_oposicion
+                        pct_redistribuido = proporcion_oposicion * votos_coalicion_a_redistribuir
+                        pct_original = votos_base[p_opos] / total_votos if total_votos > 0 else 0
+                        pct_final = pct_original + pct_redistribuido
+                        votos_custom[p_opos] = pct_final
+                        print(f"[DEBUG SENADO]   {p_opos}: {pct_original*100:.2f}% → {pct_final*100:.2f}% (+{pct_redistribuido*100:.2f}%)")
+            else:
+                print(f"[DEBUG SENADO] solo_partido=False: Comportamiento normal de coalición")
+                # Comportamiento normal: el partido objetivo alcanza votos_pct
+                # y el resto se redistribuye entre TODOS los demás
+                votos_custom[partido] = votos_pct
+                
+                # Calcular cuánto queda por redistribuir
+                votos_restantes = 100.0 - votos_pct
+                
+                # Redistribuir proporcionalmente entre los demás (incluyendo coalición)
+                otros_partidos = [p for p in partidos if p != partido]
+                total_votos_otros = sum(votos_base.get(p, 0) for p in otros_partidos)
+                
+                for p_otro in otros_partidos:
+                    if p_otro in votos_base and total_votos_otros > 0:
+                        proporcion = votos_base[p_otro] / total_votos_otros
+                        votos_custom[p_otro] = (proporcion * votos_restantes) / 100.0
+            
+            # Convertir a dict con porcentajes (0-100)
+            votos_custom_pct = {p: v * 100 if v < 1.1 else v for p, v in votos_custom.items()}
+            
             mejor_configuracion = {
                 'viable': True,
                 'partido': partido,
@@ -363,7 +452,8 @@ def calcular_mayoria_forzada_senado(
                 'votos_absolutos': resultado['votos_absolutos'],
                 'metodo': resultado['metodo'],
                 'distribucion_estados': resultado.get('distribucion_por_estado', []),
-                'topes_aplicados': aplicar_topes
+                'topes_aplicados': aplicar_topes,
+                'votos_custom': votos_custom_pct  # 🆕 Votos redistribuidos
             }
             break  # Encontramos el mínimo
     
