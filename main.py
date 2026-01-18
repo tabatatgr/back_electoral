@@ -709,6 +709,11 @@ async def procesar_senado(
                             nombre_estado = str(estado_id_str).upper()
                         mr_por_estado_manual[nombre_estado] = partidos_dict.copy() if isinstance(partidos_dict, dict) else {}
                     print(f"[DEBUG] Senado: mr_por_estado_manual preservado con {len(mr_por_estado_manual)} estados")
+            # 🔥 IMPORTANTE: Si se enviaron sliders nacionales (mr_distritos_manuales) pero NO flechitas,
+            # resetear mr_por_estado_manual para evitar usar valores antiguos
+            elif mr_distritos_manuales:
+                print(f"[DEBUG] Senado: Sliders nacionales detectados sin flechitas → reseteando mr_por_estado_manual")
+                mr_por_estado_manual = None
         except Exception as _e:
             print(f"[WARN] No se pudo parsear mr_distritos_por_estado en senado: {_e}")
         
@@ -3375,6 +3380,12 @@ async def procesar_diputados(
                     
                     print(f"[DEBUG] ✅ MR manuales validados: {mr_ganados_geograficos} (total={total_mr_manuales}/{mr_seats_final})")
                     
+                    # 🔥 IMPORTANTE: Si mr_distritos_manuales NO vino de mr_distritos_por_estado,
+                    # resetear mr_por_estado_manual para evitar usar valores antiguos de flechitas
+                    if not mr_distritos_por_estado:
+                        print(f"[DEBUG] 🔄 Reseteando mr_por_estado_manual (sliders nacionales detectados, NO flechitas)")
+                        mr_por_estado_manual = None
+                    
                     # ========================================================================
                     # AJUSTE DE VOTOS PARA MR MANUALES (REGLA DE TRES INVERSA)
                     # ========================================================================
@@ -3394,11 +3405,15 @@ async def procesar_diputados(
                         import pandas as pd
                         import uuid
                         
+                        # 🔥 CRÍTICO: Para calcular el MR base, SIEMPRE usar datos históricos originales,
+                        # NO usar path_parquet que podría ser un temporal de una request anterior
+                        path_parquet_original = f"data/computos_diputados_{anio}.parquet"
+                        
                         # PASO 1: Calcular MR BASE (históricos) usando el motor SIN sliders
-                        print(f"[DEBUG] 📊 Calculando MR base históricos desde {path_parquet}...")
+                        print(f"[DEBUG] 📊 Calculando MR base históricos desde {path_parquet_original}...")
                         
                         resultado_base = procesar_diputados_v2(
-                            path_parquet=path_parquet,
+                            path_parquet=path_parquet_original,
                             anio=anio,
                             max_seats=max_seats,
                             sistema=sistema_final,
@@ -3456,10 +3471,11 @@ async def procesar_diputados(
                             print(f"[DEBUG] Porcentajes renormalizados (total=100%): {porcentajes_ajustados}")
                         
                         # PASO 4: Generar parquet ajustado con simular_escenario_electoral
-                        print(f"[DEBUG] 📝 Generando parquet con votos ajustados...")
+                        # 🔥 CRÍTICO: Usar datos originales, no temporales de requests anteriores
+                        print(f"[DEBUG] 📝 Generando parquet con votos ajustados desde {path_parquet_original}...")
                         
                         df_redistribuido, porcentajes_finales = simular_escenario_electoral(
-                            path_parquet,
+                            path_parquet_original,
                             porcentajes_objetivo=porcentajes_ajustados,
                             partidos_fijos={},
                             overrides_pool={},
@@ -3826,22 +3842,68 @@ async def procesar_diputados(
         except Exception as _e:
             print(f"[WARN] No se pudo añadir trace meta en diputados: {_e}")
 
-        # 🔥 NUEVO: Si hay distribución manual por estado (sliders micro), devolverla
+        # 🔥 IMPORTANTE: Preservar distribución geográfica en la respuesta
         try:
+            resultado_formateado.setdefault('meta', {})
+            
+            # Mapeo de nombres a IDs de estados (inverso del que usamos arriba)
+            NOMBRE_A_ID_ESTADO = {
+                "AGUASCALIENTES": 1, "BAJA CALIFORNIA": 2, "BAJA CALIFORNIA SUR": 3,
+                "CAMPECHE": 4, "COAHUILA": 5, "COLIMA": 6, "CHIAPAS": 7, "CHIHUAHUA": 8,
+                "CIUDAD DE MEXICO": 9, "DURANGO": 10, "GUANAJUATO": 11,
+                "GUERRERO": 12, "HIDALGO": 13, "JALISCO": 14, "MEXICO": 15,
+                "MICHOACAN": 16, "MORELOS": 17, "NAYARIT": 18, "NUEVO LEON": 19,
+                "OAXACA": 20, "PUEBLA": 21, "QUERETARO": 22, "QUINTANA ROO": 23,
+                "SAN LUIS POTOSI": 24, "SINALOA": 25, "SONORA": 26, "TABASCO": 27,
+                "TAMAULIPAS": 28, "TLAXCALA": 29, "VERACRUZ": 30, "YUCATAN": 31,
+                "ZACATECAS": 32
+            }
+            
+            # PRIORIDAD 1: Si el frontend envió mr_distritos_por_estado (flechitas micro),
+            # devolver EXACTAMENTE eso (no recalcular nada)
             if 'mr_por_estado_manual' in locals() and mr_por_estado_manual:
-                resultado_formateado.setdefault('meta', {})
-                # SIMPLE: El frontend envió TODOS los estados → Devolver exactamente eso
-                # NO hacer merge, NO recalcular, solo devolver lo que enviaron
-                print(f"[DEBUG] 🎯 Devolviendo mr_por_estado_manual con {len(mr_por_estado_manual)} estados")
-                resultado_formateado['meta']['mr_por_estado'] = mr_por_estado_manual
+                print(f"[DEBUG] 🎯 Devolviendo mr_por_estado_manual (flechitas) con {len(mr_por_estado_manual)} estados")
                 
-                # Si el frontend envió menos de 32 estados, avisar en logs (pero no fallar)
-                if len(mr_por_estado_manual) < 32:
-                    print(f"[WARN] ⚠️  Solo {len(mr_por_estado_manual)}/32 estados en respuesta")
-                    print(f"[WARN] ⚠️  Recomendación: Frontend debería enviar todos los estados")
+                # Convertir nombres de estado a IDs para el frontend
+                mr_por_estado_ids = {}
+                for nombre_estado, partidos_dict in mr_por_estado_manual.items():
+                    estado_id = NOMBRE_A_ID_ESTADO.get(nombre_estado.upper())
+                    if estado_id:
+                        mr_por_estado_ids[str(estado_id)] = partidos_dict
+                    else:
+                        print(f"[WARN] Estado no mapeado: {nombre_estado}")
+                
+                resultado_formateado['meta']['mr_por_estado'] = mr_por_estado_ids
+                
+                if len(mr_por_estado_ids) < 32:
+                    print(f"[WARN] ⚠️  Solo {len(mr_por_estado_ids)}/32 estados en respuesta")
+            
+            # PRIORIDAD 2: Si NO hay manual, usar el calculado por el motor
+            elif 'resultado' in locals() and isinstance(resultado, dict):
+                meta_motor = resultado.get('meta', {})
+                if isinstance(meta_motor, dict) and 'mr_por_estado' in meta_motor:
+                    mr_por_estado_calculado = meta_motor['mr_por_estado']
+                    print(f"[DEBUG] 🔄 Devolviendo mr_por_estado calculado por motor con {len(mr_por_estado_calculado)} estados")
+                    
+                    # Convertir nombres de estado a IDs para el frontend
+                    mr_por_estado_ids = {}
+                    for nombre_estado, partidos_dict in mr_por_estado_calculado.items():
+                        estado_id = NOMBRE_A_ID_ESTADO.get(nombre_estado.upper())
+                        if estado_id:
+                            mr_por_estado_ids[str(estado_id)] = partidos_dict
+                        else:
+                            print(f"[WARN] Estado no mapeado: {nombre_estado}")
+                    
+                    resultado_formateado['meta']['mr_por_estado'] = mr_por_estado_ids
+                else:
+                    print(f"[WARN] ⚠️  Motor no devolvió mr_por_estado en meta")
+            else:
+                print(f"[WARN] ⚠️  No hay mr_por_estado disponible (ni manual ni calculado)")
                     
         except Exception as _e:
-            print(f"[WARN] No se pudo incluir mr_por_estado_manual en respuesta: {_e}")
+            print(f"[WARN] No se pudo incluir mr_por_estado en respuesta: {_e}")
+            import traceback
+            traceback.print_exc()
             import traceback
             traceback.print_exc()
 
