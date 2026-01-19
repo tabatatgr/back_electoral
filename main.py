@@ -1860,11 +1860,23 @@ async def calcular_mayoria_forzada_endpoint(
             # 🔑 CRÍTICO: KPIs recalculados (están en la raíz, NO en mayorias)
             "kpis": kpis,
             
-            # 📊 NUEVO: Distribución geográfica de MR por estado y partido
+            # 📊 NUEVO: Votos custom redistribuidos (para actualizar sliders de votos)
+            # Estructura: { "MORENA": 47.5, "PAN": 18.6, "PRI": 15.2, ... }
+            "votos_custom": config.get('votos_custom'),
+            
+            # 📊 NUEVO: MR distritos manuales totales (para actualizar sliders nacionales de MR)
+            # Estructura: { "MORENA": 159, "PAN": 62, "PRI": 47, ... }
+            "mr_distritos_manuales": config.get('mr_distritos_manuales'),
+            
+            # 📊 NUEVO: MR distritos por estado (para actualizar tabla geográfica)
+            # Estructura: { "1": {"MORENA": 2, "PAN": 1}, "15": {"MORENA": 22, "PAN": 10}, ... }
+            "mr_distritos_por_estado": config.get('mr_distritos_por_estado'),
+            
+            # 📊 LEGACY: Distribución geográfica de MR por estado y partido (nombre de estado)
             # Estructura: { "AGUASCALIENTES": { "PAN": 2, "MORENA": 1, ... }, ... }
             "mr_por_estado": mr_por_estado,
             
-            # 📍 NUEVO: Total de distritos por estado (para mostrar "3/3" en el frontend)
+            # 📍 LEGACY: Total de distritos por estado (para mostrar "3/3" en el frontend)
             # Estructura: { "AGUASCALIENTES": 3, "BAJA CALIFORNIA": 8, ... }
             "distritos_por_estado": distritos_por_estado,
             

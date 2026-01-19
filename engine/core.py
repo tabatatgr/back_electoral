@@ -331,10 +331,19 @@ def assign_senadores(
     
     if u > 0:
         rema = v_nacional * rp_seats - t
-        # Ordenar por residuo descendente, desempatar por índice
-        ord_indices = np.argsort([-r if r > 0 else -1e10 for r in rema])
-        for i in range(u):
-            t[ord_indices[i]] += 1
+        # CRÍTICO: Solo asignar residuos a partidos que superaron el umbral (v_nacional > 0)
+        # Ordenar por residuo descendente, pero penalizar partidos sin votos válidos
+        ord_indices = np.argsort([(-r if v_nacional[i] > 0 and r > 0 else -1e10) for i, r in enumerate(rema)])
+        
+        asignados = 0
+        for i in range(len(ord_indices)):
+            if asignados >= u:
+                break
+            idx = ord_indices[i]
+            # Solo asignar a partidos que superaron el umbral
+            if v_nacional[idx] > 0:
+                t[idx] += 1
+                asignados += 1
     
     return {parties[i]: int(t[i]) for i in range(len(parties))}            
 

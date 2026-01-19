@@ -452,45 +452,37 @@ def calcular_mayoria_forzada(
     votos_custom = votos_base_dist.copy()
     votos_custom[partido] = pct_votos_necesario
     
-    # 🆕 LÓGICA DE solo_partido
+    # 🆕 LÓGICA DE solo_partido - Redistribución proporcional
     if solo_partido:
-        # Si solo_partido=True, los aliados del partido deben quedar en 0
-        # y sus votos se redistribuyen a la oposición
-        print(f"[DEBUG] solo_partido=True: Redistribuyendo votos de coalición a oposición")
+        # Si solo_partido=True, ajustamos votos proporcionalmente a TODOS los partidos
+        # No ponemos a nadie en 0%, solo redistribuimos proporcionalmente
+        print(f"[DEBUG] solo_partido=True: Redistribuyendo votos PROPORCIONALMENTE entre todos")
         
         # Identificar partidos de la coalición del partido objetivo
         if partido in coalicion_4t:
             partidos_coalicion = [p for p in coalicion_4t if p != partido and p in votos_custom]
-            partidos_oposicion = [p for p in votos_custom.keys() if p not in coalicion_4t]
         elif partido in coalicion_xm:
             partidos_coalicion = [p for p in coalicion_xm if p != partido and p in votos_custom]
-            partidos_oposicion = [p for p in votos_custom.keys() if p not in coalicion_xm]
         else:
-            # Partido sin coalición conocida, redistribuir entre todos los demás
+            # Partido sin coalición conocida
             partidos_coalicion = []
-            partidos_oposicion = [p for p in votos_custom.keys() if p != partido]
         
-        # Sumar votos de los partidos de la coalición (que vamos a poner en 0)
-        votos_coalicion_total = sum(votos_base_dist.get(p, 0) for p in partidos_coalicion)
-        
-        # Poner partidos de la coalición en 0
-        for p in partidos_coalicion:
-            votos_custom[p] = 0.0
-        
-        # Calcular votos disponibles para redistribuir
+        # Calcular votos disponibles para todos los demás partidos
         # Total disponible = 100 - votos del partido objetivo
         otros_total = 100 - pct_votos_necesario
         
-        # Redistribuir SOLO entre la oposición (no incluye coalición)
-        suma_oposicion = sum(votos_base_dist.get(p, 0) for p in partidos_oposicion)
+        # Redistribuir proporcionalmente entre TODOS los demás partidos (incluye coalición)
+        otros_partidos = [p for p in votos_custom.keys() if p != partido]
+        suma_otros = sum(votos_base_dist.get(p, 0) for p in otros_partidos)
         
-        if suma_oposicion > 0:
-            for p in partidos_oposicion:
-                proporcion = votos_base_dist.get(p, 0) / suma_oposicion
+        if suma_otros > 0:
+            for p in otros_partidos:
+                proporcion = votos_base_dist.get(p, 0) / suma_otros
                 votos_custom[p] = otros_total * proporcion
         
-        print(f"[DEBUG] Partidos coalición (0%): {partidos_coalicion}")
-        print(f"[DEBUG] Votos redistribuidos ({votos_coalicion_total:.2f}%) a oposición: {partidos_oposicion}")
+        print(f"[DEBUG] Votos redistribuidos proporcionalmente:")
+        for p in otros_partidos:
+            print(f"[DEBUG]   {p}: {votos_base_dist.get(p, 0):.2f}% → {votos_custom[p]:.2f}%")
     else:
         # Comportamiento original: redistribuir entre TODOS los demás partidos
         print(f"[DEBUG] solo_partido=False: Redistribuyendo entre todos los partidos")
@@ -517,11 +509,20 @@ def calcular_mayoria_forzada(
     if not aplicar_topes and tipo_mayoria == "simple":
         advertencias.append("Sin topes, el partido podría obtener MÁS del objetivo de mayoría simple")
     
-    # 6. RETORNAR configuración
+    # 6. GENERAR mr_distritos_por_estado (distribución geográfica)
+    mr_distritos_por_estado = generar_distribucion_geografica(
+        mr_distritos=mr_distritos,
+        mr_total=mr_total,
+        votos_custom=votos_custom,
+        anio=anio
+    )
+    
+    # 7. RETORNAR configuración
     return {
         "viable": True,
         "objetivo_escanos": objetivo,
         "mr_distritos_manuales": mr_distritos,
+        "mr_distritos_por_estado": mr_distritos_por_estado,  # 🆕 Distribución geográfica
         "votos_custom": votos_custom,
         "detalle": {
             "mr_ganados": mr_distritos[partido],
@@ -623,3 +624,69 @@ if __name__ == "__main__":
         print(f"Razón: {resultado['razon']}")
     
     print("\n" + "="*80)
+
+
+def generar_distribucion_geografica(
+    mr_distritos,
+    mr_total,
+    votos_custom,
+    anio=2024
+):
+    """
+    Genera distribución geográfica de distritos MR por estado.
+    
+    Usa el método de "largest remainder" (Hare) para garantizar que la suma
+    de distritos por estado coincida exactamente con el total nacional por partido.
+    """
+    # Distribución de distritos por estado (32 estados, 300 distritos MR total)
+    distritos_por_estado = {
+        "1": 3, "2": 8, "3": 2, "4": 2, "5": 13, "6": 9, "7": 7,
+        "8": 2, "9": 27, "10": 4, "11": 14, "12": 9, "13": 7,
+        "14": 20, "15": 40, "16": 12, "17": 5, "18": 3, "19": 12,
+        "20": 11, "21": 15, "22": 5, "23": 4, "24": 7, "25": 8,
+        "26": 7, "27": 6, "28": 8, "29": 3, "30": 21, "31": 5, "32": 4
+    }
+    
+    mr_por_estado = {}
+    
+    # Para cada partido, distribuir sus distritos nacionales entre los estados
+    # usando el método de "largest remainder" para evitar errores de redondeo
+    for partido, total_nacional in mr_distritos.items():
+        if total_nacional == 0:
+            continue
+            
+        # Calcular cuotas exactas (no redondeadas) para cada estado
+        cuotas = {}
+        for estado_id, distritos_estado in distritos_por_estado.items():
+            proporcion = distritos_estado / mr_total
+            cuota_exacta = total_nacional * proporcion
+            cuotas[estado_id] = cuota_exacta
+        
+        # Paso 1: Asignar parte entera de cada cuota
+        asignacion = {}
+        suma_asignada = 0
+        residuos = {}
+        
+        for estado_id, cuota in cuotas.items():
+            parte_entera = int(cuota)
+            asignacion[estado_id] = parte_entera
+            suma_asignada += parte_entera
+            residuos[estado_id] = cuota - parte_entera
+        
+        # Paso 2: Distribuir los distritos restantes a los estados con mayor residuo
+        distritos_restantes = total_nacional - suma_asignada
+        estados_ordenados = sorted(residuos.keys(), key=lambda x: residuos[x], reverse=True)
+        
+        for i in range(distritos_restantes):
+            estado_ganador = estados_ordenados[i]
+            asignacion[estado_ganador] += 1
+        
+        # Agregar a mr_por_estado (solo estados con distritos > 0)
+        for estado_id, distritos in asignacion.items():
+            if distritos > 0:
+                if estado_id not in mr_por_estado:
+                    mr_por_estado[estado_id] = {}
+                mr_por_estado[estado_id][partido] = distritos
+    
+    return mr_por_estado
+
