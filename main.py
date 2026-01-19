@@ -1890,6 +1890,64 @@ async def calcular_mayoria_forzada_endpoint(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calculando mayoría forzada: {str(e)}")
 
+
+# 🆕 Modelo Pydantic para request body de mayoría forzada
+class MayoriaForzadaRequest(BaseModel):
+    """Request body para mayoría forzada vía POST"""
+    partido: str
+    tipo_mayoria: str = "simple"
+    plan: str = "vigente"
+    aplicar_topes: bool = True
+    votos_base: Optional[Dict[str, float]] = None
+    anio: int = 2024
+    solo_partido: bool = True
+    escanos_totales: Optional[int] = None
+    mr_seats: Optional[int] = None
+    rp_seats: Optional[int] = None
+    sistema: Optional[str] = None
+
+
+@app.post("/calcular/mayoria_forzada")
+async def calcular_mayoria_forzada_post(request: MayoriaForzadaRequest):
+    """
+    POST endpoint para mayoría forzada (mismo comportamiento que GET).
+    
+    Acepta JSON body en lugar de query parameters.
+    
+    Ejemplo:
+    ```json
+    {
+        "partido": "MORENA",
+        "tipo_mayoria": "simple",
+        "plan": "vigente",
+        "aplicar_topes": true,
+        "solo_partido": true,
+        "anio": 2024
+    }
+    ```
+    """
+    # Convertir votos_base dict a JSON string si existe
+    votos_base_str = None
+    if request.votos_base:
+        import json
+        votos_base_str = json.dumps(request.votos_base)
+    
+    # Llamar a la función GET reutilizando toda la lógica
+    return await calcular_mayoria_forzada_endpoint(
+        partido=request.partido,
+        tipo_mayoria=request.tipo_mayoria,
+        plan=request.plan,
+        aplicar_topes=request.aplicar_topes,
+        votos_base=votos_base_str,
+        anio=request.anio,
+        solo_partido=request.solo_partido,
+        escanos_totales=request.escanos_totales,
+        mr_seats=request.mr_seats,
+        rp_seats=request.rp_seats,
+        sistema=request.sistema
+    )
+
+
 @app.get("/calcular/mayoria_forzada_senado")
 async def calcular_mayoria_forzada_senado_endpoint(
     partido: str,
@@ -2063,6 +2121,48 @@ async def calcular_mayoria_forzada_senado_endpoint(
         print(f"[ERROR] Error calculando mayoría forzada Senado: {str(e)}")
         print(f"[ERROR] Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error calculando mayoría forzada Senado: {str(e)}")
+
+
+# 🆕 Modelo Pydantic para request body de mayoría forzada Senado
+class MayoriaForzadaSenadoRequest(BaseModel):
+    """Request body para mayoría forzada Senado vía POST"""
+    partido: str
+    tipo_mayoria: str = "simple"
+    plan: str = "vigente"
+    aplicar_topes: bool = True
+    anio: int = 2024
+    solo_partido: bool = True
+
+
+@app.post("/calcular/mayoria_forzada_senado")
+async def calcular_mayoria_forzada_senado_post(request: MayoriaForzadaSenadoRequest):
+    """
+    POST endpoint para mayoría forzada Senado (mismo comportamiento que GET).
+    
+    Acepta JSON body en lugar de query parameters.
+    
+    Ejemplo:
+    ```json
+    {
+        "partido": "MORENA",
+        "tipo_mayoria": "simple",
+        "plan": "vigente",
+        "aplicar_topes": true,
+        "solo_partido": true,
+        "anio": 2024
+    }
+    ```
+    """
+    # Llamar a la función GET reutilizando toda la lógica
+    return await calcular_mayoria_forzada_senado_endpoint(
+        partido=request.partido,
+        tipo_mayoria=request.tipo_mayoria,
+        plan=request.plan,
+        aplicar_topes=request.aplicar_topes,
+        anio=request.anio,
+        solo_partido=request.solo_partido
+    )
+
 
 @app.get("/generar/tabla_estados_senado")
 async def generar_tabla_estados_senado_endpoint(

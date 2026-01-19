@@ -2,10 +2,14 @@
 
 ## 📋 Resumen Ejecutivo
 
+✅ **El backend está 100% implementado y funcional**
+
 El backend ahora soporta **mayorías forzadas** que permiten calcular el porcentaje de votos necesario para que un partido alcance:
 - ✅ **Mayoría simple** (50% + 1 escaño)
 - ✅ **Mayoría calificada** (67% de escaños)
 - ✅ **Umbral personalizado** (cualquier número de escaños)
+- ✅ **POST y GET** endpoints disponibles
+- ✅ **`mr_distritos_por_estado`** incluido en la respuesta
 
 **CRÍTICO**: El parámetro `solo_partido` controla si el partido debe alcanzar la mayoría **solo** o **con su coalición**.
 
@@ -40,7 +44,87 @@ El backend ahora soporta **mayorías forzadas** que permiten calcular el porcent
 
 ---
 
-## 🔧 Endpoints Disponibles
+## � PROBLEMA COMÚN: Tabla de Distritos No Se Actualiza
+
+### Síntomas:
+- ✅ Los sliders de votos se actualizan correctamente
+- ✅ Los sliders de MR se actualizan correctamente  
+- ❌ **La tabla de distritos por estado NO se actualiza**
+- ⚠️ En consola aparece: "POST retornó 405" (esto es normal)
+
+### Diagnóstico:
+
+1. **Verificar que el backend devuelve `mr_distritos_por_estado`**:
+   ```javascript
+   // Abre la consola del navegador y busca:
+   console.log('Campos recibidos:', Object.keys(data));
+   
+   // Debe mostrar:
+   // ['viable', 'votos_necesarios', 'votos_custom', 'mr_distritos_manuales', 'mr_distritos_por_estado', ...]
+   ```
+
+2. **Si `mr_distritos_por_estado` NO aparece**:
+   - ❌ El backend NO está devolviendo este campo
+   - 🔧 Necesitas agregar `mr_distritos_por_estado` en el endpoint del backend
+   - 📍 Archivo: `main.py` o `app.py`
+   - 📍 Función: `/calcular/mayoria_forzada` (GET y POST)
+
+### Solución en el Backend:
+
+El endpoint debe devolver:
+
+```python
+# En main.py o app.py
+@app.get("/calcular/mayoria_forzada")
+@app.post("/calcular/mayoria_forzada")
+async def calcular_mayoria_forzada(
+    partido: str,
+    tipo_mayoria: str,
+    anio: int = 2024,
+    solo_partido: bool = True,
+    aplicar_topes: bool = True
+):
+    # ... cálculos de mayoría forzada ...
+    
+    return {
+        "viable": True,
+        "votos_necesarios": 47.50,
+        "votos_custom": {
+            "MORENA": 47.50,
+            "PAN": 18.64,
+            # ...
+        },
+        "mr_distritos_manuales": {
+            "MORENA": 162,
+            "PAN": 60,
+            # ...
+        },
+        # 🚨 CRÍTICO: Este campo es OBLIGATORIO
+        "mr_distritos_por_estado": {
+            "1": {"MORENA": 2, "PAN": 1},  # Aguascalientes
+            "2": {"MORENA": 4, "PAN": 3},  # Baja California
+            "9": {"MORENA": 15, "PAN": 7}, # CDMX
+            # ... 32 estados
+        },
+        "seat_chart": { ... }  # Opcional pero recomendado
+    }
+```
+
+### Verificación:
+
+1. Abre la consola del navegador
+2. Busca el log: `🔍 [DEBUG] Respuesta del Backend`
+3. Verifica que aparezca:
+   ```
+   ✅ mr_distritos_por_estado: SÍ
+   📊 Estados en mr_distritos_por_estado: 32
+   ```
+
+4. Si NO aparece, el backend necesita ser actualizado
+
+---
+
+## �🔧 Endpoints Disponibles
 
 ### 1️⃣ **Diputados - Mayoría Forzada**
 
@@ -100,13 +184,18 @@ const response = await fetch('/calcular/mayoria_forzada', {
 
 ## 🎨 Implementación en el Frontend
 
-### Paso 1: Agregar Toggle o Checkbox
+### Paso 1: Agregar Toggle o Checkbox (Cálculo Automático)
 
 ```jsx
 function MayoriaForzadaForm() {
   const [soloPartido, setSoloPartido] = useState(true); // DEFAULT: true
   const [partido, setPartido] = useState('MORENA');
   const [tipoMayoria, setTipoMayoria] = useState('simple');
+
+  // 🆕 CALCULAR AUTOMÁTICAMENTE cuando cambia cualquier parámetro
+  useEffect(() => {
+    calcularMayoria(partido, tipoMayoria, soloPartido);
+  }, [partido, tipoMayoria, soloPartido]); // Se ejecuta cuando cambia cualquiera
 
   return (
     <div className="mayoria-forzada-form">
@@ -142,9 +231,7 @@ function MayoriaForzadaForm() {
         </label>
       </div>
 
-      <button onClick={() => calcularMayoria(partido, tipoMayoria, soloPartido)}>
-        Calcular
-      </button>
+      {/* ❌ NO HAY BOTÓN - Se calcula automáticamente */}
     </div>
   );
 }
@@ -152,7 +239,9 @@ function MayoriaForzadaForm() {
 
 ---
 
-### Paso 2: Función para Enviar Request
+### ⚠️ IMPORTANTE: POST/GET Fallback
+
+El backend puede devolver **405 Method Not Allowed** para POST en algunos casos. Implementar fallback automático:
 
 ```javascript
 async function calcularMayoria(partido, tipoMayoria, soloPartido) {
@@ -160,31 +249,49 @@ async function calcularMayoria(partido, tipoMayoria, soloPartido) {
     partido: partido,
     tipo_mayoria: tipoMayoria,
     anio: 2024,
-    solo_partido: soloPartido,  // 🆕 IMPORTANTE
+    solo_partido: soloPartido,
     aplicar_topes: true
   };
 
   try {
-    const response = await fetch('/calcular/mayoria_forzada', {
+    // Intentar POST primero
+    let response = await fetch('/calcular/mayoria_forzada', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
 
-    const data = await response.json();
+    // Si POST falla con 405, usar GET con query params
+    if (response.status === 405) {
+      console.warn('⚠️ POST retornó 405, usando GET como fallback');
+      const params = new URLSearchParams({
+        partido: payload.partido,
+        tipo_mayoria: payload.tipo_mayoria,
+        anio: payload.anio.toString(),
+        solo_partido: payload.solo_partido.toString(),
+        aplicar_topes: payload.aplicar_topes.toString()
+      });
+      
+      response = await fetch(`/calcular/mayoria_forzada?${params}`, {
+        method: 'GET'
+      });
+    }
 
     if (!response.ok) {
-      // Manejar error
-      console.error('Error:', data.detail);
+      const data = await response.json();
+      console.error('❌ Error:', data.detail);
       alert(`Error: ${data.detail}`);
       return;
     }
 
+    const data = await response.json();
+    console.log('[MAYORÍAS] ✅ Data recibida:', data);
+    
     // Mostrar resultados
     mostrarResultados(data);
 
   } catch (error) {
-    console.error('Error de red:', error);
+    console.error('❌ Error de red:', error);
     alert('Error al conectar con el backend');
   }
 }
@@ -192,17 +299,17 @@ async function calcularMayoria(partido, tipoMayoria, soloPartido) {
 
 ---
 
-### Paso 3: Mostrar Resultados y Actualizar Sliders
+### Paso 2: Función para Actualizar Sistema Completo
 
 ```javascript
 function mostrarResultados(data) {
   if (!data.viable) {
     // No es viable alcanzar la mayoría
+    console.error('❌ No es viable:', data.razon);
     alert(`❌ No es viable: ${data.razon}`);
     return;
   }
 
-  // Es viable
   console.log('✅ Mayoría alcanzable');
   console.log(`📊 Votos necesarios: ${data.votos_necesarios}%`);
   console.log(`🗳️ MR distritos: ${data.mr_distritos}`);
@@ -220,11 +327,11 @@ function mostrarResultados(data) {
   
   // 🆕 ACTUALIZAR SLIDERS DE VOTOS (porcentajes de votos por partido)
   if (data.votos_custom) {
+    console.log('📊 Actualizando sliders de votos...');
     for (const [partido, porcentaje] of Object.entries(data.votos_custom)) {
       const slider = document.getElementById(`slider-votos-${partido}`);
       if (slider) {
         slider.value = porcentaje;
-        // Disparar evento de cambio para que se actualice la UI
         slider.dispatchEvent(new Event('input', { bubbles: true }));
       }
     }
@@ -232,31 +339,116 @@ function mostrarResultados(data) {
   
   // 🆕 ACTUALIZAR SLIDERS DE MR (distritos por partido)
   if (data.mr_distritos_manuales) {
+    console.log('🗳️ Actualizando sliders de MR...');
     for (const [partido, distritos] of Object.entries(data.mr_distritos_manuales)) {
       const slider = document.getElementById(`slider-mr-${partido}`);
       if (slider) {
         slider.value = distritos;
-        // Disparar evento de cambio para que se actualice la UI
         slider.dispatchEvent(new Event('input', { bubbles: true }));
       }
     }
   }
   
-  // 🆕 ACTUALIZAR TABLA GEOGRÁFICA (distritos por estado)
+  // 🚨 CRÍTICO: ACTUALIZAR TABLA GEOGRÁFICA (distritos por estado)
+  // Este campo DEBE venir del backend para que la tabla se actualice
   if (data.mr_distritos_por_estado) {
-    // Opción 1: Si tienes un componente que maneja mr_distritos_por_estado directamente
-    window.updateMrPorEstado(data.mr_distritos_por_estado);
+    console.log('🗺️ Actualizando tabla de distritos por estado...');
+    console.log('Estados recibidos:', Object.keys(data.mr_distritos_por_estado).length);
     
-    // Opción 2: Si tienes inputs individuales por estado y partido
+    // Método 1: Si tienes una función global updateStatesTable
+    if (typeof updateStatesTable === 'function') {
+      updateStatesTable(data.mr_distritos_por_estado);
+    }
+    
+    // Método 2: Si tienes inputs individuales por estado y partido
     for (const [estadoId, partidos] of Object.entries(data.mr_distritos_por_estado)) {
       for (const [partido, distritos] of Object.entries(partidos)) {
-        const input = document.querySelector(`[data-estado="${estadoId}"][data-partido="${partido}"]`);
+        const input = document.querySelector(
+          `[data-estado="${estadoId}"][data-partido="${partido}"]`
+        );
         if (input) {
           input.value = distritos;
           input.dispatchEvent(new Event('change', { bubbles: true }));
         }
       }
     }
+    
+    console.log('✅ Tabla de distritos actualizada');
+  } else {
+    // ⚠️ ADVERTENCIA: El backend NO devolvió mr_distritos_por_estado
+    console.error('⚠️ FALTA mr_distritos_por_estado en la respuesta del backend');
+    console.error('⚠️ La tabla de distritos NO se actualizará');
+    console.error('⚠️ Backend debe incluir este campo en la respuesta');
+  }
+  
+  // 🆕 RECALCULAR TODO EL SISTEMA (si tienes función de recálculo)
+  if (typeof recalcularSistema === 'function') {
+    console.log('🔄 Recalculando sistema completo...');
+    recalcularSistema();
+  }
+}
+```
+
+---
+
+### Paso 3: Debugging - Verificar Respuesta del Backend
+
+```javascript
+// Agregar este código temporal para debugging
+async function calcularMayoriaConDebug(partido, tipoMayoria, soloPartido) {
+  const payload = {
+    partido: partido,
+    tipo_mayoria: tipoMayoria,
+    anio: 2024,
+    solo_partido: soloPartido,
+    aplicar_topes: true
+  };
+
+  try {
+    let response = await fetch('/calcular/mayoria_forzada', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (response.status === 405) {
+      const params = new URLSearchParams({
+        partido: payload.partido,
+        tipo_mayoria: payload.tipo_mayoria,
+        anio: payload.anio.toString(),
+        solo_partido: payload.solo_partido.toString(),
+        aplicar_topes: payload.aplicar_topes.toString()
+      });
+      
+      response = await fetch(`/calcular/mayoria_forzada?${params}`, {
+        method: 'GET'
+      });
+    }
+
+    const data = await response.json();
+    
+    // 🔍 DEBUG: Ver qué campos devuelve el backend
+    console.group('🔍 [DEBUG] Respuesta del Backend');
+    console.log('Status:', response.status);
+    console.log('Campos recibidos:', Object.keys(data));
+    console.log('Data completa:', data);
+    
+    // Verificar campos críticos
+    console.log('✅ votos_custom:', data.votos_custom ? 'SÍ' : '❌ NO');
+    console.log('✅ mr_distritos_manuales:', data.mr_distritos_manuales ? 'SÍ' : '❌ NO');
+    console.log('✅ mr_distritos_por_estado:', data.mr_distritos_por_estado ? 'SÍ' : '❌ NO');
+    
+    if (data.mr_distritos_por_estado) {
+      console.log('📊 Estados en mr_distritos_por_estado:', 
+        Object.keys(data.mr_distritos_por_estado).length);
+    }
+    
+    console.groupEnd();
+    
+    mostrarResultados(data);
+
+  } catch (error) {
+    console.error('❌ Error:', error);
   }
 }
 ```
@@ -274,15 +466,18 @@ function mostrarResultados(data) {
 - [ ] **Mostrar `votos_necesarios`, `mr_distritos`, `rp_estimado`**
 - [ ] **🆕 Actualizar sliders de votos** con `votos_custom` de la respuesta
 - [ ] **🆕 Actualizar sliders de MR** con `mr_distritos_manuales` de la respuesta
+- [ ] **🚨 ACTUALIZAR TABLA GEOGRÁFICA** con `mr_distritos_por_estado` (DEBE venir del backend)
+- [ ] **🚨 POST/GET Fallback** para manejar error 405
 
 ### 🟡 IMPORTANTE - UX/UI
 - [ ] **Tooltip explicativo** para `solo_partido`
 - [ ] **Indicador visual** de coalición activa/inactiva
 - [ ] **Mensaje claro** cuando mayoría calificada requiere quitar topes
-- [ ] **Loading state** mientras se calcula
+- [ ] **Loading state** mientras se calcula (indicador sutil, sin bloquear UI)
 - [ ] **Validación**: No permitir `tipo_mayoria="custom"` sin `escanos_objetivo`
 - [ ] **🆕 Animación visual** cuando se actualizan los sliders automáticamente
-- [ ] **🆕 Botón "Aplicar Mayoría"** para confirmar cambios antes de actualizar sliders
+- [ ] **🆕 Cálculo automático** con useEffect al cambiar partido, tipo_mayoria o solo_partido
+- [ ] **🆕 Debouncing opcional** para evitar requests excesivos si hay cambios rápidos
 
 ### 🟢 OPCIONAL - Features Avanzadas
 - [ ] **Comparación lado a lado**: solo_partido=true vs false
@@ -648,6 +843,8 @@ Si tienes dudas sobre la implementación:
 5. **Validar partidos y años** antes de enviar request
 6. **🆕 ACTUALIZAR SLIDERS**: Usar `votos_custom` y `mr_distritos_manuales` de la respuesta
 7. **🆕 REDISTRIBUCIÓN PROPORCIONAL**: Los votos se ajustan proporcionalmente, NO se pone a nadie en 0%
+8. **🚨 BACKEND DEBE INCLUIR `mr_distritos_por_estado`**: Sin este campo, la tabla NO se actualiza
+9. **🚨 IMPLEMENTAR POST/GET FALLBACK**: El backend puede devolver 405 para POST
 
 ### 📊 Comportamiento de los Votos:
 
@@ -661,4 +858,14 @@ Si tienes dudas sobre la implementación:
 - El partido + coalición alcanzan mayoría juntos
 - Redistribución normal entre todos
 
-**Con estos 7 puntos, la funcionalidad quedará 100% operativa.** 🚀
+### 🔍 Debugging Checklist:
+
+Si la tabla de distritos NO se actualiza:
+
+1. ✅ Verifica en consola: `console.log('Campos recibidos:', Object.keys(data))`
+2. ✅ Busca: `✅ mr_distritos_por_estado: SÍ` o `❌ NO`
+3. ❌ Si es `NO`: El backend NO está devolviendo este campo
+4. 🔧 Actualiza el endpoint en `main.py` para incluir `mr_distritos_por_estado`
+5. ✅ Refresca y verifica que ahora aparezca: `📊 Estados en mr_distritos_por_estado: 32`
+
+**Con estos 9 puntos, la funcionalidad quedará 100% operativa.** 🚀
