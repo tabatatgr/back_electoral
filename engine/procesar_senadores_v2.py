@@ -13,6 +13,31 @@ from .core import assign_senadores, SenParams
 from typing import Dict, List, Tuple, Optional
 from .recomposicion import recompose_coalitions, parties_for
 
+# Mapeo global de nombres completos de estados a abreviaciones
+NOMBRE_ESTADO_A_ABREV = {
+    'AGUASCALIENTES': 'AGS', 'BAJA CALIFORNIA': 'BC', 'BAJA CALIFORNIA SUR': 'BCS',
+    'CAMPECHE': 'CAM', 'CHIAPAS': 'CHS', 'CHIHUAHUA': 'CHH', 'COAHUILA': 'COA',
+    'COLIMA': 'COL', 'CIUDAD DE MEXICO': 'CDMX', 'DURANGO': 'DGO', 'GUANAJUATO': 'GTO',
+    'GUERRERO': 'GRO', 'HIDALGO': 'HGO', 'JALISCO': 'JAL', 'MEXICO': 'MEX',
+    'MICHOACAN': 'MIC', 'MORELOS': 'MOR', 'NAYARIT': 'NAY', 'NUEVO LEON': 'NL',
+    'OAXACA': 'OAX', 'PUEBLA': 'PUE', 'QUERETARO': 'QRO', 'QUINTANA ROO': 'QR',
+    'SAN LUIS POTOSI': 'SLP', 'SINALOA': 'SIN', 'SONORA': 'SON', 'TABASCO': 'TAB',
+    'TAMAULIPAS': 'TAM', 'TLAXCALA': 'TLX', 'VERACRUZ': 'VER', 'YUCATAN': 'YUC',
+    'ZACATECAS': 'ZAC'
+}
+
+def _convertir_estados_a_abrev(dict_estados: Dict) -> Dict:
+    """Convierte las claves de un diccionario de estados de nombres completos a abreviaciones"""
+    if not dict_estados or not isinstance(dict_estados, dict):
+        return dict_estados
+    
+    dict_abrev = {}
+    for estado, valor in dict_estados.items():
+        abrev = NOMBRE_ESTADO_A_ABREV.get(estado, estado)
+        dict_abrev[abrev] = valor
+    
+    return dict_abrev
+
 def extraer_coaliciones_de_siglado(siglado_path):
     """
     Extrae las coaliciones del archivo siglado y devuelve un diccionario
@@ -1289,8 +1314,8 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
             'votos_ok': votos_ok,
             'seat_chart': seat_chart,
             'meta': {
-                'mr_por_estado': mr_por_estado,
-                'senadores_por_estado': senadores_por_estado,
+                'mr_por_estado': _convertir_estados_a_abrev(mr_por_estado),
+                'senadores_por_estado': _convertir_estados_a_abrev(senadores_por_estado),
                 # Añadir información de diagnóstico sobre overrides manuales recibidos
                 'manual_mr_por_estado_input': manual_mr_por_estado_input,
                 'manual_ssd': manual_ssd,

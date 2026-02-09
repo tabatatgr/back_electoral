@@ -34,6 +34,31 @@ if not logger.handlers:
     logger.addHandler(ch)
     logger.setLevel(logging.INFO)
 
+# Mapeo global de nombres completos de estados a abreviaciones
+NOMBRE_ESTADO_A_ABREV = {
+    'AGUASCALIENTES': 'AGS', 'BAJA CALIFORNIA': 'BC', 'BAJA CALIFORNIA SUR': 'BCS',
+    'CAMPECHE': 'CAM', 'CHIAPAS': 'CHS', 'CHIHUAHUA': 'CHH', 'COAHUILA': 'COA',
+    'COLIMA': 'COL', 'CIUDAD DE MEXICO': 'CDMX', 'DURANGO': 'DGO', 'GUANAJUATO': 'GTO',
+    'GUERRERO': 'GRO', 'HIDALGO': 'HGO', 'JALISCO': 'JAL', 'MEXICO': 'MEX',
+    'MICHOACAN': 'MIC', 'MORELOS': 'MOR', 'NAYARIT': 'NAY', 'NUEVO LEON': 'NL',
+    'OAXACA': 'OAX', 'PUEBLA': 'PUE', 'QUERETARO': 'QRO', 'QUINTANA ROO': 'QR',
+    'SAN LUIS POTOSI': 'SLP', 'SINALOA': 'SIN', 'SONORA': 'SON', 'TABASCO': 'TAB',
+    'TAMAULIPAS': 'TAM', 'TLAXCALA': 'TLX', 'VERACRUZ': 'VER', 'YUCATAN': 'YUC',
+    'ZACATECAS': 'ZAC'
+}
+
+def _convertir_estados_a_abrev(dict_estados: Dict) -> Dict:
+    """Convierte las claves de un diccionario de estados de nombres completos a abreviaciones"""
+    if not dict_estados or not isinstance(dict_estados, dict):
+        return dict_estados
+    
+    dict_abrev = {}
+    for estado, valor in dict_estados.items():
+        abrev = NOMBRE_ESTADO_A_ABREV.get(estado, estado)
+        dict_abrev[abrev] = valor
+    
+    return dict_abrev
+
 # Helper para logging que respeta el flag print_debug
 def _maybe_log(msg: str, level: str = 'debug', print_debug: bool = False):
     """Registra msg usando logger; si print_debug=True registra todo (debug/info/warn/error),
@@ -1339,10 +1364,11 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     32: 'ZACATECAS'
                 }
                 
-                # Inicializar estados
+                # Inicializar estados con abreviaciones
                 for estado_id, nombre_estado in estado_nombres.items():
                     if estado_id in asignacion_distritos:
-                        mr_por_estado_raw[nombre_estado] = {p: 0 for p in partidos_base}
+                        abrev = NOMBRE_ESTADO_A_ABREV.get(nombre_estado, nombre_estado)
+                        mr_por_estado_raw[abrev] = {p: 0 for p in partidos_base}
                 
                 # Distribuir MR de cada partido proporcionalmente por estado usando POBLACIÓN
                 # NO usar total_mr_a_distribuir porque da 0 para partidos con pocos MR
@@ -1364,6 +1390,8 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                         if estado_id not in asignacion_distritos:
                             continue
                         
+                        abrev = NOMBRE_ESTADO_A_ABREV.get(nombre_estado, nombre_estado)
+                        
                         # Proporción basada en POBLACIÓN del estado (no en total de MR)
                         poblacion_estado = poblacion_por_estado.get(estado_id, 0)
                         proporcion_poblacional = poblacion_estado / poblacion_total if poblacion_total > 0 else 0
@@ -1371,12 +1399,12 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                         
                         # Asignar parte entera
                         mr_floor = math.floor(proporcion)
-                        mr_por_estado_raw[nombre_estado][partido] = mr_floor
+                        mr_por_estado_raw[abrev][partido] = mr_floor
                         mr_asignados += mr_floor
                         
                         # Guardar residuo para método Hare
                         residuo = proporcion - mr_floor
-                        residuos.append((residuo, nombre_estado, estado_id))
+                        residuos.append((residuo, abrev, estado_id))
                     
                     # Asignar MR restantes usando método Hare (mayores residuos)
                     # VALIDACIÓN: solo asignar si el estado tiene capacidad disponible
@@ -1390,13 +1418,13 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                         # Buscar un estado con capacidad disponible
                         asignado = False
                         for j in range(i, len(residuos)):
-                            _, nombre_estado, estado_id = residuos[j]
+                            _, abrev_estado, estado_id = residuos[j]
                             max_distritos = asignacion_distritos.get(estado_id, 0)
-                            total_actual = sum(mr_por_estado_raw[nombre_estado].values())
+                            total_actual = sum(mr_por_estado_raw[abrev_estado].values())
                             
                             # Solo asignar si hay capacidad
                             if total_actual < max_distritos:
-                                mr_por_estado_raw[nombre_estado][partido] += 1
+                                mr_por_estado_raw[abrev_estado][partido] += 1
                                 asignado = True
                                 # Mover este estado al final para no volver a usarlo de inmediato
                                 if j > i:
@@ -2897,13 +2925,13 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                                         _maybe_log(f"[mr_por_estado]   ❌ No hay estados con MR de {partido} para quitar", 'warn', print_debug)
                                     break
             
-            # Guardar en meta solo si hay datos
+            # Guardar en meta solo si hay datos (convertir claves a abreviaciones)
             if mr_por_estado_partido:
-                meta_out['mr_por_estado'] = mr_por_estado_partido
-                meta_out['distritos_por_estado'] = distritos_por_estado
+                meta_out['mr_por_estado'] = _convertir_estados_a_abrev(mr_por_estado_partido)
+                meta_out['distritos_por_estado'] = _convertir_estados_a_abrev(distritos_por_estado)
                 
                 if print_debug:
-                    _maybe_log(f"[mr_por_estado] ✅ Datos guardados en meta", 'debug', print_debug)
+                    _maybe_log(f"[mr_por_estado] ✅ Datos guardados en meta con abreviaciones", 'debug', print_debug)
                     
         except Exception as e:
             if print_debug:
