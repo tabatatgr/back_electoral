@@ -1099,8 +1099,10 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
                             if partido_norm in partidos_estado:
                                 partidos_estado[partido_norm] = int(cnt)
                         
-                        mr_por_estado[estado_nombre] = partidos_estado
-                        senadores_por_estado[estado_nombre] = 3  # Cada estado tiene 3 senadores
+                        # Convertir nombre a abreviación
+                        abrev_estado = NOMBRE_ESTADO_A_ABREV.get(estado_nombre, estado_nombre)
+                        mr_por_estado[abrev_estado] = partidos_estado
+                        senadores_por_estado[abrev_estado] = 3  # Cada estado tiene 3 senadores
                 
                 print(f"[DEBUG] mr_por_estado manual cargado: {len(mr_por_estado)} estados")
                 for estado, partidos_dict in list(mr_por_estado.items())[:3]:
@@ -1116,7 +1118,9 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
                 ganadores_por_estado = {}  # {estado: [(partido1, votos1), (partido2, votos2)]}
                 
                 for estado in estados_unicos:
-                    senadores_por_estado[estado] = 3  # Cada estado tiene 3 senadores
+                    # Convertir nombre a abreviación
+                    abrev_estado = NOMBRE_ESTADO_A_ABREV.get(estado, estado)
+                    senadores_por_estado[abrev_estado] = 3  # Cada estado tiene 3 senadores
                     df_estado = recomposed[recomposed['ENTIDAD'] == estado]
                     
                     # Sumar votos por partido en este estado
@@ -1143,7 +1147,8 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
                 
                 # Inicializar estructura
                 for estado in estados_unicos:
-                    mr_por_estado[estado] = {p: 0 for p in partidos_base}
+                    abrev_estado = NOMBRE_ESTADO_A_ABREV.get(estado, estado)
+                    mr_por_estado[abrev_estado] = {p: 0 for p in partidos_base}
                 
                 # Distribuir los senadores finales de cada partido
                 import math
@@ -1157,6 +1162,9 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
                         residuos = []
                         
                         for estado, partidos_ordenados in ganadores_por_estado.items():
+                            # Convertir nombre a abreviación
+                            abrev_estado = NOMBRE_ESTADO_A_ABREV.get(estado, estado)
+                            
                             # Determinar cuántos senadores "base" tiene este partido en este estado
                             base_estado = 0
                             if len(partidos_ordenados) > 0 and partidos_ordenados[0][0] == partido:
@@ -1170,9 +1178,9 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
                                 asignado = math.floor(proporcion)
                                 residuo = proporcion - asignado
                                 
-                                mr_por_estado[estado][partido] = asignado
+                                mr_por_estado[abrev_estado][partido] = asignado
                                 asignados_total += asignado
-                                residuos.append((estado, residuo))
+                                residuos.append((abrev_estado, residuo))
                         
                         # Distribuir residuos
                         faltantes = senadores_final - asignados_total
@@ -1192,13 +1200,14 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
                         total_estados = len(estados_unicos)
                         
                         for estado in estados_unicos:
+                            abrev_estado = NOMBRE_ESTADO_A_ABREV.get(estado, estado)
                             proporcion = senadores_final / total_estados
                             asignado = math.floor(proporcion)
                             residuo = proporcion - asignado
                             
-                            mr_por_estado[estado][partido] = asignado
+                            mr_por_estado[abrev_estado][partido] = asignado
                             asignados_total += asignado
-                            residuos.append((estado, residuo))
+                            residuos.append((abrev_estado, residuo))
                         
                         # Distribuir residuos
                         faltantes = senadores_final - asignados_total
@@ -1236,9 +1245,12 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
                 if total_mr_nacional > 0:
                     # PASO 1: Distribución con floor() y acumulación de residuos
                     for estado_id, nombre_estado in estado_nombres.items():
+                        # Convertir nombre a abreviación
+                        abrev_estado = NOMBRE_ESTADO_A_ABREV.get(nombre_estado, nombre_estado)
+                        
                         senadores_totales = senadores_por_estado_default  # 3 para senado típico
-                        senadores_por_estado[nombre_estado] = senadores_totales
-                        mr_por_estado[nombre_estado] = {p: 0 for p in partidos_base}
+                        senadores_por_estado[abrev_estado] = senadores_totales
+                        mr_por_estado[abrev_estado] = {p: 0 for p in partidos_base}
                         
                         # Distribuir proporcionalmente
                         for partido in partidos_base:
@@ -1247,10 +1259,10 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
                             proporcion_exacta = (mr_partido_nacional / total_mr_nacional) * senadores_totales
                             # Asignar parte entera
                             mr_asignado = math.floor(proporcion_exacta)
-                            mr_por_estado[nombre_estado][partido] = mr_asignado
+                            mr_por_estado[abrev_estado][partido] = mr_asignado
                         
                         # Ajustar para que sume exactamente senadores_totales
-                        suma_actual = sum(mr_por_estado[nombre_estado].values())
+                        suma_actual = sum(mr_por_estado[abrev_estado].values())
                         if suma_actual != senadores_totales:
                             # Método Hare: dar residuos a partidos con mayor fracción
                             diferencia = senadores_totales - suma_actual
@@ -1261,10 +1273,10 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
                             )
                             for i in range(abs(diferencia)):
                                 if diferencia > 0:
-                                    mr_por_estado[nombre_estado][partidos_ordenados[i]] += 1
+                                    mr_por_estado[abrev_estado][partidos_ordenados[i]] += 1
                                 else:
-                                    if mr_por_estado[nombre_estado][partidos_ordenados[i]] > 0:
-                                        mr_por_estado[nombre_estado][partidos_ordenados[i]] -= 1
+                                    if mr_por_estado[abrev_estado][partidos_ordenados[i]] > 0:
+                                        mr_por_estado[abrev_estado][partidos_ordenados[i]] -= 1
                     
                     # PASO 2: Verificar y ajustar totales por partido
                     for partido in partidos_base:
@@ -1314,8 +1326,8 @@ def procesar_senadores_v2(path_parquet: str, anio: int, path_siglado: str,
             'votos_ok': votos_ok,
             'seat_chart': seat_chart,
             'meta': {
-                'mr_por_estado': _convertir_estados_a_abrev(mr_por_estado),
-                'senadores_por_estado': _convertir_estados_a_abrev(senadores_por_estado),
+                'mr_por_estado': {NOMBRE_ESTADO_A_ABREV.get(e, e): v for e, v in mr_por_estado.items()},
+                'senadores_por_estado': {NOMBRE_ESTADO_A_ABREV.get(e, e): v for e, v in senadores_por_estado.items()},
                 # Añadir información de diagnóstico sobre overrides manuales recibidos
                 'manual_mr_por_estado_input': manual_mr_por_estado_input,
                 'manual_ssd': manual_ssd,

@@ -268,28 +268,57 @@ async def root():
     }
 
 @app.get("/data/initial")
-async def get_initial_data(camara: str = "diputados"):
+async def get_initial_data(
+    camara: str = "diputados",
+    plan: Optional[str] = None,
+    mr_seats: Optional[int] = None,
+    rp_seats: Optional[int] = None,
+    escanos_totales: Optional[int] = None,
+    sistema: Optional[str] = None
+):
     """
     Carga los datos iniciales por defecto: 2024 vigente
     
     Parámetros:
     - camara: "diputados" o "senadores" (default: "diputados")
+    - plan: Plan electoral (default: "vigente"). Use "personalizado" para configuración custom
+    - mr_seats: Número de escaños de mayoría relativa (opcional, para plan personalizado)
+    - rp_seats: Número de escaños de representación proporcional (opcional, para plan personalizado)
+    - escanos_totales: Total de escaños (opcional, para plan personalizado)
+    - sistema: Sistema electoral para plan personalizado ("mixto", "proporcional", "mayoritario")
     
     Devuelve datos completos incluyendo:
     - seat_chart: Gráfico de escaños
     - mr/rp/tot: Distribución de escaños por partido
-    - meta.mr_por_estado: Distribución geográfica de MR por estado
-    - meta.distritos_por_estado o meta.senadores_por_estado: Total por estado
+    - meta.mr_por_estado: Distribución geográfica de MR por estado (escalado si mr_seats < 300)
+    - meta.distritos_por_estado o meta.senadores_por_estado: Total por estado (escalado)
     """
     try:
         camara_lower = camara.lower()
-        print(f"[INFO] Cargando datos iniciales: {camara_lower.capitalize()} 2024 vigente")
+        plan_final = plan or "vigente"
+        
+        # Si se especifica mr_seats o rp_seats, usar plan personalizado automáticamente
+        if (mr_seats is not None or rp_seats is not None):
+            if plan_final == "vigente":
+                plan_final = "personalizado"
+            # Si plan es personalizado pero no hay sistema, usar mixto por defecto
+            if plan_final == "personalizado" and sistema is None:
+                sistema = "mixto"
+        
+        config_msg = f"{camara_lower.capitalize()} 2024 {plan_final}"
+        if mr_seats or rp_seats or escanos_totales:
+            config_msg += f" (custom: mr={mr_seats}, rp={rp_seats}, total={escanos_totales}, sistema={sistema})"
+        print(f"[INFO] Cargando datos iniciales: {config_msg}")
         
         if camara_lower == "diputados":
             # Procesar datos vigentes de diputados 2024
             resultado = await procesar_diputados(
                 anio=2024,
-                plan="vigente"
+                plan=plan_final,
+                mr_seats=mr_seats,
+                rp_seats=rp_seats,
+                escanos_totales=escanos_totales,
+                sistema=sistema
             )
             
             # Agregar metadatos de configuración inicial
@@ -300,14 +329,18 @@ async def get_initial_data(camara: str = "diputados"):
                 data = resultado
                 
             # Agregar información de configuración inicial
+            mr_final = mr_seats if mr_seats else 300
+            rp_final = rp_seats if rp_seats else 200
+            total_final = escanos_totales if escanos_totales else (mr_final + rp_final)
+            
             data["config_inicial"] = {
                 "anio": 2024,
                 "camara": "diputados", 
-                "plan": "vigente",
-                "descripcion": "Datos vigentes de la Cámara de Diputados 2024-2027",
-                "total_escanos": 500,
-                "mr_escanos": 300,
-                "rp_escanos": 200,
+                "plan": plan_final,
+                "descripcion": f"Datos de la Cámara de Diputados 2024-2027 ({plan_final})",
+                "total_escanos": total_final,
+                "mr_escanos": mr_final,
+                "rp_escanos": rp_final,
                 "fecha_carga": pd.Timestamp.now().isoformat()
             }
             
@@ -315,6 +348,7 @@ async def get_initial_data(camara: str = "diputados"):
             # Procesar datos vigentes de senadores 2024
             resultado = await procesar_senado(
                 anio=2024,
+                request=None,
                 plan="vigente"
             )
             
@@ -4291,19 +4325,11 @@ async def procesar_diputados(
             if 'mr_por_estado_manual' in locals() and mr_por_estado_manual:
                 print(f"[DEBUG] 🎯 Devolviendo mr_por_estado_manual (flechitas) con {len(mr_por_estado_manual)} estados")
                 
-                # Convertir nombres de estado a IDs para el frontend
-                mr_por_estado_ids = {}
-                for nombre_estado, partidos_dict in mr_por_estado_manual.items():
-                    estado_id = NOMBRE_A_ID_ESTADO.get(nombre_estado.upper())
-                    if estado_id:
-                        mr_por_estado_ids[str(estado_id)] = partidos_dict
-                    else:
-                        print(f"[WARN] Estado no mapeado: {nombre_estado}")
+                # Ya vienen con abreviaciones (AGS, BC, CDMX, etc.), usar directamente
+                resultado_formateado['meta']['mr_por_estado'] = mr_por_estado_manual
                 
-                resultado_formateado['meta']['mr_por_estado'] = mr_por_estado_ids
-                
-                if len(mr_por_estado_ids) < 32:
-                    print(f"[WARN] ⚠️  Solo {len(mr_por_estado_ids)}/32 estados en respuesta")
+                if len(mr_por_estado_manual) < 32:
+                    print(f"[WARN] ⚠️  Solo {len(mr_por_estado_manual)}/32 estados en respuesta")
             
             # PRIORIDAD 2: Si NO hay manual, usar el calculado por el motor
             elif 'resultado' in locals() and isinstance(resultado, dict):
@@ -4312,16 +4338,8 @@ async def procesar_diputados(
                     mr_por_estado_calculado = meta_motor['mr_por_estado']
                     print(f"[DEBUG] 🔄 Devolviendo mr_por_estado calculado por motor con {len(mr_por_estado_calculado)} estados")
                     
-                    # Convertir nombres de estado a IDs para el frontend
-                    mr_por_estado_ids = {}
-                    for nombre_estado, partidos_dict in mr_por_estado_calculado.items():
-                        estado_id = NOMBRE_A_ID_ESTADO.get(nombre_estado.upper())
-                        if estado_id:
-                            mr_por_estado_ids[str(estado_id)] = partidos_dict
-                        else:
-                            print(f"[WARN] Estado no mapeado: {nombre_estado}")
-                    
-                    resultado_formateado['meta']['mr_por_estado'] = mr_por_estado_ids
+                    # Ya vienen con abreviaciones (AGS, BC, CDMX, etc.), usar directamente
+                    resultado_formateado['meta']['mr_por_estado'] = mr_por_estado_calculado
                 else:
                     print(f"[WARN] ⚠️  Motor no devolvió mr_por_estado en meta")
             else:
@@ -4339,29 +4357,11 @@ async def procesar_diputados(
                 if isinstance(meta_motor, dict) and 'distritos_por_estado' in meta_motor:
                     distritos_por_estado_dict = meta_motor['distritos_por_estado']
                     
-                    # Convertir nombres de estado a IDs para consistencia con frontend
-                    NOMBRE_A_ID_ESTADO = {
-                        "AGUASCALIENTES": 1, "BAJA CALIFORNIA": 2, "BAJA CALIFORNIA SUR": 3,
-                        "CAMPECHE": 4, "COAHUILA": 5, "COLIMA": 6, "CHIAPAS": 7, "CHIHUAHUA": 8,
-                        "CIUDAD DE MEXICO": 9, "DURANGO": 10, "GUANAJUATO": 11,
-                        "GUERRERO": 12, "HIDALGO": 13, "JALISCO": 14, "MEXICO": 15,
-                        "MICHOACAN": 16, "MORELOS": 17, "NAYARIT": 18, "NUEVO LEON": 19,
-                        "OAXACA": 20, "PUEBLA": 21, "QUERETARO": 22, "QUINTANA ROO": 23,
-                        "SAN LUIS POTOSI": 24, "SINALOA": 25, "SONORA": 26, "TABASCO": 27,
-                        "TAMAULIPAS": 28, "TLAXCALA": 29, "VERACRUZ": 30, "YUCATAN": 31,
-                        "ZACATECAS": 32
-                    }
-                    
-                    distritos_por_estado_ids = {}
-                    for nombre_estado, total_distritos in distritos_por_estado_dict.items():
-                        estado_id = NOMBRE_A_ID_ESTADO.get(nombre_estado.upper())
-                        if estado_id:
-                            distritos_por_estado_ids[str(estado_id)] = total_distritos
-                    
+                    # Ya vienen con abreviaciones (AGS, BC, CDMX, etc.), usar directamente
                     resultado_formateado.setdefault('meta', {})
-                    resultado_formateado['meta']['distritos_por_estado'] = distritos_por_estado_ids
+                    resultado_formateado['meta']['distritos_por_estado'] = distritos_por_estado_dict
                     
-                    total_distritos = sum(distritos_por_estado_ids.values())
+                    total_distritos = sum(distritos_por_estado_dict.values())
                     print(f"[DEBUG] ✅ distritos_por_estado agregado a respuesta: {total_distritos} distritos totales")
                 else:
                     print(f"[WARN] ⚠️  Motor no devolvió distritos_por_estado en meta")

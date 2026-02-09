@@ -2526,6 +2526,7 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                 # Calcular distritos por estado
                 if 'recomposed' in locals() and recomposed is not None and 'ENTIDAD' in recomposed.columns:
                     for estado in recomposed['ENTIDAD'].unique():
+                        # Mantener el nombre completo (sin convertir a abreviación todavía)
                         distritos_por_estado[estado] = len(recomposed[recomposed['ENTIDAD'] == estado])
                     
                     # 🔥 CRÍTICO: Escalar distritos_por_estado cuando mr_seats < total histórico (300)
@@ -2765,9 +2766,12 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                     poblacion_total = sum(poblacion_por_estado.values())
                     
                     for estado_id, nombre_estado in estado_nombres.items():
+                        # Usar abreviación en lugar de nombre completo
+                        abrev_estado = NOMBRE_ESTADO_A_ABREV.get(nombre_estado, nombre_estado)
+                        
                         distritos_totales = asignacion_distritos.get(estado_id, 0)
-                        distritos_por_estado[nombre_estado] = distritos_totales
-                        mr_por_estado_partido[nombre_estado] = {p: 0 for p in partidos_base}
+                        distritos_por_estado[abrev_estado] = distritos_totales
+                        mr_por_estado_partido[abrev_estado] = {p: 0 for p in partidos_base}
                         
                         if total_mr_nacional > 0 and distritos_totales > 0 and poblacion_total > 0:
                             poblacion_estado = poblacion_por_estado.get(estado_id, 0)
@@ -2779,12 +2783,12 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                                 proporcion_exacta = mr_partido_nacional * proporcion_poblacional
                                 # Asignar parte entera
                                 mr_asignado = math.floor(proporcion_exacta)
-                                mr_por_estado_partido[nombre_estado][partido] = mr_asignado
+                                mr_por_estado_partido[abrev_estado][partido] = mr_asignado
                                 # Acumular residuo para este partido
                                 residuos_por_partido[partido] += (proporcion_exacta - mr_asignado)
                             
                             # Ajustar para que este estado sume exactamente distritos_totales
-                            suma_actual = sum(mr_por_estado_partido[nombre_estado].values())
+                            suma_actual = sum(mr_por_estado_partido[abrev_estado].values())
                             if suma_actual != distritos_totales:
                                 # Método Hare: dar residuos a partidos con mayor fracción EN ESTE ESTADO
                                 diferencia = distritos_totales - suma_actual
@@ -2798,10 +2802,10 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                                     )
                                     for i in range(abs(diferencia)):
                                         if i < len(partidos_ordenados):
-                                            mr_por_estado_partido[nombre_estado][partidos_ordenados[i]] += 1
+                                            mr_por_estado_partido[abrev_estado][partidos_ordenados[i]] += 1
                                 else:
                                     # Quitar distritos: SOLO de partidos con MR > 0 en este estado
-                                    partidos_con_mr = [p for p in partidos_base if mr_por_estado_partido[nombre_estado][p] > 0]
+                                    partidos_con_mr = [p for p in partidos_base if mr_por_estado_partido[abrev_estado][p] > 0]
                                     if partidos_con_mr:
                                         # Ordenar por menor residuo (quitar de los menos "merecidos")
                                         partidos_ordenados = sorted(
@@ -2810,8 +2814,8 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                                             reverse=False
                                         )
                                         for i in range(min(abs(diferencia), len(partidos_ordenados))):
-                                            if mr_por_estado_partido[nombre_estado][partidos_ordenados[i]] > 0:
-                                                mr_por_estado_partido[nombre_estado][partidos_ordenados[i]] -= 1
+                                            if mr_por_estado_partido[abrev_estado][partidos_ordenados[i]] > 0:
+                                                mr_por_estado_partido[abrev_estado][partidos_ordenados[i]] -= 1
                     
                     # PASO 2: Verificar y ajustar totales por partido para que coincidan con mr_dict
                     for partido in partidos_base:
@@ -2925,10 +2929,21 @@ def procesar_diputados_v2(path_parquet: Optional[str] = None,
                                         _maybe_log(f"[mr_por_estado]   ❌ No hay estados con MR de {partido} para quitar", 'warn', print_debug)
                                     break
             
-            # Guardar en meta solo si hay datos (convertir claves a abreviaciones)
+            # Guardar en meta solo si hay datos (convertir claves a abreviaciones al final)
             if mr_por_estado_partido:
-                meta_out['mr_por_estado'] = _convertir_estados_a_abrev(mr_por_estado_partido)
-                meta_out['distritos_por_estado'] = _convertir_estados_a_abrev(distritos_por_estado)
+                # Convertir TODAS las claves a abreviaciones sin importar de dónde vengan
+                mr_por_estado_final = {}
+                for estado, partidos in mr_por_estado_partido.items():
+                    abrev = NOMBRE_ESTADO_A_ABREV.get(estado, estado)
+                    mr_por_estado_final[abrev] = partidos
+                
+                distritos_por_estado_final = {}
+                for estado, total in distritos_por_estado.items():
+                    abrev = NOMBRE_ESTADO_A_ABREV.get(estado, estado)
+                    distritos_por_estado_final[abrev] = total
+                
+                meta_out['mr_por_estado'] = mr_por_estado_final
+                meta_out['distritos_por_estado'] = distritos_por_estado_final
                 
                 if print_debug:
                     _maybe_log(f"[mr_por_estado] ✅ Datos guardados en meta con abreviaciones", 'debug', print_debug)
