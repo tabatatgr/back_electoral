@@ -86,8 +86,8 @@ En **2 distritos**, el mejor partido de SHH quedó en **4to lugar** individualme
 | `entidad` | Estado |
 | `distrito` | Número de distrito |
 | `ganador_coalicion` | Coalición ganadora (FCM o MC) |
-| `partido_shh_2do` | Partido de SHH mejor posicionado (MORENA, PT o PVEM) |
-| `posicion_shh` | Posición del partido SHH en el ranking de TODOS los partidos (1, 2, 3, 4...) |
+| `mejor_partido_shh` | Cuál de los 3 partidos de SHH (MORENA, PT o PVEM) tuvo más votos |
+| `posicion_shh` | Posición del mejor partido de SHH en el ranking de TODOS los partidos (1, 2, 3, 4...) |
 | `votos_morena` | Votos individuales de MORENA |
 | `votos_pt` | Votos individuales de PT |
 | `votos_pvem` | Votos individuales de PVEM |

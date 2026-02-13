@@ -1,20 +1,22 @@
 """
-Análisis de Segundos Lugares en Distritos Perdidos por SHH
+Análisis de Posicionamiento Individual en Distritos Perdidos por SHH
 
 Este script analiza los distritos donde la coalición SHH (MORENA+PT+PVEM) perdió
-en 2024, determinando cuál partido de SHH quedó mejor posicionado en cada uno.
+en 2024, determinando cuál partido de SHH quedó MEJOR POSICIONADO en el ranking
+individual de TODOS los partidos (sin importar coalición).
 
 CONCEPTO CLAVE:
 - "Ganador por coalición" = suma de votos de partidos aliados
-- "Posición individual" = ranking de cada partido por separado
+- "Ranking individual" = cada partido ordenado por votos, SIN coaliciones
 
 EJEMPLO:
 Un distrito puede tener:
   Por coalición: FCM gana (PAN+PRI+PRD = 80,000) vs SHH pierde (MORENA+PT+PVEM = 70,000)
-  Por partido individual: MORENA 1º (55,000) > PAN 2º (40,000) > PRI 3º (25,000)...
+  Ranking individual: 1º MORENA (55,000), 2º PAN (40,000), 3º PRI (25,000), etc.
   
-Resultado: FCM ganó como coalición, pero MORENA fue 1º individualmente.
-La columna 'posicion_shh' = 1 (porque MORENA quedó en primer lugar del ranking individual)
+Resultado: FCM ganó como coalición, pero MORENA fue 1º en el ranking individual.
+- mejor_partido_shh = MORENA (el mejor de los 3 partidos SHH)
+- posicion_shh = 1 (MORENA quedó en primer lugar del ranking individual)
 
 Ver README_analisis_segundos_lugares.md para más detalles.
 """
@@ -31,18 +33,17 @@ SHH = ['MORENA', 'PT', 'PVEM']  # Sigamos Haciendo Historia
 MC = ['MC']
 
 print("=" * 80)
-print("ANÁLISIS: SEGUNDOS LUGARES EN DISTRITOS PERDIDOS POR MORENA+PT+PVEM")
+print("ANÁLISIS: MEJOR PARTIDO SHH EN DISTRITOS PERDIDOS")
 print("=" * 80)
-print("\nConcepto: Aunque SHH perdió como COALICIÓN, analizamos qué partido")
-print("individual de SHH (MORENA, PT o PVEM) quedó mejor en el ranking de")
-print("TODOS los partidos (no solo de SHH).")
-print("\nEjemplo: Si MORENA fue 1º individual pero SHH perdió como coalición,")
-print("significa que FCM sumó más votos totales aunque ningún partido de FCM")
-print("individualmente superó a MORENA.")
+print("\nConcepto: Aunque SHH perdió como COALICIÓN, identificamos cuál partido")
+print("de SHH (MORENA, PT o PVEM) quedó MEJOR en el ranking individual de")
+print("TODOS los partidos.")
+print("\nNota: 'posicion_shh' puede ser 1, 2, 3, 4... según dónde quedó el mejor")
+print("partido de SHH en el ranking. Posición 1 = fue el partido MÁS votado de todos.")
 print("=" * 80)
 
 # Almacenar resultados
-segundo_lugar_por_partido = Counter()
+mejor_partido_por_distrito = Counter()  # Cuántas veces cada partido fue el mejor de SHH
 detalle_por_distrito = []
 
 for idx, row in parquet.iterrows():
@@ -80,15 +81,14 @@ for idx, row in parquet.iterrows():
         ranking_partidos = sorted(votos_partidos.items(), key=lambda x: -x[1])
         
         # Buscar el partido de SHH mejor posicionado en el ranking de TODOS los partidos
-        # posicion_shh = en qué lugar quedó (1=primero, 2=segundo, 3=tercero, etc.)
-        # Ejemplo: Si MORENA tiene más votos que cualquier otro partido, posicion_shh=1
-        #          incluso si SHH perdió como coalición
-        partido_shh_mejor_posicionado = None
+        # mejor_partido_shh = cuál de los 3 (MORENA, PT, PVEM) quedó primero
+        # posicion_shh = en qué lugar del ranking general quedó ese partido (1, 2, 3, 4...)
+        mejor_partido_shh = None
         posicion_shh = None
         
         for pos, (partido, votos) in enumerate(ranking_partidos, start=1):
             if partido in SHH:
-                partido_shh_mejor_posicionado = partido
+                mejor_partido_shh = partido
                 posicion_shh = pos
                 break
         
@@ -96,8 +96,8 @@ for idx, row in parquet.iterrows():
             'entidad': entidad,
             'distrito': distrito,
             'ganador_coalicion': ganador_coal,
-            'partido_shh_2do': partido_shh_mejor_posicionado,
-            'posicion_shh': posicion_shh,  # Posición en ranking de TODOS los partidos (1, 2, 3, etc.)
+            'mejor_partido_shh': mejor_partido_shh,  # MORENA, PT o PVEM (el mejor de los 3)
+            'posicion_shh': posicion_shh,  # Posición en ranking general: 1, 2, 3, 4...
             'votos_morena': row.get('MORENA', 0),
             'votos_pt': row.get('PT', 0),
             'votos_pvem': row.get('PVEM', 0),
@@ -108,8 +108,8 @@ for idx, row in parquet.iterrows():
         
         detalle_por_distrito.append(detalle)
         
-        if partido_shh_mejor_posicionado:
-            segundo_lugar_por_partido[partido_shh_mejor_posicionado] += 1
+        if mejor_partido_shh:
+            mejor_partido_por_distrito[mejor_partido_shh] += 1
 
 # DataFrame
 df_detalle = pd.DataFrame(detalle_por_distrito)
@@ -117,35 +117,38 @@ df_detalle = pd.DataFrame(detalle_por_distrito)
 print(f"\n📊 RESUMEN:")
 print(f"   Total distritos donde SHH perdió: {len(df_detalle)}")
 print()
-print("📊 PARTIDO DE SHH MEJOR POSICIONADO:")
-print("   (Cuál partido de SHH quedó primero en el ranking individual)")
+print("📊 MEJOR PARTIDO DE SHH EN CADA DISTRITO PERDIDO:")
+print("   (Cuál de los 3 partidos de SHH tuvo más votos)")
 for partido in ['MORENA', 'PT', 'PVEM']:
-    count = segundo_lugar_por_partido.get(partido, 0)
+    count = mejor_partido_por_distrito.get(partido, 0)
     pct = (count / len(df_detalle) * 100) if len(df_detalle) > 0 else 0
     print(f"   {partido:6s}: {count:3d} distritos ({pct:5.1f}%)")
 
 # Mostrar distribución de posiciones
-print("\n📊 DISTRIBUCIÓN POR POSICIÓN INDIVIDUAL:")
-print("   (En qué lugar del ranking quedó el mejor partido de SHH)")
+print("\n📊 POSICIÓN EN RANKING GENERAL (todos los partidos):")
+print("   (En qué lugar quedó el mejor partido de SHH)")
 posiciones = df_detalle['posicion_shh'].value_counts().sort_index()
 for pos, count in posiciones.items():
     pct = (count / len(df_detalle) * 100)
     lugar = {1: '1er', 2: '2do', 3: '3er', 4: '4to'}.get(pos, f'{pos}º')
     print(f"   {lugar} lugar: {count:3d} distritos ({pct:5.1f}%)")
     if pos == 1:
-        print(f"        (El partido de SHH tuvo MÁS votos que cualquier otro partido)")
+        print(f"        → El mejor partido de SHH tuvo MÁS votos que cualquier otro")
     elif pos == 2:
-        print(f"        (Solo 1 partido tuvo más votos que el mejor de SHH)")
+        print(f"        → Solo 1 partido (de cualquier coalición) tuvo más votos")
 
 # Guardar CSV
 df_detalle.to_csv('analisis_segundos_lugares_shh.csv', index=False, encoding='utf-8-sig')
 print(f"\n✅ CSV guardado: analisis_segundos_lugares_shh.csv")
+print(f"   Columnas:")
+print(f"   - mejor_partido_shh: Cuál de los 3 (MORENA/PT/PVEM) tuvo más votos")
+print(f"   - posicion_shh: En qué lugar quedó en el ranking de TODOS los partidos")
 
 # Tabla markdown
-print("\n| Partido | Distritos 2º lugar | % |")
-print("|---------|-------------------:|--:|")
+print("\n| Partido | Distritos donde fue el mejor de SHH | % |")
+print("|---------|------------------------------------:|--:|")
 for partido in ['MORENA', 'PT', 'PVEM']:
-    count = segundo_lugar_por_partido.get(partido, 0)
+    count = mejor_partido_por_distrito.get(partido, 0)
     pct = (count / len(df_detalle) * 100) if len(df_detalle) > 0 else 0
     print(f"| {partido} | {count} | {pct:.1f}% |")
 print(f"| **TOTAL** | **{len(df_detalle)}** | **100%** |")
