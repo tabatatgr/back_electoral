@@ -1,0 +1,159 @@
+================================================================================
+SIMULACIÓN COMPLETA: 300 MR + 100 PM + 100 RP
+INCLUYE TODOS LOS PARTIDOS (PES, RSP, FXM, CI, etc.)
+================================================================================
+
+================================================================================
+SIMULACIÓN COMPLETA CON TODOS LOS PARTIDOS - AÑO 2021
+================================================================================
+
+Partidos con votos en 2021: MORENA, PT, PVEM, PAN, PRI, PRD, MC, PES, RSP, FXM, CI
+Total de distritos: 300
+
+📊 Calculando MR y PM para todos los partidos...
+📊 Calculando RP (umbral 3%)...
+   Partidos que superan umbral 3%: MORENA, PT, PVEM, PAN, PRI, PRD, MC
+
+================================================================================
+RESULTADOS POR PARTIDO - AÑO 2021
+================================================================================
+
+SHH:
+  MORENA: MR=202  PM= 36  RP= 38  →  Total=276 (55.20%)
+  PT    : MR=  0  PM=  0  RP=  4  →  Total=  4 ( 0.80%)
+  PVEM  : MR=  3  PM=  7  RP=  6  →  Total= 16 ( 3.20%)
+  ──────────────────────────────────────────────────────────────────────
+  TOTAL SHH: MR=205  PM= 43  RP= 48  →  296 (59.20%)
+
+FCM:
+  PAN   : MR= 54  PM= 27  RP= 20  →  Total=101 (20.20%)
+  PRI   : MR= 25  PM= 24  RP= 20  →  Total= 69 (13.80%)
+  PRD   : MR=  0  PM=  1  RP=  4  →  Total=  5 ( 1.00%)
+  ──────────────────────────────────────────────────────────────────────
+  TOTAL FCM: MR= 79  PM= 52  RP= 44  →  175 (35.00%)
+
+MC:
+  MC    : MR= 16  PM=  5  RP=  8  →  Total= 29 ( 5.80%)
+  ──────────────────────────────────────────────────────────────────────
+  TOTAL MC: MR= 16  PM=  5  RP=  8  →   29 ( 5.80%)
+
+Independiente:
+
+================================================================================
+VERIFICACIÓN:
+================================================================================
+  MR asignados: 300/300
+  PM asignados: 100/100
+  RP asignados: 100/100
+  TOTAL: 500/500
+  ✅ Todos los escaños asignados correctamente
+
+================================================================================
+VALIDACIÓN DE TOTALES POR COALICIÓN:
+================================================================================
+  SHH: 296 escaños (MR:205 PM:43 RP:48)
+  FCM: 175 escaños (MR:79 PM:52 RP:44)
+  MC: 29 escaños (MR:16 PM:5 RP:8)
+
+================================================================================
+SIMULACIÓN COMPLETA CON TODOS LOS PARTIDOS - AÑO 2024
+================================================================================
+
+Partidos con votos en 2024: MORENA, PT, PVEM, PAN, PRI, PRD, MC
+Total de distritos: 300
+
+📊 Calculando MR y PM para todos los partidos...
+📊 Calculando RP (umbral 3%)...
+   Partidos que superan umbral 3%: MORENA, PT, PVEM, PAN, PRI, MC
+
+================================================================================
+RESULTADOS POR PARTIDO - AÑO 2024
+================================================================================
+
+SHH:
+  MORENA: MR=245  PM= 33  RP= 43  →  Total=321 (64.20%)
+  PT    : MR=  0  PM=  1  RP=  6  →  Total=  7 ( 1.40%)
+  PVEM  : MR=  6  PM=  3  RP=  9  →  Total= 18 ( 3.60%)
+  ──────────────────────────────────────────────────────────────────────
+  TOTAL SHH: MR=251  PM= 37  RP= 58  →  346 (69.20%)
+
+FCM:
+  PAN   : MR= 33  PM= 31  RP= 18  →  Total= 82 (16.40%)
+  PRI   : MR=  6  PM= 11  RP= 12  →  Total= 29 ( 5.80%)
+  ──────────────────────────────────────────────────────────────────────
+  TOTAL FCM: MR= 39  PM= 42  RP= 30  →  111 (22.20%)
+
+MC:
+  MC    : MR= 10  PM= 21  RP= 12  →  Total= 43 ( 8.60%)
+  ──────────────────────────────────────────────────────────────────────
+  TOTAL MC: MR= 10  PM= 21  RP= 12  →   43 ( 8.60%)
+
+================================================================================
+VERIFICACIÓN:
+================================================================================
+  MR asignados: 300/300
+  PM asignados: 100/100
+  RP asignados: 100/100
+  TOTAL: 500/500
+  ✅ Todos los escaños asignados correctamente
+
+================================================================================
+VALIDACIÓN DE TOTALES POR COALICIÓN:
+================================================================================
+  SHH: 346 escaños (MR:251 PM:37 RP:58)
+  FCM: 111 escaños (MR:39 PM:42 RP:30)
+  MC: 43 escaños (MR:10 PM:21 RP:12)
+
+================================================================================
+GENERANDO CSV CON TODOS LOS PARTIDOS
+================================================================================
+
+✅ CSV guardado: simulacion_300mr_100pm_100rp_todos_partidos_20260224_204828.csv
+
+Preview del CSV:
+ Año     Coalición Partido  MR_Escaños  PM_Escaños  RP_Escaños  Total_Escaños  Porcentaje
+2021           FCM     PAN          54          27          20            101        20.2
+2021           FCM     PRI          25          24          20             69        13.8
+2021           FCM     PRD           0           1           4              5         1.0
+2021 Independiente      CI           0           0           0              0         0.0
+2021 Independiente     FXM           0           0           0              0         0.0
+2021 Independiente     PES           0           0           0              0         0.0
+2021 Independiente     RSP           0           0           0              0         0.0
+2021            MC      MC          16           5           8             29         5.8
+2021           SHH  MORENA         202          36          38            276        55.2
+2021           SHH    PVEM           3           7           6             16         3.2
+2021           SHH      PT           0           0           4              4         0.8
+2024           FCM     PAN          33          31          18             82        16.4
+2024           FCM     PRI           6          11          12             29         5.8
+2024           FCM     PRD           0           0           0              0         0.0
+2024 Independiente      CI           0           0           0              0         0.0
+2024 Independiente     FXM           0           0           0              0         0.0
+2024 Independiente     PES           0           0           0              0         0.0
+2024 Independiente     RSP           0           0           0              0         0.0
+2024            MC      MC          10          21          12             43         8.6
+2024           SHH  MORENA         245          33          43            321        64.2
+2024           SHH    PVEM           6           3           9             18         3.6
+2024           SHH      PT           0           1           6              7         1.4
+
+================================================================================
+RESUMEN COMPARATIVO 2021 vs 2024 (POR COALICIÓN)
+================================================================================
+
+SHH:
+  2021: 296 escaños
+  2024: 346 escaños
+  Diferencia: +50 escaños
+
+FCM:
+  2021: 175 escaños
+  2024: 111 escaños
+  Diferencia: -64 escaños
+
+MC:
+  2021: 29 escaños
+  2024: 43 escaños
+  Diferencia: +14 escaños
+
+================================================================================
+✅ Simulación completa con todos los partidos finalizada
+================================================================================
