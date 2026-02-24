@@ -1,0 +1,98 @@
+═══════════════════════════════════════════════════════════════════════════════
+                    📂 LISTA DE ARCHIVOS CSV DISPONIBLES
+═══════════════════════════════════════════════════════════════════════════════
+
+🎯 ARCHIVOS CSV PRINCIPALES (EN LA RAÍZ DEL REPOSITORIO):
+
+1. analisis_segundos_lugares_shh.csv (4.1 KB)
+   → Análisis de 44 distritos donde perdió SHH (MORENA+PT+PVEM)
+   → Muestra qué partido quedó en 2° lugar en cada distrito
+   
+2. simulacion_300mr_100pm_100rp.csv (236 bytes)
+   → Simulación electoral POR COALICIÓN (SHH, FCM, MC)
+   → Años 2021 y 2024
+   → Resultados: MR + PM + RP = 500 escaños
+   
+3. simulacion_300mr_100pm_100rp_por_partido.csv (480 bytes)
+   → Simulación electoral POR PARTIDO individual
+   → Años 2021 y 2024
+   → 7 partidos: MORENA, PT, PVEM, PAN, PRI, PRD, MC
+   
+4. simulacion_300mr_100pm_100rp_todos_partidos.csv (760 bytes)
+   → Simulación COMPLETA con TODOS los partidos
+   → Incluye: PES, RSP, FXM, CI (candidatos independientes)
+   → 11 partidos en 2021, 7 en 2024
+   
+5. analisis_limite_mr_pm.csv (369 bytes)
+   → Tabla de límite superior de MR para recibir PM
+   → Responde: ¿Cuántos MR puedo ganar y aún recibir PM?
+   → Límite: 200 MR para recibir 100 PM completos
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📁 UBICACIÓN:
+Todos estos archivos están en la RAÍZ del repositorio:
+/home/runner/work/back_electoral/back_electoral/
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🔽 CÓMO DESCARGAR:
+
+EN GITHUB:
+1. Ve a: https://github.com/tabatatgr/back_electoral
+2. Busca el archivo .csv
+3. Clic en el archivo
+4. Clic en "Raw" o botón de descarga
+
+EN LOCAL (si clonaste el repo):
+cd back_electoral
+ls *.csv
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📊 RESUMEN RÁPIDO DE RESULTADOS 2024:
+
+POR COALICIÓN (simulacion_300mr_100pm_100rp.csv):
+  SHH: 343 escaños (68.6%)  [MR:256 + PM:30 + RP:57]
+  FCM: 127 escaños (25.4%)  [MR:43 + PM:52 + RP:32]
+  MC:   30 escaños (6.0%)   [MR:1 + PM:18 + RP:11]
+
+POR PARTIDO (simulacion_300mr_100pm_100rp_por_partido.csv):
+  MORENA: 321 escaños (64.2%)
+  PAN:     92 escaños (18.4%)
+  PRI:     33 escaños (6.6%)
+  MC:      30 escaños (6.0%)
+  PVEM:    16 escaños (3.2%)
+  PT:       6 escaños (1.2%)
+  PRD:      2 escaños (0.4%)
+
+SEGUNDA MINORÍA (analisis_segundos_lugares_shh.csv):
+  De los 44 distritos donde SHH perdió:
+  - MORENA quedó 2°: 29 distritos (65.9%)
+  - MC quedó 2°:      8 distritos (18.2%)
+  - PAN quedó 2°:     3 distritos (6.8%)
+  - PRI quedó 2°:     3 distritos (6.8%)
+  - PVEM quedó 2°:    1 distrito (2.3%)
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🔄 REGENERAR CSVs:
+
+python analizar_segundos_lugares_coalicion.py
+python simular_escenario_300mr_100pm_100rp.py
+python simular_escenario_300mr_100pm_100rp_por_partido.py
+python simular_escenario_300mr_100pm_100rp_todos_partidos.py
+python analizar_limite_mr_pm.py
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📖 DOCUMENTACIÓN:
+
+Cada CSV tiene su README correspondiente:
+- README_analisis_segundos_lugares.md
+- README_simulacion_300mr_100pm_100rp.md
+- README_simulacion_por_partido.md
+- README_simulacion_todos_partidos.md
+- README_analisis_limite_mr_pm.md
+
+═══════════════════════════════════════════════════════════════════════════════
