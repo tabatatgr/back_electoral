@@ -1,0 +1,121 @@
+═══════════════════════════════════════════════════════════════════════════════
+                   SIMULACIÓN ELECTORAL 300 MR + 100 PM + 100 RP
+                        Primera Minoría por COALICIÓN
+═══════════════════════════════════════════════════════════════════════════════
+
+DESCRIPCIÓN:
+───────────
+Sistema electoral de 500 escaños totales:
+  • 300 Mayoría Relativa (MR) - Ganador por coalición en cada distrito
+  • 100 Primera Minoría (PM) - Segundo lugar en los 100 distritos más competitivos
+  • 100 Representación Proporcional (RP) - Método Hare a nivel nacional
+
+COALICIONES:
+────────────
+  • SHH (Sigamos Haciendo Historia): MORENA + PT + PVEM
+  • FCM (Fuerza y Corazón por México): PAN + PRI + PRD
+  • MC (Movimiento Ciudadano): va solo
+
+═══════════════════════════════════════════════════════════════════════════════
+                              RESULTADOS 2024
+═══════════════════════════════════════════════════════════════════════════════
+
+Coalición │   MR   │   PM   │   RP   │  TOTAL  │   %
+──────────┼────────┼────────┼────────┼─────────┼────────
+SHH       │  256   │   30   │   57   │   343   │ 68.6%
+FCM       │   43   │   52   │   32   │   127   │ 25.4%
+MC        │    1   │   18   │   11   │    30   │  6.0%
+──────────┼────────┼────────┼────────┼─────────┼────────
+TOTAL     │  300   │  100   │  100   │   500   │ 100%
+
+Análisis 2024:
+  ✓ SHH ganó 256 de 300 distritos (85.3% en MR)
+  ✓ SHH obtuvo solo 30 PM (baja competitividad en distritos perdidos)
+  ✓ FCM obtuvo 52 PM (fue competitivo en muchos segundos lugares)
+  ✓ MC obtuvo 18 PM a pesar de ganar solo 1 distrito
+
+═══════════════════════════════════════════════════════════════════════════════
+                              RESULTADOS 2021
+═══════════════════════════════════════════════════════════════════════════════
+
+Coalición │   MR   │   PM   │   RP   │  TOTAL  │   %
+──────────┼────────┼────────┼────────┼─────────┼────────
+SHH       │  182   │   34   │   48   │   264   │ 52.8%
+FCM       │  111   │   60   │   44   │   215   │ 43.0%
+MC        │    7   │    6   │    8   │    21   │  4.2%
+──────────┼────────┼────────┼────────┼─────────┼────────
+TOTAL     │  300   │  100   │  100   │   500   │ 100%
+
+Análisis 2021:
+  ✓ SHH ganó 182 de 300 distritos (60.7% en MR)
+  ✓ Elección más competitiva que 2024
+  ✓ FCM obtuvo 60 PM (fue muy competitivo)
+  ✓ Distribución más equilibrada entre coaliciones
+
+═══════════════════════════════════════════════════════════════════════════════
+                          COMPARACIÓN 2021 vs 2024
+═══════════════════════════════════════════════════════════════════════════════
+
+                2021        2024      Diferencia
+              ─────────  ─────────  ──────────────
+SHH           264 (52.8%) 343 (68.6%)  +79 (+15.8pp)
+  MR            182        256          +74
+  PM             34         30           -4
+  RP             48         57           +9
+
+FCM           215 (43.0%) 127 (25.4%)  -88 (-17.6pp)
+  MR            111         43          -68
+  PM             60         52           -8
+  RP             44         32          -12
+
+MC             21 (4.2%)   30 (6.0%)    +9 (+1.8pp)
+  MR              7          1           -6
+  PM              6         18          +12
+  RP              8         11           +3
+
+Tendencias:
+  • SHH incrementó significativamente su dominio (+79 escaños)
+  • FCM perdió fuerza en MR pero mantuvo competitividad en PM
+  • MC creció principalmente en PM (distritos competitivos)
+
+═══════════════════════════════════════════════════════════════════════════════
+                          ARCHIVOS DEL PROYECTO
+═══════════════════════════════════════════════════════════════════════════════
+
+Script:         simular_escenario_300mr_100pm_100rp.py
+CSV:            simulacion_300mr_100pm_100rp.csv
+Documentación:  README_simulacion_300mr_100pm_100rp.md
+
+Uso:
+  $ python simular_escenario_300mr_100pm_100rp.py
+
+Salida:
+  • Resultados detallados en consola
+  • CSV con desglose completo por año y coalición
+  • Validación de asignación de escaños
+
+═══════════════════════════════════════════════════════════════════════════════
+                          NOTAS TÉCNICAS
+═══════════════════════════════════════════════════════════════════════════════
+
+Primera Minoría:
+  • Calculada por COALICIÓN, no por partido individual
+  • Asignada a los 100 distritos más competitivos
+  • Competitividad = menor margen entre 1° y 2° lugar
+
+Representación Proporcional:
+  • Método: Hare (cociente y mayores residuos)
+  • Base: votos totales nacionales por coalición
+  • Distribución: 100 escaños
+
+Validación:
+  ✓ 300 MR (uno por distrito)
+  ✓ 100 PM (distritos más competitivos)
+  ✓ 100 RP (proporcional nacional)
+  ✓ Total: 500 escaños
+
+Datos:
+  • 2021: data/computos_diputados_2021.parquet (300 distritos)
+  • 2024: data/computos_diputados_2024.parquet (300 distritos)
+
+═══════════════════════════════════════════════════════════════════════════════

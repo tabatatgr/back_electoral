@@ -1,0 +1,149 @@
+================================================================================
+VISUALIZACIÓN: ¿CUÁNDO TE QUEDAS SIN PERDEDORES?
+================================================================================
+
+PREGUNTA: ¿A partir de cuántos distritos MR ganados te quedas sin perdedores?
+
+================================================================================
+CONCEPTO BÁSICO
+================================================================================
+
+En una circunscripción con 60 distritos:
+
+ESCENARIO 1: Ganas 20 distritos
+┌─────────────────────────────────────────────────────────────┐
+│ GANADOS: ████████████ (20)                                  │
+│ PERDIDOS: ████████████████████████████████████████████ (40) │
+└─────────────────────────────────────────────────────────────┘
+Perdedores disponibles: 40 ✅ Suficiente para 20 PM
+
+ESCENARIO 2: Ganas 40 distritos (UMBRAL)
+┌─────────────────────────────────────────────────────────────┐
+│ GANADOS: ████████████████████████████████ (40)              │
+│ PERDIDOS: ████████████████████ (20)                         │
+└─────────────────────────────────────────────────────────────┘
+Perdedores disponibles: 20 ✅ Exactamente 20 PM
+
+ESCENARIO 3: Ganas 50 distritos (EXCEDE UMBRAL)
+┌─────────────────────────────────────────────────────────────┐
+│ GANADOS: █████████████████████████████████████████ (50)     │
+│ PERDIDOS: ██████████ (10)                                   │
+└─────────────────────────────────────────────────────────────┘
+Perdedores disponibles: 10 ❌ INSUFICIENTE para 20 PM
+
+ESCENARIO 4: Ganas TODOS los 60 distritos
+┌─────────────────────────────────────────────────────────────┐
+│ GANADOS: ████████████████████████████████████████████████ (60)│
+│ PERDIDOS: (0)                                                │
+└─────────────────────────────────────────────────────────────┘
+Perdedores disponibles: 0 ❌ NINGÚN PM posible
+
+================================================================================
+CASO REAL: MORENA 2024 EN CIRCUNSCRIPCIÓN 3ª (XALAPA)
+================================================================================
+
+Circunscripción 3ª tiene 60 distritos
+MORENA ganó 53 distritos MR
+
+Visualización:
+┌─────────────────────────────────────────────────────────────┐
+│ GANADOS (MORENA): ██████████████████████████████████████████████████████ (53)│
+│ PERDIDOS: ███████ (7)                                        │
+└─────────────────────────────────────────────────────────────┘
+
+Análisis:
+- MORENA ganó 88% de los distritos (53/60)
+- Solo 7 perdedores disponibles
+- Necesita 20 PM → ❌ INSUFICIENTE (faltan 13)
+- MORENA se quedó SIN PERDEDORES suficientes
+
+================================================================================
+TABLA: UMBRALES POR CIRCUNSCRIPCIÓN
+================================================================================
+
+Para recibir 20 PM completos por circunscripción:
+
+Circunscripción | Distritos | Umbral | Visual Umbral
+----------------|-----------|--------|-----------------------------------
+1ª Guadalajara  |    61     |  ≤41   | ████████████████████████████ 67%
+2ª Monterrey    |    59     |  ≤39   | ████████████████████████████ 66%
+3ª Xalapa       |    60     |  ≤40   | ████████████████████████████ 67%
+4ª CDMX         |    61     |  ≤41   | ████████████████████████████ 67%
+5ª Toluca       |    59     |  ≤39   | ████████████████████████████ 66%
+
+💡 REGLA GENERAL: Puedes ganar hasta ~67% de los distritos
+
+================================================================================
+PROGRESIÓN: ¿QUÉ PASA AL GANAR MÁS DISTRITOS?
+================================================================================
+
+En circunscripción de 60 distritos, si quieres 20 PM:
+
+MR Ganados | Perdedores | PM Disponibles | ¿Recibes 20 PM?
+-----------|------------|----------------|------------------
+    0      |     60     |       60       | ✅ SÍ (sobran 40)
+   10      |     50     |       50       | ✅ SÍ (sobran 30)
+   20      |     40     |       40       | ✅ SÍ (sobran 20)
+   30      |     30     |       30       | ✅ SÍ (sobran 10)
+   40      |     20     |       20       | ✅ SÍ (exacto) ← UMBRAL
+   41      |     19     |       19       | ❌ NO (falta 1)
+   45      |     15     |       15       | ❌ NO (faltan 5)
+   50      |     10     |       10       | ❌ NO (faltan 10)
+   55      |      5     |        5       | ❌ NO (faltan 15)
+   60      |      0     |        0       | ❌ NO (faltan 20)
+
+================================================================================
+MATRIZ: MORENA 2024 EN LAS 5 CIRCUNSCRIPCIONES
+================================================================================
+
+Circ | Distritos | MR | Perdedores | Umbral | ¿Suficiente?
+-----|-----------|----|-----------|---------|--------------
+ 1ª  |    61     | 51 |     10    |   41    | ❌ NO
+ 2ª  |    59     | 23 |     36    |   39    | ✅ SÍ
+ 3ª  |    60     | 53 |      7    |   40    | ❌ NO
+ 4ª  |    61     | 39 |     22    |   41    | ✅ SÍ
+ 5ª  |    59     |  2 |     57    |   39    | ✅ SÍ
+
+Visualización de superación del umbral:
+
+1ª Circ (necesita ≤41, ganó 51):
+Umbral: ████████████████████████████ (41)
+MORENA: ████████████████████████████████████ (51) ⚠️ EXCEDIDO
+
+3ª Circ (necesita ≤40, ganó 53):
+Umbral: ████████████████████████████ (40)
+MORENA: ██████████████████████████████████████ (53) ⚠️ EXCEDIDO
+
+RESULTADO:
+- MORENA excedió el umbral en 2 de 5 circunscripciones
+- Total PM máximo posible: 10+36+7+22+57 = 132
+- Con 168 MR + 132 PM = 300 (límite constitucional)
+
+================================================================================
+CONCLUSIÓN VISUAL
+================================================================================
+
+LA RESPUESTA A TU PREGUNTA:
+
+Te quedas sin perdedores cuando:
+███████████████████████████████████████ (MR ganados)
+                                    vs
+████ (Perdedores) ← Insuficiente para PM
+
+FÓRMULA:
+┌─────────────────────────────────────────────┐
+│ Si: MR > (Distritos - PM_a_asignar)        │
+│ Entonces: TE QUEDAS SIN PERDEDORES         │
+└─────────────────────────────────────────────┘
+
+Para 20 PM en circunscripción de 60 distritos:
+┌─────────────────────────────────────────────┐
+│ Si: MR > (60 - 20) = MR > 40               │
+│ Entonces: Insuficientes perdedores         │
+└─────────────────────────────────────────────┘
+
+MORENA 2024: Ganó DEMASIADOS MR en 2 circunscripciones
+Resultado: Se quedó sin perdedores suficientes
+Implicación: No puede recibir 100 PM proporcionales
+
+================================================================================
