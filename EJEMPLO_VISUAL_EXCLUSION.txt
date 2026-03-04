@@ -1,0 +1,206 @@
+===============================================================================
+EJEMPLO VISUAL: CÓMO FUNCIONA LA EXCLUSIÓN EN LA SIMULACIÓN
+===============================================================================
+
+SISTEMA: 300 MR + 100 RP + 100 PM (mejores perdedores/segunda vuelta)
+
+REGLA: "Si ya ganaste en primer lugar quedas fuera de la segunda vuelta"
+
+===============================================================================
+EJEMPLO CON 5 DISTRITOS
+===============================================================================
+
+DISTRITO 1:
+-----------
+Resultados:
+  SHH: 50,000 votos → 1er lugar ✅
+  FCM: 40,000 votos → 2do lugar
+  MC:  10,000 votos → 3er lugar
+
+Asignación:
+  MR: SHH (ganador) ✅
+  PM: FCM es candidato (2do lugar) ✅
+  
+❌ SHH NO puede recibir PM de este distrito (ganó MR)
+✅ FCM puede recibir PM (es 2do lugar)
+
+
+DISTRITO 2:
+-----------
+Resultados:
+  FCM: 45,000 votos → 1er lugar ✅
+  SHH: 42,000 votos → 2do lugar
+  MC:   8,000 votos → 3er lugar
+
+Asignación:
+  MR: FCM (ganador) ✅
+  PM: SHH es candidato (2do lugar) ✅
+  
+❌ FCM NO puede recibir PM de este distrito (ganó MR)
+✅ SHH puede recibir PM (es 2do lugar)
+
+
+DISTRITO 3:
+-----------
+Resultados:
+  SHH: 48,000 votos → 1er lugar ✅
+  MC:  35,000 votos → 2do lugar
+  FCM: 17,000 votos → 3er lugar
+
+Asignación:
+  MR: SHH (ganador) ✅
+  PM: MC es candidato (2do lugar) ✅
+  
+❌ SHH NO puede recibir PM de este distrito (ganó MR)
+✅ MC puede recibir PM (es 2do lugar)
+
+
+DISTRITO 4:
+-----------
+Resultados:
+  MC:  38,000 votos → 1er lugar ✅
+  FCM: 35,000 votos → 2do lugar
+  SHH: 27,000 votos → 3er lugar
+
+Asignación:
+  MR: MC (ganador) ✅
+  PM: FCM es candidato (2do lugar) ✅
+  
+❌ MC NO puede recibir PM de este distrito (ganó MR)
+✅ FCM puede recibir PM (es 2do lugar)
+
+
+DISTRITO 5:
+-----------
+Resultados:
+  SHH: 55,000 votos → 1er lugar ✅
+  FCM: 30,000 votos → 2do lugar
+  MC:  15,000 votos → 3er lugar
+
+Asignación:
+  MR: SHH (ganador) ✅
+  PM: FCM es candidato (2do lugar) ✅
+  
+❌ SHH NO puede recibir PM de este distrito (ganó MR)
+✅ FCM puede recibir PM (es 2do lugar)
+
+===============================================================================
+RESUMEN DE 5 DISTRITOS
+===============================================================================
+
+MAYORÍA RELATIVA (MR):
+  SHH: 3 escaños (Distritos 1, 3, 5)
+  FCM: 1 escaño  (Distrito 2)
+  MC:  1 escaño  (Distrito 4)
+
+CANDIDATOS A PRIMERA MINORÍA (PM):
+  FCM: 3 candidaturas (Distritos 1, 4, 5) ← 2do en distritos que NO ganó
+  SHH: 1 candidatura  (Distrito 2)        ← 2do en distrito que NO ganó
+  MC:  1 candidatura  (Distrito 3)        ← 2do en distrito que NO ganó
+
+EXCLUSIÓN APLICADA:
+  ✅ SHH NO es candidato a PM en Distritos 1, 3, 5 (ganó MR)
+  ✅ FCM NO es candidato a PM en Distrito 2 (ganó MR)
+  ✅ MC NO es candidato a PM en Distrito 4 (ganó MR)
+
+===============================================================================
+EXTRAPOLACIÓN A 300 DISTRITOS
+===============================================================================
+
+ESCENARIO: SHH GANA 200 MR
+---------------------------
+  MR ganados: 200 distritos
+  MR perdidos: 100 distritos
+  
+  En los 200 ganados:
+    ❌ SHH NO puede ser candidato a PM (ganó MR)
+    ✅ FCM o MC pueden ser candidatos a PM (2dos lugares)
+  
+  En los 100 perdidos:
+    ✅ SHH puede ser candidato a PM (si es 2do lugar)
+    ❌ El ganador NO puede ser candidato a PM
+  
+  Máximo PM para SHH:
+    = Veces que SHH es 2do en los 100 distritos perdidos
+    ≈ 100 (si es 2do en todos los perdidos)
+  
+  Total SHH: 200 MR + 100 PM = 300 ⭐ ÓPTIMO
+
+
+ESCENARIO: SHH GANA 245 MR (MORENA 2024)
+-----------------------------------------
+  MR ganados: 245 distritos
+  MR perdidos: 55 distritos
+  
+  En los 245 ganados:
+    ❌ SHH NO puede ser candidato a PM (ganó MR)
+    ✅ FCM o MC pueden ser candidatos a PM
+  
+  En los 55 perdidos:
+    ✅ SHH puede ser candidato a PM (si es 2do lugar)
+    ❌ El ganador NO puede ser candidato a PM
+  
+  Máximo PM para SHH:
+    = Veces que SHH es 2do en los 55 distritos perdidos
+    = 45 (según datos reales 2024)
+  
+  Total SHH: 245 MR + 45 PM = 290
+  ❌ NO puede recibir 100 PM (solo 45 segundos lugares disponibles)
+
+
+ESCENARIO: SHH GANA 150 MR
+---------------------------
+  MR ganados: 150 distritos
+  MR perdidos: 150 distritos
+  
+  En los 150 ganados:
+    ❌ SHH NO puede ser candidato a PM
+  
+  En los 150 perdidos:
+    ✅ SHH puede ser candidato a PM (si es 2do lugar)
+    Supongamos que es 2do en 100 de ellos
+  
+  Total SHH: 150 MR + 100 PM = 250
+  ❌ Menos que óptimo (dejó 50 MR sobre la mesa)
+
+===============================================================================
+FÓRMULA GENERAL
+===============================================================================
+
+Para cualquier partido/coalición:
+
+  MR_ganados = Número de distritos donde fue 1er lugar
+  
+  MR_perdidos = 300 - MR_ganados
+  
+  PM_máximo = min(
+    100,  ← Límite de PM a asignar
+    Número de veces que fue 2do en MR_perdidos
+  )
+  
+  Total = MR_ganados + PM_máximo
+  
+  Restricción: Total ≤ 300 (límite constitucional)
+
+PUNTO ÓPTIMO:
+  MR_óptimo ≈ 200
+  
+  Porque:
+    - Si MR < 200: Dejas MR sobre la mesa
+    - Si MR = 200: 200 MR + 100 PM = 300 (perfecto)
+    - Si MR > 200: Te quedas sin segundos lugares para PM
+
+===============================================================================
+VALIDACIÓN: ✅ LA EXCLUSIÓN FUNCIONA CORRECTAMENTE
+===============================================================================
+
+El código garantiza que:
+
+  1. Solo el 2do lugar es candidato a PM
+  2. El ganador (1er lugar) nunca es 2do lugar
+  3. Por lo tanto, el ganador nunca recibe PM del distrito que ganó
+  4. La exclusión se aplica automáticamente por diseño
+
+NO HAY BUG. LA LÓGICA ES CORRECTA.
+
+===============================================================================
