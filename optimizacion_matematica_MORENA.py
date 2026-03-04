@@ -296,19 +296,19 @@ print("\n" + "=" * 80)
 print("📝 CONCLUSIÓN MATEMÁTICA (PAPER-STYLE)")
 print("=" * 80)
 
-print("""
+print(f"""
 El punto óptimo W* que maximiza T(W) = W + R(W) + min(100, S(W) - E(W))
 depende críticamente de la definición de la función de exclusión E(W).
 
-Con E(W)=0 (pools separados), W*≈245;
-con E(W)=min(R,S) (pool compartido), W*≈155;
-con E(W)=0.5×min(R,S) (overlap parcial), W*≈200.
+Con E(W)=0 (pools separados), W*≈{optimo_e0['W']:.0f};
+con E(W)=min(R,S) (pool compartido), W*≈{optimo_e_min['W']:.0f};
+con E(W)=0.5×min(R,S) (overlap parcial), W*≈{optimo_e_50['W']:.0f}.
 
 Para MORENA 2024 con W=245 y S=45, la restricción estructural S(W)<100
 impide capturar 100 mejores perdedores bajo cualquier definición de E(W).
 
 Sin conocer la regla exacta del sistema electoral, el óptimo está acotado
-entre 155 y 245, probablemente en el rango 180-220 bajo supuestos
+entre {optimo_e0['W']:.0f} y {optimo_e_min['W']:.0f}, probablemente en el rango 180-220 bajo supuestos
 realistas de overlap parcial (E(W) = α×min(R,S) con 0.3 ≤ α ≤ 0.7).
 """)
 
