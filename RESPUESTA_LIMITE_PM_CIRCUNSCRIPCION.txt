@@ -1,0 +1,137 @@
+================================================================================
+RESPUESTA: ¿A PARTIR DE CUÁNTOS MR TE QUEDAS SIN PERDEDORES?
+================================================================================
+
+PREGUNTA ORIGINAL:
+"Si se asignan 100 por mejores perdedores de acuerdo a la proporción de votos
+por partido entre los que tienen mejores porcentajes de voto... POR 
+circunscripción... Y en el total nadie puede tener más de 300 dips... a partir 
+de cuantos distritos ganados por circunscripción te quedas sin perdedores para 
+acomodar"
+
+================================================================================
+RESPUESTA CORTA
+================================================================================
+
+FÓRMULA:
+Perdedores_disponibles = Distritos_circunscripción - MR_ganados
+
+Si quieres recibir 20 PM, necesitas tener AL MENOS 20 perdedores.
+
+UMBRALES (para 20 PM por circunscripción):
+
+Circunscripción 1ª (61 distritos): Puedes ganar HASTA 41 MR
+Circunscripción 2ª (59 distritos): Puedes ganar HASTA 39 MR  
+Circunscripción 3ª (60 distritos): Puedes ganar HASTA 40 MR
+Circunscripción 4ª (61 distritos): Puedes ganar HASTA 41 MR
+Circunscripción 5ª (59 distritos): Puedes ganar HASTA 39 MR
+
+SI GANAS MÁS → TE QUEDAS SIN SUFICIENTES PERDEDORES!
+
+================================================================================
+EJEMPLO REAL: MORENA 2024
+================================================================================
+
+MORENA (coalición SHH) ganó 168 distritos MR distribuidos como:
+
+1ª Circunscripción: 51 MR ganados
+   - Total distritos: 61
+   - Perdedores: 61 - 51 = 10
+   - PM disponibles: 10
+   - ¿Suficiente para 20 PM? ❌ NO (faltan 10)
+
+2ª Circunscripción: 23 MR ganados
+   - Total distritos: 59
+   - Perdedores: 59 - 23 = 36
+   - PM disponibles: 36
+   - ¿Suficiente para 20 PM? ✅ SÍ
+
+3ª Circunscripción: 53 MR ganados
+   - Total distritos: 60
+   - Perdedores: 60 - 53 = 7
+   - PM disponibles: 7
+   - ¿Suficiente para 20 PM? ❌ NO (faltan 13)
+
+4ª Circunscripción: 39 MR ganados
+   - Total distritos: 61
+   - Perdedores: 61 - 39 = 22
+   - PM disponibles: 22
+   - ¿Suficiente para 20 PM? ✅ SÍ
+
+5ª Circunscripción: 2 MR ganados
+   - Total distritos: 59
+   - Perdedores: 59 - 2 = 57
+   - PM disponibles: 57
+   - ¿Suficiente para 20 PM? ✅ SÍ
+
+TOTAL PM MÁXIMO POSIBLE: 10 + 36 + 7 + 22 + 57 = 132
+
+CONCLUSIÓN:
+- MORENA superó el umbral en 2 circunscripciones (1ª y 3ª)
+- Solo puede recibir 132 PM máximo (no los 100+ que le tocarían proporcionalmente)
+- Ganó DEMASIADOS distritos MR en esas circunscripciones
+
+================================================================================
+LÍMITE CONSTITUCIONAL (300 DIPUTADOS)
+================================================================================
+
+MORENA 2024:
+- MR ganados: 168
+- PM máximo (por perdedores): 132
+- TOTAL: 168 + 132 = 300 diputados
+
+RESULTADO:
+⚠️ MORENA alcanza EXACTAMENTE el límite constitucional con solo MR + PM
+⚠️ No hay espacio para RP bajo este sistema
+
+================================================================================
+IMPLICACIONES
+================================================================================
+
+1. DOMINANCIA ELECTORAL:
+   - Cuando ganas demasiados MR en una circunscripción
+   - Te quedas sin perdedores disponibles
+   - No puedes recibir todos los PM que te corresponderían
+
+2. REDISTRIBUCIÓN:
+   - Los PM "sobrantes" deben ir a otros partidos
+   - El partido dominante pierde PM por falta de perdedores
+   - Los partidos con más derrotas pueden recibir más PM
+
+3. TRADE-OFF:
+   - Más MR ganados → Menos perdedores → Menos PM potenciales
+   - Hay un punto óptimo: ~67% de los distritos
+   - Ganar TODO no es óptimo para maximizar MR+PM
+
+4. SISTEMA PERVERSO:
+   - Un partido MUY exitoso puede quedar limitado por falta de perdedores
+   - Un partido menos exitoso puede recibir más PM
+   - El sistema premia tener derrotas "competitivas"
+
+================================================================================
+TABLA RESUMEN: UMBRALES POR CIRCUNSCRIPCIÓN
+================================================================================
+
+Para recibir 20 PM completos:
+
+Circ | Distritos | Gana hasta | Después se queda sin perdedores
+-----|-----------|------------|--------------------------------
+ 1ª  |    61     |     41     | Si gana 42+ → Insuficientes
+ 2ª  |    59     |     39     | Si gana 40+ → Insuficientes
+ 3ª  |    60     |     40     | Si gana 41+ → Insuficientes
+ 4ª  |    61     |     41     | Si gana 42+ → Insuficientes
+ 5ª  |    59     |     39     | Si gana 40+ → Insuficientes
+
+================================================================================
+PARA MÁS INFORMACIÓN
+================================================================================
+
+Ver archivos:
+- analizar_limite_pm_por_circunscripcion.py (script de análisis)
+- README_limite_pm_circunscripcion.md (documentación completa)
+- mapeo_circunscripciones.csv (mapeo de estados a circunscripciones)
+
+Ejecutar análisis:
+python analizar_limite_pm_por_circunscripcion.py
+
+================================================================================
