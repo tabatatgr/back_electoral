@@ -1,15 +1,16 @@
 """
-Análisis del Punto Óptimo: Sistema MR + RP Normal + RP Mejores Perdedores
+Análisis del Punto Óptimo: Sistema MR + RP (sin ganadores) + RP Mejores Perdedores (segundos lugares)
 
-Sistema Electoral Mexicano:
-1. 300 distritos MR (Mayoría Relativa)
-2. Primera vuelta RP: 100 asientos (proporcional normal)
-3. Segunda vuelta RP: 100 asientos (mejores perdedores - requiere haber perdido distritos)
+Sistema Electoral Mexicano CORRECTO:
+1. 300 distritos MR (Mayoría Relativa) - se calcula normal
+2. Primera vuelta RP: 100 asientos proporcionales - SE QUITAN a los ganadores de MR
+3. Segunda vuelta RP: 100 asientos - Van a los SEGUNDOS LUGARES en cada distrito
 
-Pregunta: ¿Cuál es el punto óptimo antes de quedarte sin posibilidad de asignar
-          asientos de mejores perdedores?
+Pregunta: ¿A partir de cuántos distritos ganados te quedas sin segundos lugares
+          para acomodar los 100 escaños de mejores perdedores?
 
-Respuesta: 200 distritos MR (67% de victoria)
+Key: Para recibir escaños de "mejores perdedores", debes haber quedado en SEGUNDO LUGAR
+     en suficientes distritos. Si ganas todo, no eres segundo en ningún lado.
 """
 
 import pandas as pd
